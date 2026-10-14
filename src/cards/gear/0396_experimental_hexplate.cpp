@@ -25,12 +25,11 @@ public:
     void onEquipped(CardContext& ctx, GameObjectId /*unit*/) override {
         grantMech(ctx.state, ctx.source);
     }
-    void applyPassiveAura(GameState& state, PlayerId controller) const override {
-        for (auto& [gid, gear] : state.objects.onBoard()) {
-            if (gear.card_def_id != cardDefId() || gear.controller != controller) continue;
-            if (!gear.location.has_value()) continue;
-            grantMech(state, gid);
-        }
+    // Re-asserted in every aura pass with the equipment effects, before the
+    // card hooks, so "Your Mechs have ..." (Breakneck Mech) sees the tag in the
+    // same pass whatever the order of the hooks (Card::applyToBearer).
+    void applyToBearer(GameState& state, GameObjectId gear, GameObjectId /*unit*/) const override {
+        grantMech(state, gear);
     }
     void onUnattached(CardContext& ctx, GameObjectId unit) override {
         if (!ctx.state.objectExists(ctx.source)) return;

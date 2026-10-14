@@ -59,6 +59,8 @@ constexpr CardDefId kSwiftScout = 259;
 constexpr CardDefId kStupefy = 95;
 constexpr CardDefId kTeemoStrategist = 121;
 constexpr CardDefId kNocturneHorrifying = 194;
+constexpr CardDefId kBreakneckMech = 394;
+constexpr CardDefId kExperimentalHexplate = 396;
 constexpr CardDefId kRocketBarrage = 400;   // [4][B]: Deal 4 to a unit in a base.
 
 class Batch4bTest : public CardTestFixture {
@@ -1165,6 +1167,39 @@ TEST_F(Batch4bTest, D71_Nocturne_IsBanishedAndPlayedAsTeemoRevealsHim) {
     EXPECT_EQ(deckSize(P1), 4) << "the four others recycled";
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
     EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Nocturne")) << "no chain item";
+}
+
+// ─── Found by the gate's checked fuzz: an Equipment's "I am a Mech" and "Your
+// Mechs have ..." in the same aura pass ───────────────────────────────────────
+// Experimental Hexplate's effect text gives its bearer the Mech tag; Breakneck
+// Mech gives "Your Mechs" [Deflect] and [Ganking]. One aura pass must give the
+// bearer both keywords whichever hook runs first (an Equipment's effect text
+// applies with the other equipment effects, before the card hooks).
+TEST_F(Batch4bTest, Gate_AnEquipmentsMechTagIsSeenByMechAurasInTheSamePass) {
+    for (int order = 0; order < 2; ++order) {
+        SCOPED_TRACE(order == 0 ? "Breakneck Mech created first" : "Hexplate created first");
+        state.objects.clear();
+        GameObjectId breakneck, hexplate;
+        if (order == 0) {
+            breakneck = addUnit(P1, kBreakneckMech, 0);
+            hexplate = gear(P1, kExperimentalHexplate);
+        } else {
+            hexplate = gear(P1, kExperimentalHexplate);
+            breakneck = addUnit(P1, kBreakneckMech, 0);
+        }
+        (void)breakneck;
+        auto bearer = addUnit(P1, kShipyardSkulker, 2);
+        bool ganking = false, deflect = false;
+        withEngine([&](GameEngine& e) {
+            e.testHook_executor().attachGear(hexplate, bearer);
+            e.testHook_recalculateAuras();   // one pass
+            const auto& b = e.mutableState().getObject(bearer);
+            ganking = b.hasKeyword(Keyword::Ganking);
+            deflect = b.hasKeyword(Keyword::Deflect);
+        });
+        EXPECT_TRUE(ganking);
+        EXPECT_TRUE(deflect);
+    }
 }
 
 }  // namespace riftbound::test::batch_4b

@@ -916,6 +916,12 @@ public:
 
     /// Keywords granted to the equipped unit (from effect_text).
     virtual KeywordSet equippedKeywords() const { return {}; }
+    /// Anything else the effect text gives the equipped unit ("I am a Mech."):
+    /// applied by every aura pass with the other equipment effects, BEFORE the
+    /// card hooks (`applyPassiveAura`), so an effect that reads it ("Your
+    /// Mechs have ...") sees it in the same pass whatever the hook order.
+    virtual void applyToBearer(GameState& /*state*/, GameObjectId /*gear*/,
+                               GameObjectId /*unit*/) const {}
 
     /// Skyfall of Areion: "My hold effects are also conquer effects, and vice
     /// versa." When an attached gear returns true, the engine cross-fires the

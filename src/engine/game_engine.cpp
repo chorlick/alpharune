@@ -6631,6 +6631,9 @@ void GameEngine::recalculateAuras() {
             if (!state_.objectExists(gear_id)) continue;
             Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
             if (!gear_card) continue;
+            // What else the effect text gives the bearer (a tag): before any
+            // card hook reads it (Card::applyToBearer).
+            gear_card->applyToBearer(state_, gear_id, id);
 
             // Keywords from effect_text. [Assault N] / [Shield N] are pushed
             // once, with their value, below — not also as a bare keyword,

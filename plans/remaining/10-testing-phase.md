@@ -127,3 +127,8 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **J2** CR 323.11 / 323.12 apply in every Cleanup in a Neutral Open State, but staged showdowns and combats are begun only by `advanceMainPhase`: a unit an effect moves to an enemy battlefield in the Beginning Phase (or the Ending Step) waits for the Main Phase — CODE-ONLY
 - [ ] **J3** CR 468.3.d.1 stages the next combat from who is present when the result is determined (468.3); `combatResolutionStep` decides it from who is present after the 468.4 chain, so a unit that arrives or leaves during that chain changes whether the combat is restaged or control is established — CODE-ONLY
 
+
+## Found by batch 1b (2026-10-14, `plans/reports/batch-1b.md` section 11)
+
+- [ ] **J2** (batch 3) CR 323.11 / 323.12 apply in every Neutral Open State Cleanup; only `advanceMainPhase` begins staged showdowns and combats, so one staged outside the Main Phase waits for it — CODE-ONLY
+- [ ] **J3** (batch 3) CR 468.3.d.1 decides "stage another combat" from who is present at the result; `combatResolutionStep` decides it from who is present after the 468.4 chain — CODE-ONLY

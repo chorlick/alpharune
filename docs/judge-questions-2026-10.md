@@ -156,3 +156,23 @@ Which rule wins when both apply?
 - For "not recalled while its own ability is pending": 323.6 "unless an effect would indicate otherwise" — the pending attach could be read as such an effect.
 
 **What the engine does.** The gear is recalled by the Cleanup; the ability chooses among my units at the battlefield it was played from facedown at, and attaches it there (`ReviewFixC1Test.EdgeOfNight_TheControllerChoosesTheUnitHere`).
+
+---
+
+## 8. Who gains Focus when one player's effect moves the other player's unit into a showdown
+
+**Card**
+
+- Charm: "Move an enemy unit."
+
+**Situation.** On my turn I play Charm and move my opponent's unit from their base to a battlefield nobody controls. No other unit is there. The battlefield becomes Contested and a (non-combat) showdown opens at the next Cleanup.
+
+**Question.** Who gains Focus as the showdown begins: my opponent, whose unit applied Contested, or me, whose spell caused the move?
+
+**Rules found**
+
+- For "the opponent": 345, "As a Showdown begins, the player who applied Contested status to the Battlefield gains Focus."; 190.3.a.1, "Units moving to or being played to a battlefield apply Contested status if that Battlefield is not already Contested and that Unit's controller does not already control that battlefield." — the unit applies it, and the player who applied it would be its controller; 323.10.a speaks of "their controller applies Contested status".
+- For "me": the move is my action and my effect; nothing in 345 says the player who applied Contested is the controller of the unit rather than the player who moved it.
+- For a combat the rules answer it: 466.2.c.1 / 466.2.c.1.a, the Attacker ("the player whose unit(s) applied the Contested status") gains Focus.
+
+**What the engine does.** Focus goes first to the controller of the unit that applied Contested — my opponent in this situation (`Batch2Combat.G3_NonCombatShowdown_TheControllerOfTheUnitThatAppliedContestedHasFocusFirst_J2`). In a combat it goes to the Attacker (`Batch2Combat.G3_InACombatTheAttackerHasFocusFirst_AlsoOnTheOtherPlayersTurn`). Before batch 2 it always went to the turn player (finding G3).

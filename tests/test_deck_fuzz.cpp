@@ -234,6 +234,25 @@ TEST_F(DeckFuzz, B1_TheCleanupAfterTheExpirationBodyIsNeverSkipped) {
     EXPECT_NE(r.winner, PlayerId::None);
 }
 
+// Found by batch 1b's checked fuzz (random-player:pass=0, seed 20262103):
+// Experimental Hexplate gives its bearer the Mech tag in the aura pass and
+// Rumble, Scrapper gives Mechs +1 [M] in the same pass; with Rumble's hook
+// first, the tag arrived after Rumble had looked. The Cleanup's change check
+// did not see a tag change, so the Cleanup ended as "nothing changed" and the
+// next one — which gives the +1 [M] — would have been skipped (batch 2's B1
+// shortcut). The check now sees an object's tags. On the checked build this
+// game threw "a Cleanup that would not have been run ... changed the state".
+TEST_F(DeckFuzz, B1_ATagGivenInTheAuraPassIsAChangeTheCleanupSees) {
+    fuzz::GameOptions opt;
+    opt.agents[0] = "random-player:pass=0";
+    opt.agents[1] = "random-player:pass=0";
+    const fuzz::GameOutcome r = fuzz::playGame(
+        *db_, *registry_, builder_->build(12991493837931873759ULL),
+        builder_->build(13821284144776085220ULL), 1546771062, opt);
+    EXPECT_FALSE(r.failed) << r.termination << " " << r.exception;
+    EXPECT_NE(r.winner, PlayerId::None);
+}
+
 TEST_F(DeckFuzz, AGameThatIsStoppedIsRecordedNotThrown) {
     fuzz::GameOptions opt;
     opt.max_decisions = 10;

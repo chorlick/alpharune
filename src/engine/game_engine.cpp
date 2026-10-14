@@ -7072,6 +7072,11 @@ void GameEngine::cleanup() {
         // changes nothing in a pile that it does not also change here — a
         // card that reaches a pile during the pass leaves this walk, and a
         // card in a pile is touched by no step.)
+        // An object's tags too: a hook may give one in the aura pass (Experimental
+        // Hexplate: "I am a Mech."), which another hook of the same pass reads
+        // (Rumble, Scrapper: "Your Mechs have +1 [M]"). A tag given after the
+        // reader looked is a change: the next pass gives the bonus. Tags are
+        // interned, so equal tag lists are one pointer.
         const auto mixObject = [&](GameObjectId id, const GameObject& obj) {
             const uint64_t flags =
                 static_cast<uint64_t>(obj.zone.get()) |
@@ -7082,6 +7087,8 @@ void GameEngine::cleanup() {
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
                 static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
+                static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(obj.tags.operator->())) *
+                    0x94D049BB133111EBULL ^
                 flags * 0xFF51AFD7ED558CCDULL);
         };
         if (every_object) {

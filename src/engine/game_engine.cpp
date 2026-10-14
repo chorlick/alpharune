@@ -1245,6 +1245,12 @@ void GameEngine::expirationStep() {
 }
 
 void GameEngine::doExpirationBody() {
+    // The body ends "this turn" effects by writing the objects directly,
+    // without an announcement for each: the Cleanup after it is never the
+    // skipped kind (cleanup(), (2)). Found by the checked build: a "this turn"
+    // -5 [M] that expired made a unit Mighty again in the second pass of the
+    // step, and the skipped Cleanup would not have noticed.
+    quiet_cleanup_valid_ = false;
     // Heal all units (CR 317.2.b)
     healAllUnits();
 

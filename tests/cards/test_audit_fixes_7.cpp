@@ -112,10 +112,16 @@ TEST_F(AuditFix7Test, ArenasGreatest_OnlyFiresOncePerPlayer) {
     auto src = installBattlefieldCard(BattlefieldId::fromRaw(0), 285);
     setScore(P1, 0);
 
+    // "first Beginning Phase" is the trigger condition (findings G9 / G10):
+    // a later Beginning Phase does not trigger it at all.
+    state.turn.turn_player = P1;
+    state.player(P1).turns_taken = 1;
+    EXPECT_TRUE(triggersNow(285, P1, src, TriggerType::AtStartOfBeginning));
     fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
-    fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
+    state.player(P1).turns_taken = 2;
+    EXPECT_FALSE(triggersNow(285, P1, src, TriggerType::AtStartOfBeginning));
 
-    EXPECT_EQ(state.player(P1).score, 1);  // gated: second firing is a no-op
+    EXPECT_EQ(state.player(P1).score, 1);
 }
 
 TEST_F(AuditFix7Test, ArenasGreatest_PerPlayerGate) {
@@ -125,8 +131,16 @@ TEST_F(AuditFix7Test, ArenasGreatest_PerPlayerGate) {
     setScore(P1, 0);
     setScore(P2, 0);
 
+    // Each player's first Beginning Phase; "that player" is the turn player
+    // whoever controls the ability (finding G10).
+    state.turn.turn_player = P1;
+    state.player(P1).turns_taken = 1;
+    EXPECT_TRUE(triggersNow(285, P1, src, TriggerType::AtStartOfBeginning));
     fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
-    fireTriggerAs(285, P2, src, TriggerType::AtStartOfBeginning, exec);
+    state.turn.turn_player = P2;
+    state.player(P2).turns_taken = 1;
+    EXPECT_TRUE(triggersNow(285, P1, src, TriggerType::AtStartOfBeginning));
+    fireTriggerAs(285, P1, src, TriggerType::AtStartOfBeginning, exec);
 
     EXPECT_EQ(state.player(P1).score, 1);  // each player's first fires independently
     EXPECT_EQ(state.player(P2).score, 1);

@@ -458,11 +458,14 @@ TEST_F(RulesCards2Test, RulesCards2_CR194_ArenasGreatest_PointGoesThroughScorePo
     EffectExecutor exec(state, events, card_db, &card_registry);
     auto arena = installBattlefieldCard(0, kArenasGreatest);
 
+    // "that player" is the player whose Beginning Phase it is (finding G10).
     state.player(P1).cannot_gain_points = true;
+    state.turn.turn_player = P1;
     fireTriggerAs(kArenasGreatest, P1, arena, TriggerType::AtStartOfBeginning, exec);
     EXPECT_EQ(state.player(P1).score, 0) << "\"can't gain points\" stops the point";
 
     setScore(P2, 7);
+    state.turn.turn_player = P2;
     fireTriggerAs(kArenasGreatest, P2, arena, TriggerType::AtStartOfBeginning, exec);
     EXPECT_EQ(state.player(P2).score, 8);
     EXPECT_TRUE(state.game_over);

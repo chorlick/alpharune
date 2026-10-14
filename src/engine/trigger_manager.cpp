@@ -1536,8 +1536,9 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
             for (auto uid : bearers)
                 fireEquippedTriggers(uid, e.turn_player, TriggerType::AtEndOfTurn);
         }
-        // Battlefield cards with an AtEndOfTurn trigger.
-        fireBattlefieldTriggers(TriggerType::AtEndOfTurn, e.turn_player);
+        // Battlefield cards with an AtEndOfTurn trigger: controlled by the
+        // battlefield's controller (CR 190.6.a, 190.6.b), as above.
+        fireBattlefieldTriggers(TriggerType::AtEndOfTurn, PlayerId::None);
         // Delayed abilities scheduled for end of turn (e.g. Targon's Peak's
         // "ready up to 2 runes at the end of this turn").
         checkDelayedAbilities(TriggerType::AtEndOfTurn, e.turn_player, kInvalidId);
@@ -1566,9 +1567,13 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
                 fireTrigger(ps.legend_zone, e.turn_player, 0, TriggerType::AtStartOfBeginning);
             }
         }
-        // Battlefield cards with an AtStartOfBeginning trigger (Arena's
-        // Greatest, Dusk Rose Lab), attributed to the turn player.
-        fireBattlefieldTriggers(TriggerType::AtStartOfBeginning, e.turn_player);
+        // Battlefield cards with an AtStartOfBeginning trigger (Frozen
+        // Fortress, Dusk Rose Lab, Obelisk of Power, The Arena's Greatest).
+        // The event names no player who controls them: the battlefield's
+        // controller does, the turn player while it is uncontrolled (CR
+        // 190.6.a, 190.6.b; finding G10). Whose phase it is ("your", "each
+        // player's", "that player") is for the card to read.
+        fireBattlefieldTriggers(TriggerType::AtStartOfBeginning, PlayerId::None);
         // [Temporary] (CR 816.1): "At the start of this permanent's
         // controller's Beginning Phase, before scoring, kill this." — a
         // triggered ability, in the same batch as the abilities above, so
@@ -1597,8 +1602,9 @@ void TriggerManager::onPhaseChanged(const PhaseChangedEvent& e) {
                 fireTrigger(ps.legend_zone, e.turn_player, 0, TriggerType::AtStartOfMain);
             }
         }
-        // Battlefield cards with an AtStartOfMain trigger.
-        fireBattlefieldTriggers(TriggerType::AtStartOfMain, e.turn_player);
+        // Battlefield cards with an AtStartOfMain trigger: controlled by the
+        // battlefield's controller (CR 190.6.a, 190.6.b), as above.
+        fireBattlefieldTriggers(TriggerType::AtStartOfMain, PlayerId::None);
         // Delayed abilities (Iascylla schedules one of these on hold)
         checkDelayedAbilities(TriggerType::AtStartOfMain, e.turn_player,
                               kInvalidId);

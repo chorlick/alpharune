@@ -186,6 +186,14 @@ public:
                 order_prompts.push_back(legal);
                 return order_pick ? order_pick(legal) : legal.front();
             }
+            // Where the next staged showdown or combat begins (CR 323.11 /
+            // 323.12; GameEngine::chooseNextStaged): an engine prompt too,
+            // kept apart and answered with the first option (the lowest
+            // battlefield) unless the test sets `begin_pick`.
+            if (isBeginPrompt(legal)) {
+                begin_prompts.push_back(legal);
+                return begin_pick ? begin_pick(legal) : legal.front();
+            }
             prompts.push_back(legal);
             if (pick) return pick(legal);
             // No picker. The default is the first option, except at a Predict
@@ -205,6 +213,16 @@ public:
     /// picker for them (see selectAction).
     std::vector<std::vector<Intent>> order_prompts;
     Picker order_pick;
+    /// Every "where does the next showdown / combat begin" prompt, and an
+    /// optional picker for them (see selectAction).
+    std::vector<std::vector<Intent>> begin_prompts;
+    Picker begin_pick;
+    static bool isBeginPrompt(const std::vector<Intent>& legal) {
+        return !legal.empty() && std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.choice_label.rfind("Combat begins at \xE2\x80\x94 ", 0) == 0 ||
+                   i.choice_label.rfind("Showdown begins at \xE2\x80\x94 ", 0) == 0;
+        });
+    }
     static bool isTriggerOrderPrompt(const std::vector<Intent>& legal) {
         return !legal.empty() && std::all_of(legal.begin(), legal.end(), [](const Intent& i) {
             return i.choice_label.rfind("Order \xE2\x80\x94 ", 0) == 0;
@@ -960,24 +978,6 @@ protected:
     /// not exist — that is how the target-less-trigger cards (plans/07 item
     /// 7.1) passed their tests. For a trigger that chooses something use
     /// fireTriggerThroughEngine / playThroughEngine.
-    void fireTriggerAs(CardDefId def_id, PlayerId controller, GameObjectId source,
-                       TriggerType firing, EffectExecutor& exec) {
-        Card* card = card_registry.get(def_id);
-        ASSERT_NE(card, nullptr);
-        CardContext ctx{state, events, exec, controller, source};
-        ctx.registry = &card_registry;   // as the engine sets it
-        ctx.firing_trigger = firing;
-        card->onTrigger(ctx, {});
-    }
-
-    /// Drive a resumable Card through case 0 → case 1 manually using
-    /// `picker` to choose from the published choice set. Stand-in for
-    /// ChainManager::stepResolve when a test only wants to validate one
-    /// card's behavior.
-    void driveResumable(CardDefId def_id, PlayerId controller,
-                         GameObjectId source,
-                         std::function<Intent(const std::vector<Intent>&)> picker,
-                         EffectExecutor& exec) {
     /// Whether `source`'s ability for `trigger` triggers now: the question
     /// TriggerManager asks before it puts anything on the chain
     /// (Card::triggerConditionOn, with the subject's printed card). A
@@ -999,6 +999,24 @@ protected:
         return card->triggerConditionOn(state, ev);
     }
 
+    void fireTriggerAs(CardDefId def_id, PlayerId controller, GameObjectId source,
+                       TriggerType firing, EffectExecutor& exec) {
+        Card* card = card_registry.get(def_id);
+        ASSERT_NE(card, nullptr);
+        CardContext ctx{state, events, exec, controller, source};
+        ctx.registry = &card_registry;   // as the engine sets it
+        ctx.firing_trigger = firing;
+        card->onTrigger(ctx, {});
+    }
+
+    /// Drive a resumable Card through case 0 → case 1 manually using
+    /// `picker` to choose from the published choice set. Stand-in for
+    /// ChainManager::stepResolve when a test only wants to validate one
+    /// card's behavior.
+    void driveResumable(CardDefId def_id, PlayerId controller,
+                         GameObjectId source,
+                         std::function<Intent(const std::vector<Intent>&)> picker,
+                         EffectExecutor& exec) {
         ChainItem ri;
         ri.id = state.chain.allocateId();
         ri.controller = controller;

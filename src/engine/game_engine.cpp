@@ -1063,44 +1063,42 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
             return adv;
         }
 
-        // If in showdown, run it. Sub-calls still use the recursive path
-        // until C-1 commit 6 converts the chain / combat subsystems.
-        // By index, and re-fetched by id after each showdown / combat: what
-        // resolves in them may add a battlefield, which reallocates the vector.
-        for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
-            const BattlefieldId bf_id = state_.battlefields[bi].id;
-            if (const auto& bf = state_.battlefields[bi];
-                bf.showdown_staged && !bf.showdown_in_progress && !bf.combat_staged) {
-                runShowdown(bf_id);
-                progressed = true;
+        // CR 323.11 / 323.12 (Cleanup steps 9 and 10): in a Neutral Open
+        // State, one staged showdown begins — at a battlefield with no combat
+        // staged — or, with none, one staged combat; with several, the turn
+        // player chooses where (finding I1). One per pass: what it leaves
+        // (a conquer, a death, another staged combat, CR 468.3.d.1) is
+        // settled by the next pass's Cleanup before the next one begins.
+        bool is_combat = false;
+        const BattlefieldId next = chooseNextStaged(is_combat);
+        if (next != kInvalidId) {
+            progressed = true;
+            if (!is_combat) {
+                runShowdown(next);
                 if (state_.game_over) {
                     adv.kind = MainPhaseAdvance::Kind::Done;
                     return adv;
                 }
-                getBattlefield(bf_id).showdown_staged = false;
+                getBattlefield(next).showdown_staged = false;
                 // What the showdown's end queued (a conquer) resolves before
-                // anything else begins: a showdown or a combat begins only
-                // in a Neutral Open State (CR 323.11 / 323.12, 344).
+                // anything else begins (CR 323.11 / 323.12, 344).
                 runChain();
-                if (state_.game_over) {
-                    adv.kind = MainPhaseAdvance::Kind::Done;
-                    return adv;
-                }
-            }
-            if (const auto& bf = state_.battlefields[bi];
-                bf.combat_staged && !bf.combat_in_progress) {
-                runCombat(bf_id);
-                progressed = true;
+            } else {
+                runCombat(next);
                 if (state_.game_over) {
                     adv.kind = MainPhaseAdvance::Kind::Done;
                     return adv;
                 }
                 // Cleared unless the combat ended in "No Result" with both
                 // players still here, which keeps the battlefield Contested
-                // and stages the next combat (CR 468.3.d.1): the next pass of
+                // and stages the next combat (CR 468.3.d.1): a later pass of
                 // this loop runs it.
-                if (!getBattlefield(bf_id).is_contested)
-                    getBattlefield(bf_id).combat_staged = false;
+                if (!getBattlefield(next).is_contested)
+                    getBattlefield(next).combat_staged = false;
+            }
+            if (state_.game_over) {
+                adv.kind = MainPhaseAdvance::Kind::Done;
+                return adv;
             }
         }
 
@@ -1124,6 +1122,48 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
     adv.kind = MainPhaseAdvance::Kind::NeedDecision;
     adv.legal = std::move(actions);
     return adv;
+}
+
+BattlefieldId GameEngine::chooseNextStaged(bool& is_combat) {
+    // Showdowns first: step 9 of the Cleanup (CR 323.11) comes before step 10
+    // (323.12), and once a showdown has begun the state is no longer a
+    // Neutral Open State.
+    std::vector<BattlefieldId> candidates;
+    for (const auto& bf : state_.battlefields)
+        if (bf.showdown_staged && !bf.showdown_in_progress && !bf.combat_staged)
+            candidates.push_back(bf.id);
+    is_combat = candidates.empty();
+    if (is_combat)
+        for (const auto& bf : state_.battlefields)
+            if (bf.combat_staged && !bf.combat_in_progress) candidates.push_back(bf.id);
+    if (candidates.empty()) return kInvalidId;
+    if (candidates.size() == 1) return candidates.front();
+
+    // "the Turn Player chooses one of those Battlefields": one option per
+    // battlefield, its number as the value and its card as the object.
+    const PlayerId chooser = state_.turn.turn_player;
+    const std::string what = is_combat ? "Combat begins at" : "Showdown begins at";
+    std::vector<Intent> options;
+    for (auto id : candidates) {
+        const auto& bf = getBattlefield(id);
+        Intent o;
+        o.type = IntentType::MakeChoice;
+        o.player = chooser;
+        o.chosen_value = static_cast<int>(id.raw());
+        std::string name = "Battlefield #" + toString(id);
+        if (bf.card_object_id != kInvalidId && state_.objectExists(bf.card_object_id)) {
+            o.chosen_objects = {bf.card_object_id};
+            name = state_.getObject(bf.card_object_id).name;
+        }
+        o.choice_label = what + " \xE2\x80\x94 " + name;
+        options.push_back(std::move(o));
+    }
+    const Intent chosen = decideNow(chooser, options,
+        std::string(is_combat ? "where the next combat begins (CR 323.12)"
+                              : "where the next showdown begins (CR 323.11)"));
+    for (auto id : candidates)
+        if (chosen.chosen_value == static_cast<int>(id.raw())) return id;
+    return candidates.front();
 }
 
 bool GameEngine::resolveMainPhaseDecision(const Intent& intent,

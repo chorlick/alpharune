@@ -5563,7 +5563,7 @@ std::optional<PlayerId> GameEngine::resolveShowdownDecision(
 
 void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
     // Focus passing loop (CR 313, CR 348.1).
-    // Turn player gets focus first. Players alternate.
+    // The player who applied Contested gets focus first. Players alternate.
     // When both pass focus consecutively without adding chain items, showdown closes.
     //
     // Bridge: legacy path calls queryAgent between advance + resolve.
@@ -5571,7 +5571,20 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
     // actions out to applyChoice() and feed the chosen intent back into
     // resolve — no thread, no condvar.
     state_.turn.players_passed_focus.clear();
+    // Who gains Focus as the showdown begins (finding G3: it was always the
+    // turn player). In a combat, the Attacker (CR 466.2.c.1.a: "If a
+    // showdown opens as part of combat, this player gains Focus"); in a
+    // non-combat showdown, the player who applied Contested (CR 345) — the
+    // controller of the unit that applied it (CR 190.3.a.1), also when
+    // another player's effect moved that unit there (judge question J2).
     PlayerId current_focus = state_.turn.turn_player;
+    {
+        const auto& bf = getBattlefield(bf_id);
+        if (bf.combat_in_progress && bf.attacker.has_value())
+            current_focus = *bf.attacker;
+        else if (bf.contested_by != PlayerId::None)
+            current_focus = bf.contested_by;
+    }
 
     int action_count = 0;
     while (!state_.game_over) {

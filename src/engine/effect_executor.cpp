@@ -1052,10 +1052,16 @@ void EffectExecutor::giveKeywordThisCombat(GameObjectId unit, Keyword kw, int va
         if (ck.unit == unit && ck.keyword == kw && ck.battlefield == battlefield &&
             ck.turn == state_.turn.turn_number) {
             ck.value += value;
+            RIFT_TRACE(events_, "THIS COMBAT: " + state_.getObject(unit).name + " gains " +
+                             std::string(toString(kw)) + " " + std::to_string(value) + " more");
             recalculateContinuousEffects();
             return;
         }
     state_.combat_keywords.push_back({unit, kw, value, battlefield, state_.turn.turn_number});
+    // (Announced: a state write with no event or line could let the next
+    // Cleanup be skipped — GameEngine::quiet_cleanup_valid_.)
+    RIFT_TRACE(events_, "THIS COMBAT: " + state_.getObject(unit).name + " gains " +
+                     std::string(toString(kw)) + " " + std::to_string(value));
     recalculateContinuousEffects();
 }
 

@@ -123,3 +123,9 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **G25** (batch 4b) Astral Heron: with the first card of the turn countered, no card of that turn triggers it — QUESTION (g08)
 - [ ] **G27** (batch 3) Sightings that widen known items (report section "Known items seen again"): Gold's "Kill this" paid at resolution (D38), [Add] as a chain item on five more cards (D30/D31), a Flow replay offered at Focus (D5, batch 2), Astral Heron's discount spent on the opponent's turn (D18), Defy takes the top item only (D21), Relentless Pursuit joins D3 / D41 — each named card gets its own test when its item is fixed
 - [ ] **G28** (after the batches) ISMCTS at 50 simulations plays near-uniformly (End Turn with ready runes, helpful effects on enemy units, option [0] of two-option prompts favoured, opponent's objects chosen at Targon's Peak): check whether the search tells own from opposing objects in a prompt and whether option order biases it — agents, observation
+
+## Found by batch 4a (2026-10-14, `plans/reports/batch-4a.md` sections 8 and 9)
+
+- [ ] **H1** (batch 4b) Fortified Position: its "this combat" Shield is applied by the card's `applyPassiveAura`, so it ends if the battlefield card is replaced (Green Father) mid-combat; an effect a resolved ability created should outlast its source — CODE-ONLY
+- [ ] **H2** (batch 4b) `EffectExecutor::healObject` has no in-play guard: it emits `"healed"` for an object that has left the board — CODE-ONLY
+- [ ] **H3** (batch 4b) Verify against their cited games and pin: G23 and G21 (probably closed by 4a: battlefield rules re-read on replacement; Kennen's play effect bound to his battlefield); (batch 3) B2's stale-mark half (closed by `Card::forgetPlayPayments`; the one-helper half stays open)

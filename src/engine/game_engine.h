@@ -187,6 +187,7 @@ public:
     /// std::invalid_argument.
     GameState& mutableState() {
         if (parked_legal_ && !edited_while_parked_) noteEditWhileParked();
+        forgetCleanupFacts();   // the caller may write anything
         return state_;
     }
 
@@ -882,6 +883,52 @@ private:
     /// a resumed snapshot): the state is then the engine's own work and not a
     /// position a test built by hand. Read by the checked build's assertions.
     bool playing_a_game_ = false;
+
+    // ── What the last Cleanup established (see cleanup()) ──
+    // Both are facts about the state as the engine left it; whoever replaces
+    // or edits the state from outside (mutableState, a snapshot, a probe's
+    // copy) calls forgetCleanupFacts and the next Cleanup starts from nothing.
+    //
+    // piles_inert_: every object in a pile (a Main Deck, a Rune Deck, a
+    // Trash, Banishment) is known to carry nothing a Cleanup reads or resets
+    // — no designation, no lapsing control, no continuous effect. A Cleanup
+    // then walks ObjectTable::offPiles() where it used to walk every object.
+    bool piles_inert_ = false;
+    // The last aura pass ran the hook of a card whose effect reaches the
+    // piles (Card::continuousEffectReachesPiles): piles_inert_ is not
+    // established while it is in play.
+    bool piles_reached_ = false;
+    // Objects that are not in play (a hand, the chain, a Champion Zone) and
+    // were given a continuous effect by the last aura pass: if one of them
+    // is in a pile by the next pass, that pass still clears it.
+    std::vector<GameObjectId> aura_outside_play_;
+    // The last Cleanup found nothing to do and announced nothing but
+    // StateSettled, to which nothing reacted; `quiet_cleanup_activity_` is
+    // EventBus::activity() as it ended and `quiet_cleanup_shape_` what
+    // cleanupShape() said then.
+    bool quiet_cleanup_valid_ = false;
+    uint64_t quiet_cleanup_activity_ = 0;
+    uint64_t quiet_cleanup_shape_ = 0;
+    /// A digest of what a Cleanup reads besides the objects and is written by
+    /// the engine's flow without necessarily being announced: the chain's
+    /// size, the turn's player, phase and states, each battlefield's
+    /// controller and showdown / combat flags, the scores, the object count.
+    /// Part of the "nothing happened since" test of cleanup() (2), so that
+    /// an unannounced write of one of these never lets a Cleanup be skipped.
+    uint64_t cleanupShape() const;
+    void forgetCleanupFacts() {
+        piles_inert_ = false;
+        piles_reached_ = false;
+        quiet_cleanup_valid_ = false;
+        aura_outside_play_.clear();
+    }
+    /// Every object a Cleanup has to look at: all of them, or the ones that
+    /// are not in a pile once piles_inert_ is established.
+    template <class F> void forEachCleanupObject(F&& fn);
+    /// Whether a pile object is as a Cleanup would leave it (piles_inert_).
+    static bool inertInAPile(const GameObject& obj);
+    /// Checked builds: throws if an object in a pile is not inert.
+    void verifyPilesInert(const char* where) const;
     static constexpr int kPrePlayProbeRuns = 256;
     /// Runs of the last prePlaySequenceExists search, and the most any search
     /// of this engine has made (tests: how near a card comes to the bound).

@@ -528,8 +528,15 @@ public:
         return (static_cast<uint64_t>(static_cast<uint32_t>(log_decision_counter_)) << 32) |
                static_cast<uint32_t>(log_sub_counter_);
     }
-    void noteUnheardLine() { ++log_sub_counter_; }
-    void noteUnheardDecision() { ++log_decision_counter_; log_sub_counter_ = 0; }
+    void noteUnheardLine() { ++log_sub_counter_; ++activity_; }
+    void noteUnheardDecision() { ++log_decision_counter_; log_sub_counter_ = 0; ++activity_; }
+    /// Advances with everything the bus is told: every event emitted (kept,
+    /// dropped in a quiet stretch or delivered — and again when a held event
+    /// is delivered, since that is when its subscribers act) and every log
+    /// line, heard or not. Equal values mean nothing was announced in
+    /// between; GameEngine::cleanup uses it to recognise a Cleanup that
+    /// directly follows one that had nothing to do.
+    uint64_t activity() const { return activity_; }
     void logTrace(const std::string& msg);
     void logDebug(const std::string& msg);
     void logInfo(const std::string& msg);
@@ -551,6 +558,7 @@ private:
     std::vector<std::function<void()>> held_;
     int log_decision_counter_ = 0;
     int log_sub_counter_      = 0;
+    uint64_t activity_        = 0;   // see activity()
 
     /// Prefix the message with `[D:NNN.NN] `. Bumps the decision
     /// counter (and resets the sub-counter to 0) when `msg` begins

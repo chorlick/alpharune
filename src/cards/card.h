@@ -756,6 +756,13 @@ public:
     /// per (card, controller), every instance).
     virtual bool hasMightDependentAura() const { return false; }
     virtual void applyMightDependentAura(GameState& /*state*/, PlayerId /*controller*/) const {}
+    /// True for a card whose continuous effect is given to cards in a Main
+    /// Deck, a Rune Deck, a Trash or Banishment ("Your Equipment everywhere
+    /// have [Quick-Draw]"). While one is in play the Cleanup walks every
+    /// object, not only those outside the piles (GameEngine::cleanup). A card
+    /// whose hook writes to a pile object without saying so makes the checked
+    /// build (-DRIFTBOUND_CHECK_BOARD_INDEX=ON) throw, naming the object.
+    virtual bool continuousEffectReachesPiles() const { return false; }
 
     /// "Any amount of your damage is enough to kill enemy units." (CR
     /// 142.4.c, Elder Dragon). While a unit that says so is on its

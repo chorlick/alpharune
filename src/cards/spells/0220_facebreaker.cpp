@@ -55,6 +55,20 @@ public:
         return false;
     }
 
+    // From facedown both units are chosen at the battlefield it was hidden at
+    // (CR 811.1.d.2): playable only with a friendly and an enemy unit there.
+    bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller, const CardDB&,
+                                 BattlefieldId battlefield) const override {
+        bool friendly = false, enemy = false;
+        for (const auto& [id, u] : state.objects.onBoard()) {
+            if (!u.isUnit() || u.battlefieldId() != std::optional<BattlefieldId>{battlefield})
+                continue;
+            if (u.controller == controller) friendly = true;
+            else if (!u.untargetable_by_enemy) enemy = true;
+        }
+        return friendly && enemy;
+    }
+
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // First pick: a friendly unit at a battlefield that ALSO has a
         // valid enemy unit (otherwise the pair can't complete).
@@ -72,6 +86,8 @@ public:
             }
             if (enemy_here) legal_friendly.push_back(fid);
         }
+        // Played from facedown: only units at its battlefield (CR 811.1.d.2).
+        legal_friendly = atHiddenBattlefield(ctx.state, ctx.source, std::move(legal_friendly));
 
         auto enemy_fn = [&ctx](GameObjectId picked_a) {
             std::vector<GameObjectId> legal_enemy;
@@ -84,7 +100,7 @@ public:
                 auto ebf = e.battlefieldId();
                 if (ebf && *ebf == *abf) legal_enemy.push_back(eid);
             }
-            return legal_enemy;
+            return atHiddenBattlefield(ctx.state, ctx.source, std::move(legal_enemy));
         };
 
         auto [friendly, enemy] = pickTargetPair(ctx, "Facebreaker",

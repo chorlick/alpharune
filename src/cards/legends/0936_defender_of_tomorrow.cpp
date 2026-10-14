@@ -34,12 +34,14 @@ public:
     }
     unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "a gear": any gear on the board. Only an exhausted one is worth
-        // readying, so only those are offered.
+        // "a gear": any gear on the board, ready or exhausted — the text says
+        // nothing of "exhausted", and a ready gear is a valid choice (CR 355.9;
+        // the controller may exhaust it in response for its own ability and
+        // have it readied: testing phase G18).
         auto exhausted_gear = [&](GameObjectId except) {
             std::vector<GameObjectId> out;
             for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (!obj.isGear() || !obj.location.has_value() || !obj.is_exhausted) continue;
+                if (!obj.isGear() || !obj.location.has_value()) continue;
                 if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
                 if (id != except) out.push_back(id);
             }

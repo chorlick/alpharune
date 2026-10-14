@@ -1762,6 +1762,9 @@ void EffectExecutor::forgetDamageSources(GameObject& obj) {
 void EffectExecutor::healObject(GameObjectId target) {
     if (!state_.objectExists(target)) return;
     auto& obj = state_.getObject(target);
+    // Only something in play is healed (as exhaustObject): an object that has
+    // left the board has no damage and nothing to announce (CR 124.1).
+    if (!inPlay(obj)) return;
     obj.damage_marked = 0;
     forgetDamageSources(obj);
     events_.emit(ObjectStateChangedEvent{target, "healed"});
@@ -2183,8 +2186,11 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     tok.zone = ZoneType::BattlefieldZone;
     tok.location = BattlefieldLocation{target_bf};
 
-    // Swap the slot in place — keeps any units at the BF in their slot.
-    slot->replaced_card = slot->card_object_id;
+    // Swap the slot in place — keeps any units at the BF in their slot. A
+    // token that is replaced in turn ceases to exist (CR 439.6); the card it
+    // replaced stays the one to swap back to (CR 439.7.b.1).
+    const bool token_replaced = slot->was_replaced && slot->replaced_card.has_value();
+    if (!token_replaced) slot->replaced_card = slot->card_object_id;
     slot->was_replaced = true;
     slot->is_token = true;
     slot->card_object_id = token_id;

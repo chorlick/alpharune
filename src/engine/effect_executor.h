@@ -160,6 +160,15 @@ public:
                        const std::string& what);
     /// The "As you play me" choices of `card` (Card::asYouPlayChoices).
     void makeAsYouPlayChoices(PlayerId player, GameObjectId card);
+    /// `card` (owned by `owner`) is being looked at or revealed from the top
+    /// of a deck: its "As you look at or reveal me" replacement, if any, is
+    /// applied now (Card::seenOnTopOfDeck; once per card per look). Called for
+    /// every CardRevealedEvent from a Main Deck and by each look that
+    /// announces none. True if the card is still where the looker holds it.
+    bool seenOnTopOfDeck(PlayerId owner, GameObjectId card);
+    /// Ask `player` to pick one of (value, label) right now; the value.
+    int chooseAmongNow(PlayerId player, const std::vector<std::pair<int, std::string>>& options,
+                       const std::string& what);
 
     /// "You may make new choices for it" (CR 750-755): the item's controller
     /// re-chooses its targets. Costs already paid are unaffected (755.1).
@@ -679,7 +688,20 @@ public:
     };
     void requestChoice(PlayerId p, std::vector<Intent> legal,
                         std::string label = "") {
+        dropLeftWhileSeen(legal);
         pending_ = PendingChoice{true, p, std::move(legal), std::move(label)};
+    }
+    /// An option naming a card that left as it was looked at is not offered
+    /// (unless nothing else is: the card then does nothing with it).
+    void dropLeftWhileSeen(std::vector<Intent>& options) const {
+        if (state_.left_while_seen.empty()) return;
+        auto gone = [&](const Intent& i) {
+            for (auto id : i.chosen_objects) if (state_.leftWhileSeen(id)) return true;
+            return false;
+        };
+        const auto n = std::count_if(options.begin(), options.end(), gone);
+        if (n == 0 || n == static_cast<long>(options.size())) return;
+        options.erase(std::remove_if(options.begin(), options.end(), gone), options.end());
     }
     bool hasPendingChoice() const { return pending_.active; }
 
@@ -724,6 +746,7 @@ private:
     PayCostFn pay_cost_;
     const CardRegistry* card_registry_ = nullptr;  // optional; needed for playIgnoringCost onPlay dispatch
     OfferAccelerateFn offer_accelerate_;
+    std::vector<GameObjectId> seeing_;   // seenOnTopOfDeck in progress
     /// playIgnoringCost, told what became of [Accelerate]: -1 not decided yet
     /// (offered here), else Card::kAccelerateDecided's value (2 = paid).
     bool playIgnoringCostDecided(PlayerId player, GameObjectId card,
@@ -735,7 +758,8 @@ private:
     /// The "ASK_PROMPT:" line is what the play server shows above the options
     /// (it titles a decision from the last "*_PROMPT:" trace line; a card's
     /// own prompt helpers write MAY_PROMPT / MODE_PROMPT / TGT_PROMPT).
-    Intent ask(PlayerId player, const std::vector<Intent>& options, std::string what) const {
+    Intent ask(PlayerId player, std::vector<Intent> options, std::string what) const {
+        dropLeftWhileSeen(options);
         RIFT_TRACE(events_, "ASK_PROMPT: " + what);
         const Asking named(*this, std::move(what));
         return agent_query_(player, options);

@@ -4078,7 +4078,10 @@ TEST_F(VerifyCardsTest, Nocturne_CanBePlayedToAControlledBattlefieldButNotWhereU
     addUnit(P1, kInvalidId, 1, 1);
     ps(P1).rune_pool.universal_power = 1;
     EnginePathAgent agent(EnginePathAgent::script({1, 3}));   // banish; play to battlefield #1
-    fireTriggerThroughEngine(nocturne, TriggerType::WhenIRevealedFromTop, &agent);
+    // (Testing phase D71, by design: a replacement as he is seen, no longer a
+    // triggered ability fired by hand.)
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.seenOnTopOfDeck(P1, nocturne); },
+                         &agent);
     ASSERT_EQ(agent.prompts.size(), 2u) << "the banish, then whether and where to play";
     EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "stay banished";
     EXPECT_TRUE(promptOffersValue(agent, 1, 1)) << "base";
@@ -7717,19 +7720,18 @@ TEST_F(VerifyCardsTest, Vayne035_UnpayableAtFinalization_NothingAskedOrPaidAtRes
     EXPECT_TRUE(onBoard(vayne));
 }
 
-// 194 Nocturne, Horrifying: not in the Main Deck at finalization, back in it
-// by resolution.
-TEST_F(VerifyCardsTest, Nocturne_OffTheDeckAtFinalization_NothingAskedAtResolution) {
+// 194 Nocturne, Horrifying, seen anywhere but in a Main Deck: nothing is
+// asked. (Testing phase D71, by design: the ability is a replacement applied
+// as he is seen, so there is no finalization and resolution to differ —
+// the old test checked a triggered ability not in the deck at finalization
+// and back in it by resolution.)
+TEST_F(VerifyCardsTest, Nocturne_SeenOutsideTheDeck_NothingAsked) {
     auto nocturne = addToHand(P1, kNocturneHorrifying);
     EnginePathAgent agent(EnginePathAgent::script({}));
-    fireNotPerformed(nocturne, TriggerType::WhenIRevealedFromTop, &agent, [&](GameState& live) {
-        auto& p = live.player(P1);
-        p.hand.erase(std::remove(p.hand.begin(), p.hand.end(), nocturne), p.hand.end());
-        live.getObject(nocturne).zone = ZoneType::MainDeck;
-        p.main_deck.push_back(nocturne);
-    });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.seenOnTopOfDeck(P1, nocturne); },
+                         &agent);
     EXPECT_TRUE(agent.prompts.empty());
-    EXPECT_TRUE(inDeck(P1, nocturne));
+    EXPECT_TRUE(inHand(P1, nocturne));
     EXPECT_FALSE(inBanishment(P1, nocturne));
 }
 

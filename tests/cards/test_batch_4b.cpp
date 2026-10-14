@@ -57,6 +57,8 @@ constexpr CardDefId kIvernFriendToAll = 739;
 constexpr CardDefId kAbandon = 693;
 constexpr CardDefId kSwiftScout = 259;
 constexpr CardDefId kStupefy = 95;
+constexpr CardDefId kTeemoStrategist = 121;
+constexpr CardDefId kNocturneHorrifying = 194;
 constexpr CardDefId kRocketBarrage = 400;   // [4][B]: Deal 4 to a unit in a base.
 
 class Batch4bTest : public CardTestFixture {
@@ -1131,6 +1133,38 @@ TEST_F(Batch4bTest, I3_PowerPaidFromThePoolCountsAsSpent) {
     EnginePathAgent agent(EnginePathAgent::script({EnginePathAgent::kRest}));
     playThroughEngine(spell, &agent, std::nullopt, nullptr, /*fund=*/false);
     EXPECT_EQ(ps(P1).power_spent_this_turn, 1);
+}
+
+// ─── D71  Nocturne, Horrifying: a replacement as he is revealed ─────────────
+// "As you look at or reveal me from the top of your deck, you may banish me.
+// If you do, you may play me for [A]." CR 370.1.c.1 (its Nocturne example):
+// applied with the reveal, inside the revealing effect — no chain item, no
+// priority — and the effect goes on without him: Teemo's recycle of "the
+// revealed cards" does not put him back.
+TEST_F(Batch4bTest, D71_Nocturne_IsBanishedAndPlayedAsTeemoRevealsHim) {
+    auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    auto enemy = addUnit(P2, kShipyardSkulker, 3, 0);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kShipyardSkulker);
+    auto nocturne = addToDeck(P1, kNocturneHorrifying);   // the top card
+    ps(P1).rune_pool.universal_power = 1;
+    combatInProgress(0, P2);
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == enemy) return i;
+        for (const auto& i : legal)
+            if (i.choice_label.rfind("Yes", 0) == 0) return i;
+        for (const auto& i : legal)
+            if (i.chosen_value == std::optional<int>{1}) return i;   // play me to base
+        return legal.front();
+    });
+    std::vector<std::string> lines = traced([&] {
+        fireTriggerThroughEngine(teemo, TriggerType::WhenIDefend, &agent);
+    });
+    EXPECT_TRUE(o(nocturne).isAtBase()) << "banished, then played for [A]";
+    EXPECT_FALSE(inDeck(P1, nocturne)) << "not recycled with the other revealed cards";
+    EXPECT_EQ(deckSize(P1), 4) << "the four others recycled";
+    EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+    EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Nocturne")) << "no chain item";
 }
 
 }  // namespace riftbound::test::batch_4b

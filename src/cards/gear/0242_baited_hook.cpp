@@ -73,6 +73,11 @@ public:
         // A private look: the controller now knows these five and their order.
         const auto looker = knowledge::only(ctx.controller);
         for (auto id : top5) knowledge::shown(ctx.state, id, looker);
+        // "As you look at me" replacements (Nocturne, Horrifying; D71): a
+        // card that leaves as it is looked at is not one of the five.
+        top5.erase(std::remove_if(top5.begin(), top5.end(), [&](GameObjectId id) {
+            return !ctx.executor.seenOnTopOfDeck(ctx.controller, id);
+        }), top5.end());
         // Eligible: units with Might up to killed_might + 1.
         std::vector<GameObjectId> eligible;
         for (auto cid : top5) {

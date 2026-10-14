@@ -88,6 +88,13 @@ public:
     /// / playPayingCost). The card asks with the executor's synchronous
     /// prompts (chooseValueNow, chooseObjectNow, confirmNow).
     virtual void asYouPlayChoices(CardContext& /*ctx*/) {}
+    /// "As you look at or reveal me from the top of your deck, ..." — a
+    /// replacement applied as the card is seen there (CR 370.1.c.1): no chain
+    /// item, inside the effect that looks (EffectExecutor::seenOnTopOfDeck).
+    /// `ctx.source` is the card, `ctx.controller` its owner. A card that takes
+    /// itself away records it in GameState::left_while_seen.
+    virtual bool replacesBeingSeenOnTop() const { return false; }
+    virtual void seenOnTopOfDeck(CardContext& /*ctx*/) {}
 
     // ── Activated abilities (single-ability legacy surface) ──
     /// Called when an activated ability ([E]:, [N]:, etc.) is used.

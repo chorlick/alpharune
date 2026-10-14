@@ -48,6 +48,12 @@ public:
             // Predict 1: peek top, publish recycle/keep choice.
             if (ps.main_deck.empty()) { ri.resume_point = 2; return; }
             auto top_card = deck::takeTop(ctx.state, ctx.controller, deck::Place::Held, knowledge::only(ctx.controller));
+            // "As you look at me" (Nocturne, Horrifying; D71): gone, there is
+            // nothing left to recycle or keep.
+            if (!ctx.executor.seenOnTopOfDeck(ctx.controller, top_card)) {
+                ri.resume_point = 2;
+                return;
+            }
             ri.resume_data = {static_cast<int32_t>(top_card.raw())};
 
             std::vector<Intent> choices;

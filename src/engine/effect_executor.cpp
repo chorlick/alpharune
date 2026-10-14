@@ -1506,7 +1506,7 @@ void EffectExecutor::announceRecycledToMainDeck(GameObjectId card) {
 }
 
 void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_by_all) {
-    if (!state_.objectExists(card)) return;
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return;
     auto& obj = state_.getObject(card);
     deck::putInHand(state_, card,
                     seen_by_all ? knowledge::everyone() : knowledge::only(player),
@@ -1689,6 +1689,7 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     std::vector<std::pair<GameObjectId, deck::Place>> came_from;
     for (auto cid : cards) {
         if (!state_.objectExists(cid)) continue;
+        if (state_.leftWhileSeen(cid)) continue;   // it left as it was looked at
         if (std::find(to_recycle.begin(), to_recycle.end(), cid) != to_recycle.end()) continue;
         if (onBoard(state_.getObject(cid))) {
             snapshotLastKnown(cid, /*dying=*/false);   // as it was on the board
@@ -1788,6 +1789,9 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
 }
 
 void EffectExecutor::banishObject(GameObjectId target, PlayerId by) {
+    // A card that left as it was looked at is no longer the looked-at card
+    // the effect would act on (GameState::left_while_seen).
+    if (state_.leftWhileSeen(target)) return;
     if (!state_.objectExists(target)) return;
     // From the board: as it was there, for whatever reads it after the move.
     // (Banished instead of dying, Smite: it did not die.)
@@ -1920,6 +1924,38 @@ int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::strin
     }
     const int v = ask(player, options, what).chosen_value.value_or(0);
     return v >= 0 && v < static_cast<int>(labels.size()) ? v : 0;
+}
+
+int EffectExecutor::chooseAmongNow(PlayerId player,
+                                   const std::vector<std::pair<int, std::string>>& options,
+                                   const std::string& what) {
+    if (options.empty()) return 0;
+    if (!agent_query_ || options.size() == 1) return options.front().first;
+    std::vector<Intent> intents;
+    for (const auto& [v, label] : options) {
+        Intent i;
+        i.type = IntentType::MakeChoice;
+        i.player = player;
+        i.chosen_value = v;
+        i.choice_label = label;
+        intents.push_back(std::move(i));
+    }
+    const int v = ask(player, intents, what).chosen_value.value_or(options.front().first);
+    for (const auto& o : options) if (o.first == v) return v;
+    return options.front().first;
+}
+
+bool EffectExecutor::seenOnTopOfDeck(PlayerId owner, GameObjectId card) {
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
+    Card* c = cardFor(state_.getObject(card).card_def_id);
+    if (!c || !c->replacesBeingSeenOnTop()) return true;
+    // Once per card while it is being looked at (CR 370.2).
+    if (std::find(seeing_.begin(), seeing_.end(), card) != seeing_.end()) return true;
+    seeing_.push_back(card);
+    CardContext ctx{state_, events_, *this, owner, card};
+    c->seenOnTopOfDeck(ctx);
+    seeing_.erase(std::remove(seeing_.begin(), seeing_.end(), card), seeing_.end());
+    return !state_.leftWhileSeen(card);
 }
 
 void EffectExecutor::makeAsYouPlayChoices(PlayerId player, GameObjectId card) {
@@ -2422,6 +2458,8 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     knowledge::shown(state_, top, knowledge::only(player));
     RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
                      toString(top) + ") on top of the Main Deck [Void Hatchling]");
+    // "As you look at me": its replacement first (D71); gone, nothing to recycle.
+    if (!seenOnTopOfDeck(player, top)) return;
     Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
     Intent recyc; recyc.type = IntentType::MakeChoice; recyc.player = player; recyc.chosen_value = 1;
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
@@ -2515,6 +2553,11 @@ void EffectExecutor::predict(PlayerId player, int count) {
             /*source_zone=*/ZoneType::MainDeck,
         });
     }
+    // A card whose "As you look at me" replacement took it away (D71) is no
+    // longer one of the cards looked at.
+    peeked.erase(std::remove_if(peeked.begin(), peeked.end(), [&](GameObjectId id) {
+        return state_.leftWhileSeen(id);
+    }), peeked.end());
 
     // The player decides, card by card, whether to recycle it (CR 437.1), and
     // then the order of the cards that stay.
@@ -2834,7 +2877,7 @@ bool EffectExecutor::unitMayBePlayedTo(PlayerId player, const LocationId& where)
 bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
                                     std::optional<LocationId> location,
                                     EffectPlayCost cost) {
-    if (!state_.objectExists(card)) return false;
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
     // Nothing is paid for a unit that cannot be played where it is sent.
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
@@ -2863,7 +2906,7 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
 
 bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
-    if (!state_.objectExists(card)) return false;
+    if (!state_.objectExists(card) || state_.leftWhileSeen(card)) return false;
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return playIgnoringCostDecided(player, card, location, -1);   // not played

@@ -1004,6 +1004,18 @@ struct GameState {
     };
     std::vector<CombatKeyword> combat_keywords;
 
+    /// Cards a replacement took away as they were looked at or revealed from
+    /// the top of a deck ("As you look at or reveal me ..., you may banish
+    /// me": Nocturne, Horrifying; CR 370.1.c.1). The effect that was looking
+    /// at them goes on without them: it does not put them back, recycle,
+    /// banish, play or offer them (EffectExecutor::seenOnTopOfDeck). Emptied
+    /// when the chain item that looked has resolved.
+    std::vector<GameObjectId> left_while_seen;
+    bool leftWhileSeen(GameObjectId id) const {
+        return std::find(left_while_seen.begin(), left_while_seen.end(), id) !=
+               left_while_seen.end();
+    }
+
     // Game result
     bool game_over = false;
     PlayerId winner = PlayerId::None;

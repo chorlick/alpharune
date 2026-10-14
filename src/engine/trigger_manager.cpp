@@ -76,7 +76,14 @@ void TriggerManager::subscribe() {
     connections_.push_back(events_.on_unit_moved.connect(
         [this](const UnitMovedEvent& e) { onUnitMoved(e); }));
     connections_.push_back(events_.on_phase_changed.connect(
-        [this](const PhaseChangedEvent& e) { onPhaseChanged(e); }));
+        [this](const PhaseChangedEvent& e) {
+            state_.left_while_seen.clear();
+            onPhaseChanged(e);
+        }));
+    // The effect that was looking at a card that left meanwhile has resolved
+    // (GameState::left_while_seen).
+    connections_.push_back(events_.on_chain_item_resolved.connect(
+        [this](const ChainItemResolvedEvent&) { state_.left_while_seen.clear(); }));
     connections_.push_back(events_.on_unit_stunned.connect(
         [this](const UnitStunnedEvent& e) { onUnitStunned(e); }));
     connections_.push_back(events_.on_damage_dealt.connect(
@@ -1984,10 +1991,20 @@ void TriggerManager::onShowdownStarted(const ShowdownStartedEvent& e) {
 
 void TriggerManager::onCardRevealed(const CardRevealedEvent& e) {
     const TriggerEventScope event_scope(state_.chain);
-    // "As you look at or reveal me from the top of your deck" — fires on the
-    // revealed card itself when it was on top of the Main Deck (Nocturne).
+    // "As you reveal me from your deck" — on the revealed card itself when it
+    // was in a Main Deck. A replacement ("As you look at or reveal me ...":
+    // Nocturne, Horrifying) is applied now, inside the effect that reveals
+    // (CR 370.1.c.1; EffectExecutor::seenOnTopOfDeck); otherwise the card's
+    // triggered ability (Undertitan) is queued.
     if (e.source_zone != ZoneType::MainDeck) return;
     if (!state_.objectExists(e.card)) return;
+    if (effect_executor_) {
+        const Card* c = card_registry_.get(state_.getObject(e.card).card_def_id);
+        if (c && c->replacesBeingSeenOnTop()) {
+            effect_executor_->seenOnTopOfDeck(e.owner, e.card);
+            return;
+        }
+    }
     if (cardFiresOn(card_registry_, state_.getObject(e.card).card_def_id,
                     TriggerType::WhenIRevealedFromTop)) {
         fireTrigger(e.card, e.owner, 0, TriggerType::WhenIRevealedFromTop);

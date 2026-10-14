@@ -15,55 +15,44 @@ namespace {
 class NocturneHorrifying : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "As you look at or reveal me from the top of your deck, you may banish
     // me. If you do, you may play me for [A]." [Ganking] engine-handled.
-    // Two decisions: the banish is the "may" (confirmOptional); whether to
-    // then play me, and where (my base or a battlefield I control, CR
-    // 355.2.a), is one pickMode. Playing costs [A] — any one Power — in place
-    // of my printed cost, paid with the choices (CR 383.3).
-    TriggerType triggerType() const override { return TriggerType::WhenIRevealedFromTop; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        const PlayerId owner = ctx.state.getObject(ctx.source).owner;
-        auto still_in_deck = [&] {
-            return ctx.state.getObject(ctx.source).zone == ZoneType::MainDeck;
-        };
-        // Already off the deck top: no return ahead of the "may" —
-        // confirmOptional stores the "no" on the chain item, so the resolution
-        // asks nothing if I am back in the deck by then.
-        int conf = confirmOptional(ctx, "Nocturne: banish me from the top of your deck?",
-                                   still_in_deck);
-        if (conf < 1) return;     // waiting / declined
-        // Mode 0 = stay banished; 1 = play to base; 2 + i = play to battlefield i.
-        const auto& bfs = ctx.state.battlefields;
-        std::vector<std::string> labels{"Don't play me", "Play me for [A] to base"};
-        uint32_t legal = 1u;
-        const bool can_pay = costAlreadyPaid(ctx) || ctx.executor.payableAnyPower(owner) >= 1;
-        if (can_pay) legal |= 2u;
-        for (size_t i = 0; i < bfs.size() && i < 30; ++i) {
-            labels.push_back("Play me for [A] to battlefield #" + toString(bfs[i].id));
-            if (can_pay && !ctx.state.player(owner).units_play_base_only &&
-                !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
-                *bfs[i].controller == owner)
-                legal |= 1u << (i + 2);
-        }
-        const int mode = pickMode(ctx, "Nocturne: play me for [A]?",
-                                  static_cast<int>(labels.size()), labels, legal);
-        if (mode == -1) return;   // waiting for the agent
-        if (mode >= 1 && costDueNow(ctx) && !ctx.executor.payAnyPower(owner, 1)) return;
-        if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
-        if (!still_in_deck()) return;         // left the deck in response
+    // A replacement (CR 370.1.c.1 and its Nocturne example): applied as he is
+    // looked at or revealed, inside the effect that does it — no chain item,
+    // no priority window (testing phase D71). The banish is the "may"; then
+    // whether to play him and where (his owner's base or a battlefield they
+    // control, CR 355.2.a) is one choice: 0 = stay banished, 1 = base,
+    // 2 + i = battlefield i. Playing costs [A] — any one Power — in place of
+    // his printed cost. The effect that was looking goes on without him
+    // (GameState::left_while_seen).
+    bool replacesBeingSeenOnTop() const override { return true; }
+    void seenOnTopOfDeck(CardContext& ctx) override {
+        const PlayerId owner = ctx.controller;
+        if (ctx.state.getObject(ctx.source).zone != ZoneType::MainDeck) return;
+        if (!ctx.executor.confirmNow(owner, "Nocturne: banish me from the top of your deck?"))
+            return;
         deck::take(ctx.state, ctx.source, deck::Place::Public, knowledge::everyone());
         ctx.executor.banishObject(ctx.source);
-        if (mode < 1) {
-            RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top");
-            return;
+        std::vector<std::pair<int, std::string>> modes{{0, "Don't play me"}};
+        if (ctx.executor.payableAnyPower(owner) >= 1) {
+            modes.push_back({1, "Play me for [A] to base"});
+            const auto& bfs = ctx.state.battlefields;
+            for (size_t i = 0; i < bfs.size() && i < 30; ++i)
+                if (!ctx.state.player(owner).units_play_base_only &&
+                    !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
+                    *bfs[i].controller == owner)
+                    modes.push_back({static_cast<int>(i) + 2,
+                                     "Play me for [A] to battlefield #" + toString(bfs[i].id)});
         }
-        // Mode 1 is the base; mode 2 + i is battlefield i (the base if it is
-        // no longer mine to play to).
-        ctx.executor.playIgnoringCost(owner, ctx.source,
-                                      effectPlayLocation(ctx.state, owner, mode - 1));
-        RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top and played for [A]");
+        const int mode = ctx.executor.chooseAmongNow(owner, modes, "Nocturne: play me for [A]?");
+        if (mode >= 1 && ctx.executor.payAnyPower(owner, 1)) {
+            ctx.executor.playIgnoringCost(owner, ctx.source,
+                                          effectPlayLocation(ctx.state, owner, mode - 1));
+            RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top and played for [A]");
+        } else {
+            RIFT_TRACE(ctx.events, "NOCTURNE: banished from deck top");
+        }
+        ctx.state.left_while_seen.push_back(ctx.source);
     }
 private:
     const CardDef def_ = [] {

@@ -15,14 +15,24 @@ namespace {
 class WindWall : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
+    // "Counter a spell." The spell is a target (CR 355.9.a.2), chosen as Wind
+    // Wall is played (CR 355.5): any finalized spell on the chain, not only
+    // the newest item. Acted on wherever it lies; gone by then, nothing.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // it chooses a spell, not a unit
+    }
+    static bool qualifies(const ChainItem& ci) { return ci.is_spell; }
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        for (auto it = state.chain.items.rbegin(); it != state.chain.items.rend(); ++it) {
-            if (it->is_spell) return true;
-        }
-        return false;
+        return anyChainItem(state, qualifies);
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        counterChainTop(ctx);
+        const auto spell = pickChainItem(ctx, "Wind Wall: counter a spell",
+                                         chainItemChoices(ctx, qualifies));
+        if (!spell.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        if (*spell != kInvalidId) counterChosenItem(ctx, *spell);
     }
 private:
     const CardDef def_ = [] {

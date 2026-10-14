@@ -646,7 +646,7 @@ TEST_F(RulesComplianceTest, Counter_FlowSpellIsBanishedNotTrashed) {
     auto counter = addToHand(P1, kInvalidId);
     CardContext ctx{state, events, exec, P1, counter};
 
-    counterChainTop(ctx);
+    counterChosenItem(ctx, state.chain.items.back().id);
 
     EXPECT_TRUE(state.chain.items.empty());
     EXPECT_EQ(state.getObject(flow_spell).zone, ZoneType::Banishment);
@@ -660,7 +660,7 @@ TEST_F(RulesComplianceTest, Counter_OrdinarySpellGoesToTrash) {
     auto counter = addToHand(P1, kInvalidId);
     CardContext ctx{state, events, exec, P1, counter};
 
-    counterChainTop(ctx);
+    counterChosenItem(ctx, state.chain.items.back().id);
 
     EXPECT_TRUE(inTrash(P2, spell));
 }
@@ -674,7 +674,7 @@ TEST_F(RulesComplianceTest, Counter_DoesNotUncountThePlayedCard) {
     auto counter = addToHand(P1, kInvalidId);
     CardContext ctx{state, events, exec, P1, counter};
 
-    counterChainTop(ctx);
+    counterChosenItem(ctx, state.chain.items.back().id);
 
     EXPECT_EQ(state.player(P2).cards_played_this_turn, 2);
 }

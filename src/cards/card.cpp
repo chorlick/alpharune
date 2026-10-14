@@ -227,6 +227,7 @@ enum : uint32_t {
     kTgtAwait = 1u << 4,   kTgtDone = 1u << 5,
     kPairAwaitA = 1u << 6, kPairAwaitB = 1u << 7, kPairDone = 1u << 8,
     kCostUnpaid = 1u << 9,   // Card::markCostUnpaid
+    kItemAwait = 1u << 10,  kItemDone = 1u << 11,   // Card::pickChainItem
 };
 uint32_t choiceState(const ChainItem& ri) {
     return ri.resume_data.size() > Card::kChoiceStateSlot
@@ -605,13 +606,27 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
     const int payable = ctx.executor.payableAnyPower(
         ctx.controller, by_spell ? SpendFor::Spell : SpendFor::Other);
     const bool ignores = card.ignoresDeflect();
+    // A cost the item still owes after its choices (Card::owesAfterChoices):
+    // a choice is offered only if its Deflect and that cost can be paid
+    // together (testing phase F5).
+    const ChainItem* owing = ctx.state.chain.resuming.has_value() &&
+                             (ctx.state.chain.resuming->owed_energy > 0 ||
+                              ctx.state.chain.resuming->owed_power > 0)
+        ? &*ctx.state.chain.resuming : nullptr;
     std::vector<GameObjectId> out;
     out.reserve(in.size());
     for (auto t : in) {
         // A spell choosing before it is paid for: only what leaves it payable.
         if (!ctx.executor.choiceAllowed(t)) continue;
-        if (ignores || ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
-            out.push_back(t);
+        const int deflect = ignores ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        if (owing) {
+            if (ctx.executor.canPayWithAdds(ctx.controller, owing->owed_energy, owing->owed_power,
+                                            owing->owed_power_mask,
+                                            by_spell ? SpendFor::Spell : SpendFor::Other, deflect))
+                out.push_back(t);
+            continue;
+        }
+        if (deflect <= payable) out.push_back(t);
     }
     return out;
 }
@@ -622,8 +637,10 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     if (t == kInvalidId || !ctx.state.objectExists(t)) return;
     // Chosen, then its Deflect paid: a spell paying ahead of its cost judges
     // what is left with this choice counted (EffectExecutor::payAnyPower).
-    if (ctx.state.chain.resuming.has_value())
+    if (ctx.state.chain.resuming.has_value()) {
         ctx.state.chain.resuming->chosen_objects.push_back(t);
+        ctx.state.stampChosen(*ctx.state.chain.resuming, t);   // CR 359.3.e.4
+    }
     if (!card.ignoresDeflect()) {
         const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
         if (cost > 0) {
@@ -653,6 +670,107 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
         ctx.events.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
 }
 }  // namespace
+
+void Card::owesAfterChoices(CardContext& ctx, int energy, int power, uint32_t power_mask) {
+    auto& r = ctx.state.chain.resuming;
+    if (!r.has_value()) return;
+    r->owed_energy = std::max(0, energy);
+    r->owed_power = std::max(0, power);
+    r->owed_power_mask = power_mask == ~0u ? resource::kAnyDomain : power_mask;
+}
+
+std::vector<GameObjectId> Card::choosablePaying(const CardContext& ctx,
+                                                const std::vector<GameObjectId>& candidates,
+                                                int energy, int power,
+                                                uint32_t power_mask) const {
+    const resource::DomainMask mask = power_mask == ~0u ? resource::kAnyDomain : power_mask;
+    std::vector<GameObjectId> out;
+    for (auto t : candidates) {
+        const int deflect = ignoresDeflect() ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        if (ctx.executor.canPayWithAdds(ctx.controller, energy, power, mask, SpendFor::Other,
+                                        deflect))
+            out.push_back(t);
+    }
+    return out;
+}
+
+std::optional<ChainItemId> Card::pickChainItem(CardContext& ctx, const std::string& label,
+                                               const std::vector<ChainItemId>& candidates) {
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value())
+        return candidates.empty() ? kInvalidId : candidates.front();
+    auto& ri = *ri_opt;
+    const uint32_t st = choiceState(ri);
+    auto onChain = [&](ChainItemId id) {
+        for (const auto& ci : ctx.state.chain.items) if (ci.id == id) return true;
+        return false;
+    };
+    if (st & kItemDone) {
+        // Chosen as the item was finalized: checked once as it resolves. One
+        // that left the chain, or no longer meets the requirement, is a
+        // mistarget (CR 359.3.e.5) — nothing else is taken instead.
+        if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 2) &&
+            ri.chosen_item != kInvalidId) {
+            ri.finalize_checked |= 2;
+            if (!onChain(ri.chosen_item) ||
+                std::find(candidates.begin(), candidates.end(), ri.chosen_item) ==
+                    candidates.end()) {
+                RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label +
+                                    " — the chosen spell or ability is no longer a legal choice");
+                ri.chosen_item = kInvalidId;
+            }
+        }
+        return ri.chosen_item;
+    }
+    auto sourceOf = [&](ChainItemId id) {
+        for (const auto& ci : ctx.state.chain.items) if (ci.id == id) return ci.source;
+        return GameObjectId{kInvalidId};
+    };
+    auto nameOf = [&](ChainItemId id) {
+        const GameObjectId src = sourceOf(id);
+        return ctx.state.objectExists(src) ? ctx.state.getObject(src).name.get()
+                                           : std::string("?");
+    };
+    if (!(st & kItemAwait)) {
+        if (candidates.empty()) {
+            RIFT_TRACE(ctx.events, "TGT_NOT_OFFERED: " + label + " (no spell or ability to choose)");
+            ri.chosen_item = kInvalidId;
+            setChoiceState(ri, 0, kItemDone);
+            nothingToDecide(ri);
+            requiredChoiceMissing(ri);
+            return kInvalidId;
+        }
+        std::vector<Intent> options;
+        std::string names;
+        for (auto id : candidates) {
+            Intent i;
+            i.type = IntentType::MakeChoice;
+            i.player = ctx.controller;
+            const GameObjectId src = sourceOf(id);
+            if (src != kInvalidId) i.chosen_objects = {src};
+            i.chosen_value = static_cast<int>(id.raw());
+            options.push_back(std::move(i));
+            if (ctx.events.logging()) names += (names.empty() ? "" : "/") + nameOf(id);
+        }
+        RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + names + "] (agent decides among " +
+                            std::to_string(candidates.size()) + " spells / abilities)");
+        ctx.executor.requestChoice(ctx.controller, std::move(options), "target: " + label);
+        setChoiceState(ri, 0, kItemAwait);
+        return std::nullopt;
+    }
+    auto picked = ctx.executor.takeChoice();
+    ChainItemId chosen = candidates.empty() ? ChainItemId{kInvalidId} : candidates.front();
+    if (picked.has_value() && picked->chosen_value.has_value()) {
+        const auto want = ChainItemId::fromRaw(*picked->chosen_value);
+        if (std::find(candidates.begin(), candidates.end(), want) != candidates.end())
+            chosen = want;
+    }
+    ri.chosen_item = chosen;
+    setChoiceState(ri, kItemAwait, kItemDone);
+    RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " + nameOf(chosen) +
+                        " (chain_item=" + toString(chosen) + ")");
+    return chosen;
+}
 
 std::vector<GameObjectId> Card::offerableChoices(
     CardContext& ctx, const std::vector<GameObjectId>& candidates) const {

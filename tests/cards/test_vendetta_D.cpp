@@ -5,6 +5,7 @@
 
 #include "cards/card.h"
 #include "cards/card_helpers.h"
+#include "engine/chain_manager.h"
 #include "cards/card_registry.h"
 #include "core/events.h"
 #include "core/game_state.h"
@@ -232,12 +233,12 @@ TEST_F(VendettaD, Vendetta_DecreeOfRage_CantBeCountered) {
     CardContext ctx{state, events, exec, P2, counter};
     ctx.registry = &card_registry;
 
-    counterChainTop(ctx);
+    counterChosenItem(ctx, state.chain.items.back().id);
     ASSERT_EQ(state.chain.items.size(), 2u) << "Decree of Rage stays on the chain";
     EXPECT_EQ(state.chain.items.back().source, decree);
 
     state.chain.items.pop_back();
-    counterChainTop(ctx);
+    counterChosenItem(ctx, state.chain.items.back().id);
     EXPECT_TRUE(state.chain.items.empty()) << "an ordinary spell is countered";
     EXPECT_TRUE(inTrash(P1, ordinary));
 }

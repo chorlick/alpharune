@@ -442,6 +442,44 @@ public:
     /// whether that cost is still payable as things stand.
     void setAheadOfCostCheck(std::function<bool()> f) { ahead_of_cost_check_ = std::move(f); }
 
+    // ── [Add] abilities while a cost is paid (CR 430.3, 445.2.c, 357.1.a) ──
+    /// The engine lists the activations of `player`'s [Reaction] abilities that
+    /// [Add] which could be activated now (ActivatedAbility::adds_resources),
+    /// and activates one at once (it is paid and resolves immediately, CR
+    /// 430.2). Set by GameEngine; unset, no Add ability is used here.
+    using AddAbilitiesFn = std::function<std::vector<Intent>(PlayerId)>;
+    using ActivateNowFn = std::function<void(const Intent&)>;
+    /// Whether `check` holds once every listed Add ability of `player` has
+    /// been activated — tried on a copy of the game, quietly, and forgotten.
+    using AddProbeFn = std::function<bool(PlayerId, const std::function<bool(const GameState&)>&)>;
+    void setAddAbilities(AddAbilitiesFn list, ActivateNowFn activate, AddProbeFn probe) {
+        add_abilities_ = std::move(list);
+        activate_now_ = std::move(activate);
+        add_probe_ = std::move(probe);
+    }
+    /// Whether `player` could pay [energy] + `power` Power of `mask` (and `extra_any`
+    /// more Power of any Domain, a Deflect) for `f`: from the pool and runes,
+    /// or with what their [Reaction] [Add] abilities would add (tried on a copy
+    /// of the game, quietly, only when the pool and runes are short).
+    bool canPayWithAdds(PlayerId player, int energy, int power, resource::DomainMask mask,
+                        SpendFor f = SpendFor::Other, int extra_any = 0);
+    /// The same question as payableAnyPower(...) >= amount, Add abilities counted.
+    bool canPayAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other) {
+        return canPayWithAdds(player, 0, amount, resource::kAnyDomain, f);
+    }
+    /// Before a payment of [energy] + `power` (`mask`) that the pool and
+    /// runes cannot cover: `player` activates [Add] Reactions, naming which,
+    /// until it can be covered or none is left (CR 430.3). Called by the
+    /// executor's payments; returns whether the payment can now be made.
+    bool addForPayment(PlayerId player, int energy, int power, resource::DomainMask mask,
+                       SpendFor f);
+
+    // ── The chain, from a card (CR 355.9.a.2) ──
+    /// Take the item `id` off the chain wherever it lies — the one way a card
+    /// counters a chosen spell or ability (ChainManager::removeItemFrom).
+    /// nullopt if it is not on the chain.
+    std::optional<ChainItem> removeChainItem(ChainItemId id);
+
     // ── Scoring by an effect (CR 471 "score N points" outside Conquer/Hold) ──
     /// Give `player` `amount` points from an effect: honours "can't gain/score
     /// points" locks and ends the game at once if this reaches the Victory
@@ -738,6 +776,9 @@ private:
     std::function<void()> aura_recalc_;
     std::function<bool(GameObjectId)> choice_filter_;
     std::function<bool()> ahead_of_cost_check_;
+    AddAbilitiesFn add_abilities_;
+    ActivateNowFn activate_now_;
+    AddProbeFn add_probe_;
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

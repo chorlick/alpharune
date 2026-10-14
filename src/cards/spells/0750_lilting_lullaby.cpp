@@ -15,22 +15,28 @@ namespace {
 class LiltingLullaby : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // Lullaby is a pure counter for legality purposes: its lockout is scoped
-    // to "Its controller" — the controller of the countered spell. Peek-and-
-    // pop: the spell countered is the top of the chain, so a spell under an
-    // ability cannot be reached and does not make this playable.
+    // "Counter a spell. Its controller can't play spells this turn." The spell
+    // is a target (CR 355.9.a.2), chosen as this is played.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
+    static bool qualifies(const ChainItem& ci) { return ci.is_spell; }
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        return !state.chain.items.empty() && state.chain.items.back().is_spell;
+        return anyChainItem(state, qualifies);
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (ctx.state.chain.items.empty()) return;
-        const auto& top = ctx.state.chain.items.back();
-        if (!top.is_spell) return;
-        PlayerId target_controller = top.controller;
-        counterChainTop(ctx);
+        const auto spell = pickChainItem(ctx, "Lilting Lullaby: counter a spell",
+                                         chainItemChoices(ctx, qualifies));
+        if (!spell.has_value()) return;
+        if (finalizingChoices(ctx)) return;
+        const ChainItem* item = *spell != kInvalidId ? chainItem(ctx.state, *spell) : nullptr;
+        if (!item) return;   // mistarget: "its controller" is unknown (CR 359.3.e.12)
+        const PlayerId target_controller = item->controller;
+        counterChosenItem(ctx, *spell);
         ctx.state.player(target_controller).cant_play_spells_this_turn = true;
-        RIFT_TRACE(ctx.events, "LILTING LULLABY: countered + " +
-                             std::string(toString(target_controller)) +
+        RIFT_TRACE(ctx.events, "LILTING LULLABY: " + std::string(toString(target_controller)) +
                              " can't play spells this turn");
     }
 private:

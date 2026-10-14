@@ -61,6 +61,7 @@ protected:
 
         ChainItem item;
         item.id = state.chain.allocateId();
+        item.status = ChainItemStatus::Finalized;   // what a counter may choose (CR 355.9.a.2)
         item.source = src;
         item.controller = controller;
         item.is_spell = true;

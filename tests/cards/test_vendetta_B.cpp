@@ -6,6 +6,7 @@
 
 #include "cards/card.h"
 #include "cards/card_helpers.h"
+#include "engine/chain_manager.h"
 #include "cards/card_registry.h"
 #include "core/events.h"
 #include "core/game_state.h"
@@ -555,13 +556,13 @@ TEST_F(VendettaB, Vendetta_Mel_EmpoweredExtraMinusMightAndUncounterable) {
     auto p1_spell = pushSpellOnChain(P1, kInvalidId);
     CardContext p2_ctx{state, events, exec, P2, p2_spell};
     p2_ctx.registry = &card_registry;
-    counterChainTop(p2_ctx);
+    counterChosenItem(p2_ctx, state.chain.items.back().id);
     ASSERT_EQ(state.chain.items.size(), 2u);
     EXPECT_EQ(state.chain.items.back().source, p1_spell);
     state.chain.items.pop_back();
     CardContext p1_ctx{state, events, exec, P1, p1_spell};
     p1_ctx.registry = &card_registry;
-    counterChainTop(p1_ctx);
+    counterChosenItem(p1_ctx, state.chain.items.back().id);
     EXPECT_TRUE(state.chain.items.empty());
 }
 

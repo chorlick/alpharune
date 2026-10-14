@@ -1096,9 +1096,10 @@ TEST_F(ReviewFixC2Test, MysticReversal_TheNewControllerMakesNewChoices) {
     // spell kept aiming at the thief's unit.
     auto mine = addUnit(P1, kInvalidId, 3, 0);
     auto theirs = addUnit(P2, kInvalidId, 3, 0);
-    pushSpellOnChain(P2, kRunePrison, {mine});
+    auto prison = pushSpellOnChain(P2, kRunePrison, {mine});
 
-    EnginePathAgent agent(script({O(theirs)}));
+    // The spell is chosen first (CR 355.9.a.2; testing phase D21).
+    EnginePathAgent agent(script({O(prison), O(theirs)}));
     playThroughEngine(addToHand(P1, kMysticReversal), &agent);
     EXPECT_TRUE(state.getObject(theirs).is_stunned);
     EXPECT_FALSE(state.getObject(mine).is_stunned);

@@ -1,5 +1,6 @@
 #include "core/board_state.h"
 #include "effect_executor.h"
+#include "engine/chain_manager.h"
 
 #include "cards/card.h"
 #include "cards/card_registry.h"
@@ -763,8 +764,58 @@ resource::RuneChooser EffectExecutor::runeChooser() const {
     return c;
 }
 
+namespace {
+bool payableNow(const GameState& s, PlayerId player, int energy, int power,
+                resource::DomainMask mask, SpendFor f, int extra_any) {
+    return resource::payableEnergy(s, player, f) >= std::max(0, energy) &&
+           resource::payablePowerIn(s, player, mask, f) >= std::max(0, power) &&
+           resource::payablePowerIn(s, player, resource::kAnyDomain, f) >=
+               std::max(0, power) + std::max(0, extra_any);
+}
+}  // namespace
+
+bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
+                                    resource::DomainMask mask, SpendFor f, int extra_any) {
+    if (payableNow(state_, player, energy, power, mask, f, extra_any)) return true;
+    if (!add_abilities_ || !add_probe_ || add_abilities_(player).empty()) return false;
+    return add_probe_(player, [&](const GameState& s) {
+        return payableNow(s, player, energy, power, mask, f, extra_any);
+    });
+}
+
+std::optional<ChainItem> EffectExecutor::removeChainItem(ChainItemId id) {
+    return ChainManager::removeItemFrom(state_, id);
+}
+
+bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
+                                   resource::DomainMask mask, SpendFor f) {
+    // CR 430.3 / 445.2.c: while a cost is being paid, the payer may activate
+    // [Reaction] abilities that [Add]. Asked only when the pool and runes are
+    // short; the payer names the ability (one at a time), and each finalizes
+    // and resolves at once (CR 430.2).
+    for (int guard = 0; guard < 64; ++guard) {
+        if (payableNow(state_, player, energy, power, mask, f, 0)) return true;
+        if (!add_abilities_ || !activate_now_) return false;
+        std::vector<Intent> adds = add_abilities_(player);
+        if (adds.empty()) return false;
+        Intent pick = adds.front();
+        if (adds.size() > 1 && agent_query_ && !events_.quiet()) {
+            for (auto& a : adds) {
+                const GameObjectId src = a.ability_source;
+                a.choice_label = "[Add] for this payment: " +
+                    (state_.objectExists(src) ? state_.getObject(src).name.get()
+                                              : std::string("?"));
+            }
+            pick = ask(player, adds, "activate an [Add] ability to pay");
+        }
+        activate_now_(pick);
+    }
+    return payableNow(state_, player, energy, power, mask, f, 0);
+}
+
 bool EffectExecutor::payResources(PlayerId player, int energy, int power,
                                   resource::DomainMask mask, SpendFor f) {
+    addForPayment(player, energy, power, mask, f);
     const auto chooser = runeChooser();
     return resource::payIn(state_, events_, player, energy, power, mask, f, &chooser);
 }
@@ -786,6 +837,23 @@ bool EffectExecutor::payAnyPower(PlayerId player, int amount, SpendFor f) {
                 state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains),
                 SpendFor::Spell, &chooser, ahead_of_cost_check_ ? &ahead_of_cost_check_ : nullptr);
         }
+    }
+    // A cost the resolving item still owes after its choices (Card::
+    // owesAfterChoices; testing phase F5): this Power — a Deflect — is paid
+    // from what that cost cannot use first, and a ready rune gives its Energy
+    // before it is recycled, so the cost stays payable.
+    if (const auto& owing = state_.chain.resuming;
+        owing.has_value() && owing->controller == player &&
+        (owing->owed_energy > 0 || owing->owed_power > 0)) {
+        const int e = owing->owed_energy, p = owing->owed_power;
+        const resource::DomainMask m = owing->owed_power_mask;
+        addForPayment(player, e, p + amount, resource::kAnyDomain, f);
+        const auto chooser = runeChooser();
+        const std::function<bool()> still = [this, player, e, p, m, f]() {
+            return payableNow(state_, player, e, p, m, f, 0);
+        };
+        return resource::payAnyPowerAheadOfCost(state_, events_, player, amount, m, f,
+                                                &chooser, &still);
     }
     // The one payment rule (engine/resource_payment.h): floating Power, then
     // runes recycled from the base, the payer naming them.

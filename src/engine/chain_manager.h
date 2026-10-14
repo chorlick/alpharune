@@ -69,6 +69,15 @@ public:
     /// Check if the chain currently exists.
     bool chainExists() const { return state_.chain.exists(); }
 
+    /// Take item `id` off the chain wherever it lies (a counter acting on the
+    /// spell or ability it chose, CR 355.9.a.2, 426). The one place an item is
+    /// removed from the middle of the chain; cards reach it through
+    /// EffectExecutor::removeChainItem. Returns the item, or nullopt if it is
+    /// not on the chain (it resolved, or left it already). The resolving item
+    /// is not on the chain and cannot be removed this way.
+    std::optional<ChainItem> removeItem(ChainItemId id) { return removeItemFrom(state_, id); }
+    static std::optional<ChainItem> removeItemFrom(GameState& state, ChainItemId id);
+
     /// Set affordability check callback (injected from GameEngine).
     using AffordCheck = std::function<bool(PlayerId, GameObjectId)>;
     void setAffordCheck(AffordCheck check) { can_afford_ = std::move(check); }

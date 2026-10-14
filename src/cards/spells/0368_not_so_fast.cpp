@@ -16,17 +16,21 @@ class NotSoFast : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // "Counter an enemy spell or ability that chooses a friendly unit or gear."
-    // Peek-and-pop: the item answered is the top of the chain. What it chooses
-    // is ChainItem::chosen_objects (everything it has chosen) together with its
-    // play-time targets. A triggered ability is never handed targets by the
-    // engine: its event's subject is ChainItem::triggering_subject, which is not
-    // a choice and is deliberately not read here (CR 355: choosing is an action
-    // of the spell or ability, not a property of the event that triggered it).
-    static bool choosesFriendlyUnitOrGear(const GameState& state, PlayerId controller) {
-        if (state.chain.items.empty()) return false;
-        const auto& top = state.chain.items.back();
-        if (top.controller == controller) return false;            // "an enemy ..."
-        if (!top.is_spell && !top.is_ability) return false;        // "... spell or ability"
+    // The item is a target (CR 355.9.a.2), chosen as this is played among the
+    // finalized enemy items on the chain that qualify — anywhere on it. What an
+    // item chooses is ChainItem::chosen_objects together with its play-time
+    // targets. A triggered ability's subject (ChainItem::triggering_subject)
+    // is not a choice and is not read (CR 355: choosing is an action of the
+    // spell or ability, not a property of the event that triggered it).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
+    static bool choosesFriendlyUnitOrGear(const GameState& state, const ChainItem& item,
+                                          PlayerId controller) {
+        if (item.controller == controller) return false;            // "an enemy ..."
+        if (!item.is_spell && !item.is_ability) return false;       // "... spell or ability"
         auto scan = [&](const std::vector<GameObjectId>& ids) {
             for (auto tid : ids) {
                 if (!state.objectExists(tid)) continue;
@@ -36,28 +40,22 @@ public:
             }
             return false;
         };
-        return scan(top.chosen_objects) || scan(top.targets);
+        return scan(item.chosen_objects) || scan(item.targets);
     }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return choosesFriendlyUnitOrGear(state, controller);
+        return anyChainItem(state, [&](const ChainItem& ci) {
+            return choosesFriendlyUnitOrGear(state, ci, controller);
+        });
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!choosesFriendlyUnitOrGear(ctx.state, ctx.controller)) return;
-        auto& top = ctx.state.chain.items.back();
-        if (top.is_spell) {
-            counterChainTop(ctx);                       // asks isUncounterable itself
-            return;
-        }
-        // An ability (CR 426): it is removed from the chain; there is no card
-        // to move, its source stays where it is.
-        if (isUncounterable(ctx, top)) {
-            RIFT_TRACE(ctx.events, "NOT SO FAST: that ability can't be countered");
-            return;
-        }
-        std::string name = ctx.state.objectExists(top.source)
-            ? ctx.state.getObject(top.source).name : std::string("?");
-        ctx.state.chain.items.pop_back();
-        RIFT_TRACE(ctx.events, "COUNTER: ability of " + name + " countered (Not So Fast)");
+        const auto item = pickChainItem(
+            ctx, "Not So Fast: counter an enemy spell or ability",
+            chainItemChoices(ctx, [&](const ChainItem& ci) {
+                return choosesFriendlyUnitOrGear(ctx.state, ci, ctx.controller);
+            }));
+        if (!item.has_value()) return;
+        if (finalizingChoices(ctx)) return;
+        if (*item != kInvalidId) counterChosenItem(ctx, *item);
     }
 private:
     const CardDef def_ = [] {

@@ -112,6 +112,15 @@ inline int payableEnergy(const GameState& state, PlayerId player) {
     return resource::payableEnergy(state, player);
 }
 
+/// Whether `player` can pay [amount] now — floating Energy, ready runes, or
+/// the Energy their [Reaction] [Add] abilities would add while paying (CR
+/// 430.3, 445.2.c; testing phase D30). What a "you may pay [N]" asks before
+/// it offers the "may".
+inline bool canPayEnergy(CardContext& ctx, PlayerId player, int amount) {
+    if (amount <= 0) return true;
+    return ctx.executor.canPayWithAdds(player, amount, 0, resource::kAnyDomain);
+}
+
 /// Pay `amount` Energy: floating pool first, then exhaust ready runes in the
 /// player's base (lowest id first). Returns false (paying nothing) if it can't
 /// be covered.
@@ -325,19 +334,61 @@ inline bool isUncounterable(const CardContext& ctx, const ChainItem& item) {
     return false;
 }
 
-inline void counterChainTop(CardContext& ctx) {
-    if (ctx.state.chain.items.empty()) return;
-    auto& top = ctx.state.chain.items.back();
-    if (!top.is_spell) return;
-    if (isUncounterable(ctx, top)) return;
-    auto countered = top.source;
-    revertCounteredPlay(ctx, top);  // CR 425.1.b
-    ctx.state.chain.items.pop_back();
-    if (ctx.state.objectExists(countered)) {
-        RIFT_TRACE(ctx.events, "COUNTER: " + ctx.state.getObject(countered).name + " countered");
-        disposeCounteredCard(ctx, countered);
+/// The finalized spells and abilities on the chain `ctx`'s item may choose
+/// (CR 355.9.a.2) and that meet `pred`: never the item itself (CR 355.9.c),
+/// newest first — the order Card::pickChainItem offers them in.
+template <typename Pred>
+inline std::vector<ChainItemId> chainItemChoices(const CardContext& ctx, Pred&& pred) {
+    std::vector<ChainItemId> out;
+    const auto& items = ctx.state.chain.items;
+    const ChainItemId self = ctx.state.chain.resuming.has_value()
+        ? ctx.state.chain.resuming->id : ChainItemId{kInvalidId};
+    for (auto it = items.rbegin(); it != items.rend(); ++it) {
+        if (it->status != ChainItemStatus::Finalized) continue;
+        if (it->id == self) continue;
+        if (it->is_spell && it->source == ctx.source) continue;
+        if (pred(*it)) out.push_back(it->id);
     }
+    return out;
 }
+/// The same over a bare state, for a play gate (hasLegalTargets): whether any
+/// finalized item on the chain meets `pred`.
+template <typename Pred>
+inline bool anyChainItem(const GameState& state, Pred&& pred) {
+    for (const auto& ci : state.chain.items)
+        if (ci.status == ChainItemStatus::Finalized && pred(ci)) return true;
+    return false;
+}
+/// The chain item `id`, or null if it is not on the chain.
+inline const ChainItem* chainItem(const GameState& state, ChainItemId id) {
+    for (const auto& ci : state.chain.items) if (ci.id == id) return &ci;
+    return nullptr;
+}
+/// Counter the chosen chain item `id` (CR 426): a spell goes to its owner's
+/// trash (or `dest`), an ability is removed; one that "can't be countered"
+/// stays. Through EffectExecutor::removeChainItem — the one way a card takes
+/// an item off the chain. Returns true if it was countered.
+inline bool counterChosenItem(CardContext& ctx, ChainItemId id, ZoneType dest = ZoneType::Trash) {
+    const ChainItem* item = chainItem(ctx.state, id);
+    if (!item) return false;
+    if (isUncounterable(ctx, *item)) {
+        RIFT_TRACE(ctx.events, "COUNTER: that spell or ability can't be countered");
+        return false;
+    }
+    revertCounteredPlay(ctx, *item);  // CR 425.1.b
+    auto removed = ctx.executor.removeChainItem(id);
+    if (!removed.has_value()) return false;
+    const std::string name = ctx.state.objectExists(removed->source)
+        ? ctx.state.getObject(removed->source).name.get() : std::string("?");
+    if (removed->is_spell) {
+        RIFT_TRACE(ctx.events, "COUNTER: " + name + " countered");
+        disposeCounteredCard(ctx, removed->source, dest);
+    } else {
+        RIFT_TRACE(ctx.events, "COUNTER: ability of " + name + " countered");
+    }
+    return true;
+}
+
 
 // ── Gold tokens ──
 inline void createGoldToken(CardContext& ctx) {

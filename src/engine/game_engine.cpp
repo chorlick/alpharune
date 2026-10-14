@@ -1467,6 +1467,8 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
         ChainItem::ExecutionChoices c;
         c.targets = ci.targets;
         c.chosen_objects = ci.chosen_objects;
+        c.chosen_stamps = ci.chosen_stamps;
+        c.chosen_item = ci.chosen_item;
         c.resume_point = ci.resume_point;
         c.resume_data = ci.resume_data;
         c.may_answer = ci.may_answer;
@@ -1477,6 +1479,8 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     auto load = [](ChainItem& ci, const ChainItem::ExecutionChoices& c) {
         ci.targets = c.targets;
         ci.chosen_objects = c.chosen_objects;
+        ci.chosen_stamps = c.chosen_stamps;
+        ci.chosen_item = c.chosen_item;
         ci.resume_point = c.resume_point;
         ci.resume_data = c.resume_data;
         ci.may_answer = c.may_answer;
@@ -1564,6 +1568,8 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
                     ci.resume_point = done.resume_point;
                     ci.resume_data = std::move(done.resume_data);
                     ci.chosen_objects = std::move(done.chosen_objects);
+                    ci.chosen_stamps = std::move(done.chosen_stamps);
+                    ci.chosen_item = done.chosen_item;
                     ci.may_answer = done.may_answer;
                     ci.finalize_costs_paid = done.finalize_costs_paid;
                     ci.finalize_checked = 0;
@@ -1726,6 +1732,8 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
         item->resume_point = 0;
         item->resume_data.clear();
         item->may_answer = -1;
+        item->chosen_stamps.clear();
+        item->chosen_item = kInvalidId;
         item->choices_finalized = false;
         item->finalize_checked = 0;
         const unsigned want = item->is_spell ? Card::kFinalizeResolve
@@ -2098,6 +2106,11 @@ void GameEngine::runFinalizePass(ChainItem& item) {
         ci.resume_point = done.resume_point;
         ci.resume_data = std::move(done.resume_data);
         ci.chosen_objects = std::move(done.chosen_objects);
+        ci.chosen_stamps = std::move(done.chosen_stamps);
+        ci.chosen_item = done.chosen_item;
+        ci.owed_energy = done.owed_energy;
+        ci.owed_power = done.owed_power;
+        ci.owed_power_mask = done.owed_power_mask;
         ci.may_answer = done.may_answer;
         ci.finalize_costs_paid = done.finalize_costs_paid;
         ci.finalize_checked = 0;

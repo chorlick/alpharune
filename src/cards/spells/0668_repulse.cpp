@@ -17,14 +17,19 @@ public:
     const CardDef& def() const override { return def_; }
     // "Choose a friendly unit at a battlefield. Counter an enemy spell or
     //  ability that chooses it and no other friendly unit."
-    //
-    // Peek-and-pop: Repulse has been popped by FEPR, so the item it answers is
-    // the top of the chain; it never scans or flags the chain. What that item
-    // chooses is ChainItem::chosen_objects (everything it has chosen) together
-    // with its play-time targets. A triggered ability is never handed targets by
-    // the engine: its event's subject is ChainItem::triggering_subject, which is
-    // not a choice and is deliberately not read here.
-
+    // Both are targets chosen as Repulse is played (CR 355.5, 355.9.a.2): a
+    // friendly unit at a battlefield that some enemy item chooses alone, then
+    // such an item — anywhere on the chain.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        // Only a unit some enemy item on the chain chooses alone.
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return u.isAtBattlefield() && anyChainItem(state, [&](const ChainItem& ci) {
+                return answers(state, ci, controller, u.id);
+            });
+        });
+    }
     /// The one friendly unit `item` chooses, if it chooses exactly one and
     /// that unit is at a battlefield; kInvalidId otherwise.
     static GameObjectId soleFriendlyUnitChosen(const GameState& state, const ChainItem& item,
@@ -46,45 +51,42 @@ public:
         if (!state.getObject(only).isAtBattlefield()) return kInvalidId;   // "at a battlefield"
         return only;
     }
-    /// The friendly unit Repulse would choose against the chain top.
-    static GameObjectId answerable(const GameState& state, PlayerId controller) {
-        if (state.chain.items.empty()) return kInvalidId;
-        const auto& top = state.chain.items.back();
-        if (top.controller == controller) return kInvalidId;          // "an enemy ..."
-        if (!top.is_spell && !top.is_ability) return kInvalidId;      // "... spell or ability"
-        return soleFriendlyUnitChosen(state, top, controller);
+    static bool answers(const GameState& state, const ChainItem& item, PlayerId controller,
+                        GameObjectId unit) {
+        if (item.controller == controller) return false;          // "an enemy ..."
+        if (!item.is_spell && !item.is_ability) return false;     // "... spell or ability"
+        const GameObjectId u = soleFriendlyUnitChosen(state, item, controller);
+        return u != kInvalidId && (unit == kInvalidId || u == unit);
     }
-
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return answerable(state, controller) != kInvalidId;
+        return anyChainItem(state, [&](const ChainItem& ci) {
+            return answers(state, ci, controller, kInvalidId);
+        });
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "Choose a friendly unit at a battlefield": the only unit that can
-        // make the rest of the text do anything is the one the enemy item
-        // chooses, so that is the choice offered. pickTarget records it on the
-        // chain item and announces it ("When you choose a friendly unit").
-        std::vector<GameObjectId> legal;
-        if (GameObjectId u = answerable(ctx.state, ctx.controller); u != kInvalidId)
-            legal.push_back(u);
-        GameObjectId unit = pickTarget(ctx, "Repulse: choose a friendly unit", legal);
-        if (unit == kInvalidId) return;                 // waiting, or nothing to answer
-        // Re-check at use: the chain top must still choose that unit alone.
-        if (answerable(ctx.state, ctx.controller) != unit) return;
-        auto& top = ctx.state.chain.items.back();
-        if (top.is_spell) {
-            counterChainTop(ctx);                       // asks isUncounterable itself
-            return;
+        // The units some enemy item on the chain chooses alone.
+        std::vector<GameObjectId> units;
+        for (const auto& ci : ctx.state.chain.items) {
+            if (ci.status != ChainItemStatus::Finalized || !answers(ctx.state, ci, ctx.controller, kInvalidId))
+                continue;
+            const GameObjectId u = soleFriendlyUnitChosen(ctx.state, ci, ctx.controller);
+            if (std::find(units.begin(), units.end(), u) == units.end()) units.push_back(u);
         }
-        // An ability (CR 426): it is removed from the chain; there is no card
-        // to move, its source stays where it is.
-        if (isUncounterable(ctx, top)) {
-            RIFT_TRACE(ctx.events, "REPULSE: that ability can't be countered");
-            return;
-        }
-        std::string name = ctx.state.objectExists(top.source)
-            ? ctx.state.getObject(top.source).name : std::string("?");
-        ctx.state.chain.items.pop_back();
-        RIFT_TRACE(ctx.events, "COUNTER: ability of " + name + " countered (Repulse)");
+        std::sort(units.begin(), units.end());
+        const GameObjectId unit = pickTarget(ctx, "Repulse: choose a friendly unit", units);
+        if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        if (unit == kInvalidId && finalizingChoices(ctx)) return;   // nothing to choose
+        const auto item = pickChainItem(
+            ctx, "Repulse: counter an enemy spell or ability that chooses it",
+            chainItemChoices(ctx, [&](const ChainItem& ci) {
+                return unit != kInvalidId && answers(ctx.state, ci, ctx.controller, unit);
+            }));
+        if (!item.has_value()) return;
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (unit == kInvalidId || *item == kInvalidId) return;   // a mistarget
+        counterChosenItem(ctx, *item);
     }
 private:
     const CardDef def_ = [] {

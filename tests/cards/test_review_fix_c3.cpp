@@ -624,9 +624,11 @@ TEST_F(C3Test, Riposte_StillCountersWhenTheChosenUnitIsGone) {
     EXPECT_TRUE(state.chain.items.empty());
 }
 
-TEST_F(C3Test, CountersAreOnlyPlayableAgainstTheChainTop) {
-    // Peek-and-pop counters answer the top of the chain; a spell under an
-    // ability cannot be reached, so it must not make them playable.
+TEST_F(C3Test, CountersCanChooseASpellUnderAnAbility) {
+    // A counter chooses the spell it counters (CR 355.9.a.2: "'Spell' and
+    // 'ability' refer to finalized objects on the Chain"), anywhere on the
+    // chain: a spell under an ability makes it playable (testing phase D21;
+    // this test pinned the old peek-and-pop rule, where it did not).
     addUnit(P1, kInvalidId, 3);   // Riposte also needs a friendly unit
     state.player(P2).spells_played_this_turn = 2;
     for (CardDefId counter : {kHardBargain, kRiposte, kAbandon, kLiltingLullaby, kCrumblingSands})
@@ -636,11 +638,12 @@ TEST_F(C3Test, CountersAreOnlyPlayableAgainstTheChainTop) {
         EXPECT_TRUE(hasLegalTargets(counter, P1)) << "a spell on top: " << counter;
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;
     ability.controller = P2;
     ability.is_ability = true;
     state.chain.items.push_back(ability);
     for (CardDefId counter : {kHardBargain, kRiposte, kAbandon, kLiltingLullaby, kCrumblingSands})
-        EXPECT_FALSE(hasLegalTargets(counter, P1)) << "an ability on top: " << counter;
+        EXPECT_TRUE(hasLegalTargets(counter, P1)) << "an ability on top of the spell: " << counter;
 }
 
 TEST_F(C3Test, Sacrifice_KillsTheMightyUnitAsItIsPlayed) {

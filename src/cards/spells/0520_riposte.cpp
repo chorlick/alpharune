@@ -18,71 +18,50 @@ namespace {
 class Riposte : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
-    // [Reaction] timing comes from the CardDef. Defer the friendly-unit
-    // target choice to resolve time (counters target the chain top).
-    bool needsPlayTimeTarget() const override { return true; }
-
+    // "Choose a friendly unit and a spell. Counter that spell and give that
+    // unit +[M] equal to that spell's Energy cost this turn." Both are targets
+    // chosen as Riposte is played (CR 355.5, 355.9.a.2): the unit first, then
+    // any finalized spell on the chain.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_friendly = true};
     }
-
-    // Peek-and-pop: the spell countered is the top of the chain, so that is
-    // what makes this playable (a spell under an ability cannot be reached).
+    static bool qualifies(const ChainItem& ci) { return ci.is_spell; }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        if (state.chain.items.empty()) return false;
-        const auto& top = state.chain.items.back();
-        if (!top.is_spell || top.card_def_id == kInvalidId) return false;
-        // Also need a friendly unit to choose.
-        return !enumerateLegalTargets(state, controller).empty();
+        return anyChainItem(state, qualifies) && !enumerateLegalTargets(state, controller).empty();
     }
-
     std::vector<GameObjectId> enumerateLegalTargets(
         const GameState& state, PlayerId controller) const override {
-        std::vector<GameObjectId> out;
-        for (auto& [id, obj] : state.objects.onBoard()) {
-            if (obj.isUnit() && obj.controller == controller && obj.location.has_value())
-                out.push_back(id);
-        }
-        return out;
+        return chooseableUnits(state, controller,
+                               [&](const GameObject& o) { return o.controller == controller; });
     }
-
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        // Read the energy cost of the spell to counter (chain top) BEFORE
-        // countering it.
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId unit = pickTarget(ctx, "Riposte: choose a friendly unit",
+                                             enumerateLegalTargets(ctx.state, ctx.controller));
+        if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        if (unit == kInvalidId && finalizingChoices(ctx)) return;   // nothing to choose
+        const auto spell = pickChainItem(ctx, "Riposte: choose a spell",
+                                         chainItemChoices(ctx, qualifies));
+        if (!spell.has_value()) return;
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        // The countered spell's Energy cost, read before it leaves the chain.
         int cost = 0;
-        if (!ctx.state.chain.items.empty()) {
-            auto& top = ctx.state.chain.items.back();
-            if (top.is_spell && top.card_def_id != kInvalidId)
-                cost = ctx.executor.cardDB().get(top.card_def_id).energy_cost;
-        }
-
-        // The friendly unit chosen as this was played, while it is still a
-        // legal target; otherwise pickTarget, which either asks now (no unit
-        // was chosen at play), or reports the mistarget as kInvalidId.
-        GameObjectId unit = kInvalidId;
-        if (!targets.empty()) {
-            unit = targets[0];
-        } else {
-            unit = pickTarget(ctx, "Riposte: buff a friendly unit",
-                              enumerateLegalTargets(ctx.state, ctx.controller));
-            if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7)
-                return;  // waiting for the agent — the counter runs on re-entry
-        }
-
-        // Counter the spell on top of the chain. This does not depend on the
-        // unit: a unit that left the board only loses its own part (CR
-        // 359.3.e.5).
-        counterChainTop(ctx);
-
-        // Give the chosen unit +[M] equal to that spell's Energy cost this turn.
+        if (const ChainItem* item = *spell != kInvalidId ? chainItem(ctx.state, *spell) : nullptr)
+            if (item->card_def_id != kInvalidId)
+                cost = ctx.executor.cardDB().get(item->card_def_id).energy_cost;
+        if (*spell != kInvalidId) counterChosenItem(ctx, *spell);
+        // A unit that left the board only loses its own part (CR 359.3.e.5).
         if (unit != kInvalidId && ctx.state.objectExists(unit) &&
             ctx.state.getObject(unit).location.has_value() && cost > 0) {
             ctx.executor.giveTemporaryMight(unit, cost);
-            RIFT_TRACE(ctx.events, "RIPOSTE: countered spell -> +" +
-                                std::to_string(cost) + " [M] this turn");
+            RIFT_TRACE(ctx.events, "RIPOSTE: +" + std::to_string(cost) + " [M] this turn");
         }
     }
 private:

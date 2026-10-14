@@ -19,98 +19,78 @@ public:
     std::vector<RepeatCost> repeatCosts() const override {
         return {RepeatCost{.energy = 2}};
     }
-    // "Counter a spell unless its controller pays [2]."
-    // Peek-and-pop: the spell answered is the top of the chain, so that is
-    // also what makes this playable — a spell further down, under an ability,
-    // cannot be reached.
-    bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        return !state.chain.items.empty() && state.chain.items.back().is_spell;
+    // "Counter a spell unless its controller pays [2]." The spell is a target
+    // (CR 355.9.a.2), chosen as this is played (CR 355.5); a paid Repeat's
+    // execution chooses its own as well (CR 820.2), and may choose another.
+    // Whether to pay is the spell's controller's decision as this resolves.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
     }
+    static bool qualifies(const ChainItem& ci) { return ci.is_spell; }
+    bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
+        return anyChainItem(state, qualifies);
+    }
+    static constexpr int kAwaitPay = 20;   // resume_point: the payer is deciding
+    static constexpr int kDone = 21;
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const auto spell = pickChainItem(ctx, "Hard Bargain: counter a spell",
+                                         chainItemChoices(ctx, qualifies));
+        if (!spell.has_value()) return;
+        if (finalizingChoices(ctx)) return;
         auto& ri = ctx.state.chain.resuming.value();
-        // Counters the spell `target_source` if it is still the chain top.
-        auto counter = [&](GameObjectId target_source, const std::string& why) {
-            if (ctx.state.chain.items.empty() ||
-                ctx.state.chain.items.back().source != target_source) return;
-            revertCounteredPlay(ctx, ctx.state.chain.items.back());  // CR 425.1.b
-            ctx.state.chain.items.pop_back();
-            if (!ctx.state.objectExists(target_source)) return;
-            RIFT_TRACE(ctx.events, "HARD BARGAIN: countered " +
-                                ctx.state.getObject(target_source).name + " (" + why + ")");
-            disposeCounteredCard(ctx, target_source);
-        };
-        switch (ri.resume_point) {
-        case 0: {
-            if (ctx.state.chain.items.empty()) {
-                RIFT_TRACE(ctx.events, "HARD BARGAIN: nothing on chain to counter — no-op");
+        if (ri.resume_point == kDone) return;
+        const ChainItem* item = *spell != kInvalidId ? chainItem(ctx.state, *spell) : nullptr;
+        if (!item) {
+            RIFT_TRACE(ctx.events, "HARD BARGAIN: the chosen spell is gone — no-op");
+            ri.resume_point = kDone;
+            return;
+        }
+        const PlayerId payer = item->controller;
+        const GameObjectId src = item->source;
+        const std::string spell_name = ctx.state.objectExists(src)
+            ? ctx.state.getObject(src).name.get() : std::string("spell");
+        if (ri.resume_point != kAwaitPay) {
+            // [2] is Energy: floating Energy, ready runes and [Add] Reactions pay it.
+            if (!canPayEnergy(ctx, payer, 2)) {
+                RIFT_TRACE(ctx.events, "HARD BARGAIN: " + std::string(toString(payer)) +
+                                    " can't pay [2] to save " + spell_name);
+                counterChosenItem(ctx, *spell);
+                ri.resume_point = kDone;
                 return;
             }
-            auto& top = ctx.state.chain.items.back();
-            if (!top.is_spell || isUncounterable(ctx, top)) {
-                RIFT_TRACE(ctx.events, "HARD BARGAIN: top of chain isn't a spell — no-op");
-                return;
-            }
-            PlayerId target_controller = top.controller;
-            GameObjectId target_source = top.source;
-            ri.resume_data = {static_cast<int32_t>(target_source.raw()),
-                              static_cast<int32_t>(target_controller)};
-
-            // [2] is Energy: floating Energy and ready runes both pay it.
-            if (payableEnergy(ctx.state, target_controller) < 2) {
-                counter(target_source, std::string(toString(target_controller)) +
-                                       " can't pay [2] to save it");
-                ri.resume_point = 2;
-                return;
-            }
-
-            // Offer the target's controller a binary choice: pay 2 to save,
-            // or let it be countered. Two MakeChoice intents — chosen_objects
-            // is empty for "let it die," contains the target_source for "pay."
+            // The spell's controller: pay [2] to save it, or let it be countered.
             std::vector<Intent> choices;
             Intent pay;
             pay.type = IntentType::MakeChoice;
-            pay.player = target_controller;
-            pay.chosen_objects = {target_source};
+            pay.player = payer;
+            pay.chosen_objects = {src};
             choices.push_back(pay);
             Intent decline;
             decline.type = IntentType::MakeChoice;
-            decline.player = target_controller;
+            decline.player = payer;
             decline.chosen_value = 0;   // nameable by value, not only by position
             decline.declines = true;
             decline.choice_label = "Hard Bargain: don't pay";
             choices.push_back(decline);
-            std::string spell_name = ctx.state.objectExists(target_source)
-                ? ctx.state.getObject(target_source).name.get() : "spell";
-            ctx.executor.requestChoice(target_controller, std::move(choices),
-                                        "Hard Bargain: pay 2 to save " + spell_name +
-                                        "? [pay | decline]");
-            ri.resume_point = 1;
+            ctx.executor.requestChoice(payer, std::move(choices),
+                                       "Hard Bargain: pay 2 to save " + spell_name +
+                                       "? [pay | decline]");
+            ri.resume_point = kAwaitPay;
             return;
         }
-        case 1: {
-            auto choice = ctx.executor.takeChoice();
-            ri.resume_point = 2;
-            if (ri.resume_data.size() < 2) return;
-            auto target_source = GameObjectId::fromRaw(ri.resume_data[0]);
-            auto target_controller = static_cast<PlayerId>(ri.resume_data[1]);
-            if (!ctx.state.objectExists(target_source)) return;
-
-            bool wants_to_pay = (choice && !choice->chosen_objects.empty() &&
-                                 choice->chosen_objects[0] == target_source);
-            if (wants_to_pay && payEnergy(ctx, target_controller, 2)) {
-                RIFT_TRACE(ctx.events, std::string("HARD BARGAIN: ") +
-                                     toString(target_controller) +
-                                     " paid [2] to save " +
-                                     ctx.state.getObject(target_source).name);
-                // Spell stays on chain — no pop.
-            } else {
-                counter(target_source, "its controller did not pay [2]");
-            }
+        auto choice = ctx.executor.takeChoice();
+        ri.resume_point = kDone;
+        const bool wants_to_pay = choice && !choice->chosen_objects.empty() &&
+                                  choice->chosen_objects[0] == src;
+        if (wants_to_pay && payEnergy(ctx, payer, 2)) {
+            RIFT_TRACE(ctx.events, "HARD BARGAIN: " + std::string(toString(payer)) +
+                                " paid [2] to save " + spell_name);
             return;
         }
-        default:
-            return;
-        }
+        RIFT_TRACE(ctx.events, "HARD BARGAIN: " + spell_name + " — its controller did not pay [2]");
+        counterChosenItem(ctx, *spell);
     }
 private:
     const CardDef def_ = [] {

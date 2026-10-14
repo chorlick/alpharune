@@ -1130,8 +1130,11 @@ TEST_F(VerifyCardsTest, Pin_Batch03_NotSoFastAndRepulse_ATriggersSubjectIsNotACh
         EXPECT_TRUE(top.targets.empty()) << "the engine never hands a trigger targets";
         EXPECT_FALSE(nsf->hasLegalTargets(st, P1)) << "it chose nothing";
         EXPECT_FALSE(repulse->hasLegalTargets(st, P1));
-        // Control: once the ability really chooses my unit, both can answer it.
+        // Control: once the ability really chooses my unit — and is finalized:
+        // a counter chooses finalized items only (CR 355.9.a.2; testing phase
+        // D21) — both can answer it.
         top.chosen_objects = {mine};
+        top.status = ChainItemStatus::Finalized;
         EXPECT_TRUE(nsf->hasLegalTargets(st, P1));
         EXPECT_TRUE(repulse->hasLegalTargets(st, P1));
         st.chain.items.clear();

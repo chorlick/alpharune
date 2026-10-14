@@ -46,7 +46,7 @@ struct GameObject {
     // are tracked fields because the board index of the object table is built
     // from them: assigning either tells the table (core/tracked_field.h,
     // core/object_table.h). A location is replaced, never edited in place.
-    TrackedField<ZoneType> zone{ZoneType::MainDeck};
+    TrackedZone zone{ZoneType::MainDeck};
     TrackedLocation location;  // only meaningful when on board
     // Unit stats.
     int base_might = 0;

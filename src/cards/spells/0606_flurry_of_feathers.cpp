@@ -15,35 +15,33 @@ namespace {
 class FlurryOfFeathers : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
+    // "Choose one — Counter a spell. / Play four 1 [M] Bird unit tokens with
+    // [Deflect]." The mode (CR 355.3) and, for the first, the spell (a target,
+    // CR 355.9.a.2) are chosen as this is played.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& chain = ctx.state.chain;
-        bool counter_legal = !chain.items.empty() &&
-                             chain.items.back().is_spell &&
-                             chain.items.back().source != ctx.source &&
-                             !isUncounterable(ctx, chain.items.back());
-
+        auto counterable = [&](const ChainItem& ci) { return ci.is_spell; };
+        const auto spells = chainItemChoices(ctx, counterable);
         uint32_t legal_mask = 0b10;  // mode 1 (spawn birds) always legal
-        if (counter_legal) legal_mask |= 0b01;
-
+        if (!spells.empty()) legal_mask |= 0b01;
         int mode = pickMode(ctx, "Flurry of Feathers", /*num_modes=*/2,
-                            {"Counter a spell", "Play four Bird tokens"},
-                            legal_mask);
+                            {"Counter a spell", "Play four Bird tokens"}, legal_mask);
         if (mode == -1) return;   // yielded for agent input
-        if (mode == -2) mode = 1; // no legal mode (shouldn't happen — birds always legal)
-
+        if (mode == -2) mode = 1; // (birds are always legal)
+        std::optional<ChainItemId> spell = ChainItemId{kInvalidId};
         if (mode == 0) {
-            // Still the chain top and still counterable (the callback is not
-            // re-entered after this, so the counter happens once).
-            if (!counter_legal) return;
-            auto victim = chain.items.back();
-            chain.items.pop_back();
-            RIFT_TRACE(ctx.events, "FLURRY OF FEATHERS: countered spell (id=" +
-                                 toString(victim.source) + ")");
-            disposeCounteredCard(ctx, victim.source);
+            spell = pickChainItem(ctx, "Flurry of Feathers: counter a spell", spells);
+            if (!spell.has_value()) return;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (mode == 0) {
+            if (*spell != kInvalidId) counterChosenItem(ctx, *spell);
             return;
         }
-
         // Mode 1: four 1 [M] Bird tokens with [Deflect], each played to the
         // controller's base or a battlefield they control.
         std::vector<GameObjectId> made;

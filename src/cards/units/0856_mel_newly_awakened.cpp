@@ -30,7 +30,7 @@ public:
     // The -[M] half is applied by EffectExecutor::giveTemporaryMight (cards
     // must not add extra_minus_might themselves); the counter half is honoured
     // by card_helpers.h isUncounterable(), which every counter effect asks
-    // (counterChainTop, Defy, Hard Bargain, Flurry of Feathers, Abandon).
+    // (counterChosenItem, Defy, Hard Bargain, Flurry of Feathers, Abandon).
     void applyPassiveAura(GameState& state, PlayerId controller) const override {
         forEachEmpoweredSelf(*this, state, controller,
             [&](GameObjectId, GameObject&) {

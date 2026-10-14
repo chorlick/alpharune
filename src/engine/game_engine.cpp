@@ -5593,6 +5593,13 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
 void GameEngine::runCombat(BattlefieldId bf_id) {
     auto& bf = getBattlefield(bf_id);
     bf.combat_in_progress = true;
+    // CR 308.1: "If a Showdown or Combat is in progress, the turn is in a
+    // Showdown State." Only [Action] / [Reaction] cards and abilities are
+    // played until the combat ends (308.1.a) — at Focus as in any showdown,
+    // by either player (finding D5: the combat used to stay a Neutral State,
+    // and every spell was offered at Focus). combatResolutionStep puts the
+    // turn back in a Neutral State.
+    state_.turn.ns_state = NeutralShowdownState::Showdown;
 
     // Determine attacker/defender (CR 459.2.b)
     bf.attacker = bf.contested_by;
@@ -7168,7 +7175,11 @@ void GameEngine::updateBattlefieldControl() {
 
         if (bf.controller.has_value()) {
             bool has_units = bf.hasUnitsFrom(*bf.controller, state_.objects);
-            if (!has_units && state_.turn.isNeutralOpen()) {
+            // CR 323.5: "... if the turn is in an Open State and there is no
+            // Showdown or Combat ongoing there" — an Open State, Neutral or
+            // Showdown (a showdown or combat at ANOTHER battlefield does not
+            // keep this one; the one here was skipped above).
+            if (!has_units && state_.turn.oc_state == OpenClosedState::Open) {
                 auto old = bf.controller;
                 bf.controller = std::nullopt;
                 events_.emit(ControlChangedEvent{bf.id, old, std::nullopt});

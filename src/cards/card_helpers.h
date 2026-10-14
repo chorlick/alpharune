@@ -137,6 +137,16 @@ inline Card::FinalizeChoice friendlyUnitChoice(const GameState& state, PlayerId 
     return friendlyUnitChoice(state, controller, object, [](const GameObject&) { return true; });
 }
 
+// ── Dependent keywords ──
+/// [Legion] (CR 812.1.c): "a card different than the one with the Legion
+/// ability has been Finalized by you on the same turn". The count includes
+/// the card itself once it has been played, so another card makes it 2.
+/// For a triggered [Legion] ability this is its trigger condition (CR
+/// 727.1.c.1: the ability must be Active for its trigger to be evaluated).
+inline bool legionActive(const GameState& state, PlayerId player) {
+    return state.player(player).cards_played_this_turn >= 2;
+}
+
 // ── Battlefields and combat ──
 /// The battlefield whose card object is `card_object` (a battlefield card's
 /// own ctx.source, or a conquer / hold trigger's subject on a legend).

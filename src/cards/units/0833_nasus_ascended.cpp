@@ -20,9 +20,15 @@ public:
     EmpowerSpec empowerSpec() const override { return empowerCost(8); }
     // "[Empowered][>] When I conquer, you score 1 point."
     TriggerType triggerType() const override { return TriggerType::WhenIConquer; }
+    // [Empowered][>] "When I conquer, you score 1 point": Active only while
+    // I'm Empowered, and only an Active ability triggers (CR 727.1.c.1):
+    // judged at the conquer. Disempowered in response, it still scores.
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).isEmpowered();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        if (!ctx.state.getObject(ctx.source).isEmpowered()) return;
         // CR 194.1.c; scorePoints honours "can't gain points" (Tianna Crownguard).
         if (ctx.executor.scorePoints(ctx.controller, 1) == 0) return;
         const auto& ps = ctx.state.player(ctx.controller);

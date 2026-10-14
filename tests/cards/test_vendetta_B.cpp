@@ -266,10 +266,12 @@ TEST_F(VendettaB, Vendetta_CovertInformant_DrawsOnMoveOnlyWhileEmpowered) {
     addToDeck(P1, kStargazer);
     auto unit = addUnit(P1, kCovertInformant, 0, 0);
 
-    fireTriggerAs(kCovertInformant, P1, unit, TriggerType::WhenIMove, exec);
-    EXPECT_EQ(handSize(P1), 0) << "not Empowered -> no draw";
+    // Not Empowered: no trigger at all (finding G9; CR 727.1.c.1).
+    EXPECT_FALSE(triggersNow(kCovertInformant, P1, unit, TriggerType::WhenIMove))
+        << "not Empowered -> no draw";
 
     exec.empower(unit);
+    EXPECT_TRUE(triggersNow(kCovertInformant, P1, unit, TriggerType::WhenIMove));
     fireTriggerAs(kCovertInformant, P1, unit, TriggerType::WhenIMove, exec);
     EXPECT_EQ(handSize(P1), 1);
 }
@@ -672,10 +674,12 @@ TEST_F(VendettaB, Vendetta_BaccaiWitherclaw_DeathknellOnlyIfEmpowered) {
     for (int i = 0; i < 4; ++i) addRuneToRuneDeck(P1, Domain::Fury);
     auto unit = addUnit(P1, kBaccaiWitherclaw, 0, 0);
 
-    fireTriggerAs(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie, exec);
-    EXPECT_EQ(exhaustedRuneCount(P1), 0) << "died while not Empowered";
+    // Not Empowered: the Deathknell does not trigger (finding G9).
+    EXPECT_FALSE(triggersNow(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie))
+        << "died while not Empowered";
 
     exec.empower(unit);
+    EXPECT_TRUE(triggersNow(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie));
     fireTriggerAs(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie, exec);
     EXPECT_EQ(exhaustedRuneCount(P1), 2);
     EXPECT_EQ(readyRuneCount(P1), 0);
@@ -689,13 +693,15 @@ TEST_F(VendettaB, Vendetta_BaccaiWitherclaw_DeathknellUsesLastKnownEmpowered) {
     exec.killObject(unit);
     EXPECT_GT(state.getObject(unit).card_counters["__died_empowered"], 0);
     state.getObject(unit).empowered = 0;   // what the aura pass does once it is off the board
+    EXPECT_TRUE(triggersNow(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie));
     fireTriggerAs(kBaccaiWitherclaw, P1, unit, TriggerType::WhenIDie, exec);
     EXPECT_EQ(exhaustedRuneCount(P1), 2);
 
-    // Dying again while not Empowered overwrites the snapshot.
+    // Dying again while not Empowered overwrites the snapshot: no trigger
+    // (finding G9; it used to resolve and do nothing).
     auto plain = addUnit(P1, kBaccaiWitherclaw, 0, 0);
     exec.killObject(plain);
-    fireTriggerAs(kBaccaiWitherclaw, P1, plain, TriggerType::WhenIDie, exec);
+    EXPECT_FALSE(triggersNow(kBaccaiWitherclaw, P1, plain, TriggerType::WhenIDie));
     EXPECT_EQ(exhaustedRuneCount(P1), 2);
 }
 

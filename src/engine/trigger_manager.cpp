@@ -215,7 +215,8 @@ void TriggerManager::queueEquippedTrigger(GameObjectId gear_id, GameObjectId uni
     if (gear.card_def_id == kInvalidId) return;
     const Card* gear_card = card_registry_.get(gear.card_def_id);
     if (!gear_card || gear_card->equippedTriggerType() != trigger) return;
-    if (!gear_card->triggerCondition(state_, gear_id, controller, trigger, unit_id)) return;
+    if (!gear_card->triggerConditionOn(state_, triggerEventFor(gear_id, controller, trigger, unit_id)))
+        return;
 
     RIFT_TRACE(events_, "EQUIP_TRIGGER: " + gear.name + " fires on " +
                      (state_.objectExists(unit_id) ? state_.getObject(unit_id).name
@@ -332,6 +333,23 @@ bool TriggerManager::temporaryTriggerSuppressed(GameObjectId source) const {
     return false;
 }
 
+// What a trigger condition is judged on: the event, and the printed card of
+// its object (Card::TriggerEvent).
+Card::TriggerEvent TriggerManager::triggerEventFor(GameObjectId source, PlayerId controller,
+                                                   TriggerType trigger,
+                                                   GameObjectId subject) const {
+    Card::TriggerEvent ev;
+    ev.source = source;
+    ev.controller = controller;
+    ev.trigger = trigger;
+    ev.subject = subject;
+    if (subject != kInvalidId && state_.objectExists(subject)) {
+        const CardDefId def = state_.getObject(subject).card_def_id;
+        if (def != kInvalidId) ev.subject_card = card_registry_.classDef(def);
+    }
+    return ev;
+}
+
 bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
                                   int triggering_spell_energy_spent,
                                   TriggerType which,
@@ -355,7 +373,7 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     const Card* card = card_registry_.get(obj.card_def_id);
     // The card's intervening condition ("When a BUFFED friendly unit dies"):
     // if it isn't met the ability does not trigger.
-    if (card && !card->triggerCondition(state_, source, controller, fired, subject))
+    if (card && !card->triggerConditionOn(state_, triggerEventFor(source, controller, fired, subject)))
         return false;
     // "When ONE OR MORE ...": events that happen together trigger it once. An
     // ability of this source for this trigger that has not been finalized yet

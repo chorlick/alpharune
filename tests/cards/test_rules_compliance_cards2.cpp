@@ -635,8 +635,8 @@ TEST_F(RulesCards2Test, RulesCards2_CR383_NoxianEmissary_NotEmpoweredAtDeath_NoT
 
     exec.killObject(emissary);
     state.getObject(emissary).empowered = 1;          // too late: it is already dead
-    fireTriggerAs(kNoxianEmissary, P1, emissary, TriggerType::WhenIDie, exec);
-
+    // Judged as it died: no trigger at all (finding G9).
+    EXPECT_FALSE(triggersNow(kNoxianEmissary, P1, emissary, TriggerType::WhenIDie));
     EXPECT_EQ(countOnBoard(P1, "Recruit"), 0);
 }
 

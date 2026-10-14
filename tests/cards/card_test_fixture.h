@@ -978,6 +978,27 @@ protected:
                          GameObjectId source,
                          std::function<Intent(const std::vector<Intent>&)> picker,
                          EffectExecutor& exec) {
+    /// Whether `source`'s ability for `trigger` triggers now: the question
+    /// TriggerManager asks before it puts anything on the chain
+    /// (Card::triggerConditionOn, with the subject's printed card). A
+    /// condition printed with the trigger is judged here, not by onTrigger
+    /// (CR 383.2.a.1), so a direct-call test of "the condition is false"
+    /// asks this instead of firing the ability.
+    bool triggersNow(CardDefId def_id, PlayerId controller, GameObjectId source,
+                     TriggerType trigger, GameObjectId subject = kInvalidId) {
+        const Card* card = card_registry.get(def_id);
+        if (!card) return false;
+        Card::TriggerEvent ev;
+        ev.source = source;
+        ev.controller = controller;
+        ev.trigger = trigger;
+        ev.subject = subject;
+        if (subject != kInvalidId && state.objectExists(subject) &&
+            state.getObject(subject).card_def_id != kInvalidId)
+            ev.subject_card = card_registry.classDef(state.getObject(subject).card_def_id);
+        return card->triggerConditionOn(state, ev);
+    }
+
         ChainItem ri;
         ri.id = state.chain.allocateId();
         ri.controller = controller;

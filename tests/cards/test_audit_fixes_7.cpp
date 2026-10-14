@@ -361,9 +361,12 @@ TEST_F(AuditFix7Test, WujuApprentice_BelowLevel6NoDraw) {
     addToDeck(P1, kInvalidId);
     int before = handSize(P1);
 
-    fireTriggerAs(602, P1, u, TriggerType::WhenYouPlayMe, exec);
-
-    EXPECT_EQ(handSize(P1), before);  // <6 XP -> no draw
+    // <6 XP: [Level 6]'s ability is not Active, it does not trigger
+    // (finding G9; CR 727.1.c.1, 824.1.c).
+    EXPECT_FALSE(triggersNow(602, P1, u, TriggerType::WhenYouPlayMe));
+    setXp(P1, 6);
+    EXPECT_TRUE(triggersNow(602, P1, u, TriggerType::WhenYouPlayMe));
+    EXPECT_EQ(handSize(P1), before);
 }
 
 // ─── [615] Scuttle Crab (Unit) ─────────────────────────────────────────────────

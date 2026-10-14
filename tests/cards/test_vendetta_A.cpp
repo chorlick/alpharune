@@ -909,10 +909,14 @@ TEST_F(VendettaA, Vendetta_NasusAscended_ScoresOnConquerOnlyWhileEmpowered) {
     auto nasus = addUnit(P1, kNasusAscended, 0, 0);
     setScore(P1, 3);
 
-    fireTriggerAs(kNasusAscended, P1, nasus, TriggerType::WhenIConquer, exec);
-    EXPECT_EQ(state.player(P1).score, 3) << "not Empowered";
+    // Not Empowered: the ability does not trigger (its condition is the
+    // trigger condition, CR 727.1.c.1; finding G9 — it used to resolve and
+    // do nothing).
+    EXPECT_FALSE(triggersNow(kNasusAscended, P1, nasus, TriggerType::WhenIConquer))
+        << "not Empowered";
 
     exec.empower(nasus);
+    EXPECT_TRUE(triggersNow(kNasusAscended, P1, nasus, TriggerType::WhenIConquer));
     fireTriggerAs(kNasusAscended, P1, nasus, TriggerType::WhenIConquer, exec);
     EXPECT_EQ(state.player(P1).score, 4);
     EXPECT_EQ(state.player(P2).score, 0);

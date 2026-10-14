@@ -604,6 +604,26 @@ public:
         return true;
     }
 
+    /// The event a trigger condition is judged on (TriggerManager::fireTrigger,
+    /// queueEquippedTrigger): the triggerCondition arguments, plus the
+    /// PRINTED card of the event's object when it has one — what a condition
+    /// on a printed value of the card played reads ("a spell that costs [5]
+    /// or more", "a card with Power cost [A][A] or more", CR 383.1).
+    struct TriggerEvent {
+        GameObjectId source = kInvalidId;
+        PlayerId controller = PlayerId::None;
+        TriggerType trigger = TriggerType::None;
+        GameObjectId subject = kInvalidId;
+        const CardDef* subject_card = nullptr;   // null: no subject, or a token with no card
+    };
+    /// What the engine asks. Default: triggerCondition(state, source,
+    /// controller, trigger, subject). A card whose condition reads the
+    /// subject's printed card overrides this one instead.
+    virtual bool triggerConditionOn(const GameState& state, const TriggerEvent& event) const {
+        return triggerCondition(state, event.source, event.controller, event.trigger,
+                                event.subject);
+    }
+
     /// Universal legality gate for play / activate intents.
     ///
     /// Returns true if this card can legally be played (or its activated

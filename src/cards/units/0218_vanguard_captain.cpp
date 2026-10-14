@@ -16,11 +16,16 @@ class VanguardCaptain : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    // [Legion] — the ability is Active only if another card was played this
+    // turn, and only an Active ability triggers (CR 727.1.c.1, 812.1.c):
+    // judged as I am played. Off, nothing goes on the chain (finding G9).
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return legionActive(state, controller);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // "[Legion] — play two 1 [M] Recruit unit tokens here." Legion (CR
-        // 812): only if another card was played this turn (the count
-        // includes me). "Here" is my location.
-        if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;
+        // "[Legion] — play two 1 [M] Recruit unit tokens here." "Here" is my
+        // location.
         auto loc = ctx.state.getObject(ctx.source).location;
         if (!loc) loc = LocationId{BaseLocation{ctx.controller}};
         for (int i = 0; i < 2; ++i)

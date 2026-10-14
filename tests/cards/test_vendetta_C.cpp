@@ -791,9 +791,10 @@ TEST_F(VendettaCTest, Vendetta_NoxianEmissary_DeathknellOnlyWhileEmpowered) {
     EXPECT_TRUE(c->firesOn(TriggerType::WhenIDie));
 
     // Dies without ever being Empowered: no Recruits.
+    // (The Deathknell does not trigger at all: finding G9.)
     auto plain = addUnit(P1, kNoxianEmissary, 0, 0);
     exec.killObject(plain);
-    fireTriggerAs(kNoxianEmissary, P1, plain, TriggerType::WhenIDie, exec);
+    EXPECT_FALSE(triggersNow(kNoxianEmissary, P1, plain, TriggerType::WhenIDie));
     EXPECT_EQ(countUnitsNamed(P1, "Recruit"), 0);
 
     // Empowered on the board, then dies. The engine clears the status once the
@@ -804,6 +805,7 @@ TEST_F(VendettaCTest, Vendetta_NoxianEmissary_DeathknellOnlyWhileEmpowered) {
     exec.killObject(emp);
     EXPECT_GT(state.getObject(emp).card_counters["__died_empowered"], 0);
     state.getObject(emp).empowered = 0;               // what recalculateAuras does
+    EXPECT_TRUE(triggersNow(kNoxianEmissary, P1, emp, TriggerType::WhenIDie));
     fireTriggerAs(kNoxianEmissary, P1, emp, TriggerType::WhenIDie, exec);
     EXPECT_EQ(countUnitsNamed(P1, "Recruit"), 2);
     for (const auto& [id, obj] : state.objects) {
@@ -819,7 +821,8 @@ TEST_F(VendettaCTest, Vendetta_NoxianEmissary_DisempoweredBeforeDyingGetsNothing
     exec.empower(emissary);
     exec.disempower(emissary);
     exec.killObject(emissary);                        // stamps __died_empowered = 0
-    fireTriggerAs(kNoxianEmissary, P1, emissary, TriggerType::WhenIDie, exec);
+    // No trigger at all (finding G9).
+    EXPECT_FALSE(triggersNow(kNoxianEmissary, P1, emissary, TriggerType::WhenIDie));
     EXPECT_EQ(countUnitsNamed(P1, "Recruit"), 0);
 }
 

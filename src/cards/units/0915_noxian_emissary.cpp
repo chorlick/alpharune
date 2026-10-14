@@ -23,12 +23,17 @@ public:
     // Empowered is cleared once the unit is off the board, so this reads the
     // last-known information the kill paths snapshot (CR 383.2.c.3.b).
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // [Empowered][>][>>][Deathknell][>]: the Deathknell is Active only while
+    // I'm Empowered, so it triggers only if I die Empowered (CR 727.1.c.1),
+    // judged as I die from what I was as I left (last-known information).
+    // Not Empowered, nothing goes on the chain (finding G9).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        const auto& self = state.getObject(source);
+        return self.last_known.valid ? self.last_known.empowered > 0 : self.isEmpowered();
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        const auto& self = ctx.state.getObject(ctx.source);
-        const bool was_empowered = asItLeft(ctx, ctx.source).valid ? asItLeft(ctx, ctx.source).empowered > 0
-                                                         : self.isEmpowered();
-        if (!was_empowered) return;
         for (int i = 0; i < 2; ++i)
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit", 1,
                                      {"Recruit"}, KeywordSet{},

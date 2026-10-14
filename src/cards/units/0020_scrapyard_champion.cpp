@@ -15,8 +15,14 @@ namespace {
 class ScrapyardChampion : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
+    // [Legion] — the ability is Active only if another card was played this
+    // turn, and only an Active ability triggers (CR 727.1.c.1, 812.1.c):
+    // judged as I am played. Off, nothing goes on the chain (finding G9).
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId controller,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return legionActive(state, controller);
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (ctx.state.player(ctx.controller).cards_played_this_turn < 2) return;
         discardThenAct(ctx, 2, "Scrapyard Champion: discard 2 then draw 2",
             [](CardContext& c) { c.executor.drawCards(c.controller, 2); });
     }

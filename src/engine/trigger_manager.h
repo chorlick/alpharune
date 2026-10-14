@@ -162,6 +162,10 @@ private:
     /// "Your [Temporary] effects at my battlefield don't trigger."
     bool temporaryTriggerSuppressed(GameObjectId source) const;
 
+    /// What Card::triggerConditionOn is asked with.
+    Card::TriggerEvent triggerEventFor(GameObjectId source, PlayerId controller,
+                                       TriggerType trigger, GameObjectId subject) const;
+
     /// Queue one chain item per instance of `keyword`'s own triggered ability
     /// on `object` (engine/keyword_abilities.h).
     void queueKeywordAbilities(GameObjectId object, PlayerId controller,

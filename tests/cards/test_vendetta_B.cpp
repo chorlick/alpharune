@@ -451,7 +451,12 @@ TEST_F(VendettaB, Vendetta_JayceInventor_FirstNonTokenGearEachTurn) {
     // "the first time ... each turn" is the trigger's condition, so each
     // play is announced to Jayce through the engine; the agent says yes.
     (void)exec;
+    // The play is announced by hand: count it as the announcement would
+    // (testing phase B6: "the first time" is the turn's first non-token gear
+    // play, PlayerState::nontoken_gear_plays_this_turn).
     auto playsCard = [&](GameObjectId played) {
+        const auto& p = state.getObject(played);
+        if (p.isGear() && !p.isToken()) ++state.player(P1).nontoken_gear_plays_this_turn;
         EnginePathAgent agent(EnginePathAgent::choosing(other, EnginePathAgent::May::Yes));
         fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayACard, &agent, played);
     };
@@ -478,6 +483,7 @@ TEST_F(VendettaB, Vendetta_JayceInventor_FirstNonTokenGearEachTurn) {
 
     // Next turn it works again.
     state.turn.turn_number = 5;
+    state.player(P1).resetTurnTracking();
     playsCard(gear2);
     EXPECT_FALSE(state.getObject(other).is_exhausted);
 }

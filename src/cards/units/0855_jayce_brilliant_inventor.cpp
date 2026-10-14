@@ -24,7 +24,6 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouPlayACard};
     }
-    static constexpr const char* kFirstGearTurn = "__jayce_first_gear_turn";
     // "the first time you play a non-token gear each turn": judged when the
     // gear is played. The stamp below is written as the ability goes on the
     // chain, before another gear can be played.
@@ -34,9 +33,9 @@ public:
         if (subject == kInvalidId || !state.objectExists(subject)) return false;
         const auto& played = state.getObject(subject);
         if (!played.isGear() || played.isToken()) return false;      // non-token gear only
-        const auto& counters = state.getObject(source).card_counters;
-        auto it = counters.find(kFirstGearTurn);
-        return it == counters.end() || it->second != state.turn.turn_number + 1;
+        // The turn's first non-token gear play, whether or not Jayce was on
+        // the board for an earlier one (CR 383.1; testing phase B6).
+        return state.player(played.controller).nontoken_gear_plays_this_turn == 1;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
@@ -44,10 +43,6 @@ public:
         // me, or one played before I was): later ones are not "the first".
         // Writing the same stamp again on a re-entry changes nothing, and no
         // path below depends on it, so a re-chosen ability is not lost.
-        if (ctx.firing_trigger == TriggerType::WhenYouPlayACard ||
-            ctx.state.player(ctx.controller).played_nontoken_gear_this_turn)
-            ctx.state.getObject(ctx.source).card_counters[kFirstGearTurn] =
-                ctx.state.turn.turn_number + 1;   // +1 so 0 = never
         // "something besides me that's exhausted": the text is not limited to
         // my controller's objects (as Miss Fortune, Captain 162) — units, gear
         // and runes on the board and legends in their Legend Zone, either

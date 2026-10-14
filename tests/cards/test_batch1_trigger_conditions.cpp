@@ -720,8 +720,14 @@ TEST_F(Batch1TriggerConditions, WraithOfEchoes_OnlyTheFirstDeathOfTheTurnTrigger
     auto wraith = addUnit(P1, kWraithOfEchoes);
     auto dead = vanilla(P1);
     stock(P1);
+    // The trigger is fired by hand: set the turn's count of friendly deaths
+    // the death would have set (testing phase B6: the condition is the turn's
+    // first friendly death, PlayerState::unit_deaths_this_turn — it used to be
+    // the card's own "performed" mark).
+    state.player(P1).unit_deaths_this_turn = 1;
     EXPECT_TRUE(fire(wraith, TriggerType::WhenAFriendlyUnitDies, dead));
     EXPECT_EQ(handSize(P1), 1);
+    state.player(P1).unit_deaths_this_turn = 2;
     EXPECT_FALSE(fire(wraith, TriggerType::WhenAFriendlyUnitDies, dead));
     EXPECT_EQ(handSize(P1), 1);
 }

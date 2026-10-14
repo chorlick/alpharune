@@ -2243,14 +2243,17 @@ TEST_F(VerifyCardsTest, JayceBrilliantInventor_IsAskedAgainAfterNewChoicesAndSti
         if (!rechosen && live && !live->mutableState().chain.items.empty()) {
             rechosen = true;
             auto& st = live->mutableState();
-            EXPECT_EQ(st.getObject(jayce).card_counters["__jayce_first_gear_turn"],
-                      st.turn.turn_number + 1) << "stamped as the ability went on the chain";
             live->testHook_executor().makeNewChoices(st.chain.items.back().id);
         }
         for (const auto& i : legal)
             if (i.type == IntentType::PassPriority) return i;
         return legal.front();
     });
+    // The play is announced by hand: count it as the announcement would
+    // (testing phase B6: the condition is the turn's first non-token gear
+    // play, PlayerState::nontoken_gear_plays_this_turn; the old test checked
+    // a stamp of Jayce's own, which is gone).
+    state.player(P1).nontoken_gear_plays_this_turn = 1;
     withEngine([&](GameEngine& e) {
         live = &e;
         e.testHook_executor().queueTriggeredAbility(jayce, P1, TriggerType::WhenYouPlayACard, gear);
@@ -2265,6 +2268,7 @@ TEST_F(VerifyCardsTest, JayceBrilliantInventor_IsAskedAgainAfterNewChoicesAndSti
     // A second non-token gear this turn: not "the first time", nothing triggers.
     o(second).is_exhausted = true;
     auto gear2 = addGear(P1, kSerratedDirk);
+    state.player(P1).nontoken_gear_plays_this_turn = 2;
     EnginePathAgent again(EnginePathAgent::accepting());
     fireTriggerThroughEngine(jayce, TriggerType::WhenYouPlayACard, &again, gear2);
     EXPECT_TRUE(again.prompts.empty()) << "the second gear this turn does not trigger";

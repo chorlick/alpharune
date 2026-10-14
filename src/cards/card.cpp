@@ -89,6 +89,11 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
     // is judged for each play, GameEngine::accelerateAvailable.)
     counters.erase(kAccelerateDecided);
     counters.erase(kAccelerateFromHand);
+    // "The first time I ... each turn" belongs to the object's life on the
+    // board: played again, it is a new object (CR 124.1).
+    if (card)
+        for (TriggerType t : card->triggerTypes())
+            if (card->firstTimeEachTurn(t)) counters.erase(firstTimeKey(t));
     // "Played from facedown" belongs to one play too (GameEngine::
     // executePlayFromHidden stamps it right after this): a card returned and
     // played again the same turn is not bound to that battlefield (CR

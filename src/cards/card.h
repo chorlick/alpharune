@@ -1089,6 +1089,19 @@ public:
     /// still waiting to be finalized, a further event does not trigger it.
     virtual bool triggersOncePerBatch(TriggerType /*trigger*/) const { return false; }
 
+    /// "The first time I <event> each turn": true makes `trigger` trigger only
+    /// at the first event of the turn that meets its condition (after
+    /// triggerCondition), whether or not that ability then resolved
+    /// (TriggerManager::fireTrigger stamps the object; CR 383.1). For an event
+    /// of the object itself. A "first time" that counts a player's events
+    /// ("a friendly unit dies") reads the turn's count in triggerCondition
+    /// instead, since the card need not have been there for the first one.
+    virtual bool firstTimeEachTurn(TriggerType /*trigger*/) const { return false; }
+    /// The card_counters key of that stamp (turn + 1).
+    static std::string firstTimeKey(TriggerType trigger) {
+        return "__first_time_" + std::to_string(static_cast<int>(trigger));
+    }
+
     /// An Equipment whose effect text is a copy of its bearer's text ("As this
     /// is attached to a unit, copy that unit's text to this Equipment's effect
     /// text" — Svellsongur, CR 479.1.d). Effect text speaks for the bearer, so

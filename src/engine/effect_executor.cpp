@@ -565,10 +565,13 @@ void EffectExecutor::killObject(GameObjectId target) {
         // (GameEngine::killUnit): a kill is a kill.
         state_.turn.any_unit_died_this_turn = true;
         state_.player(controller).unit_died_this_turn = true;
+        ++state_.player(controller).unit_deaths_this_turn;
         {
             // "During your Beginning Phase" (CR 315.2; isBeginningPhase).
-            if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
+            if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller) {
                 state_.player(controller).unit_died_in_beginning_this_turn = true;
+                ++state_.player(controller).unit_deaths_in_beginning_this_turn;
+            }
         }
         events_.emit(UnitDiedEvent{target, controller,
             was_at.value_or(BaseLocation{controller}), might, obj.last_known.killed_by});
@@ -628,6 +631,7 @@ void EffectExecutor::drawCards(PlayerId player, int count) {
         drawn++;
     }
     if (drawn > 0) {
+        state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
         state_.player(player).draws_this_turn += drawn;
         events_.emit(CardsDrawnEvent{player, drawn});
     }
@@ -1433,6 +1437,7 @@ void EffectExecutor::drawHeldCard(PlayerId player, GameObjectId card, bool seen_
     else
         RIFT_TRACE_PRIVATE(events_, player, "  DREW: " + obj.name + " (id=" +
                                         toString(card) + ")");
+    state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
     state_.player(player).draws_this_turn += 1;
     events_.emit(CardsDrawnEvent{player, 1});
 }
@@ -2556,6 +2561,7 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
     }
 
     if (!chosen_cards.empty()) {
+        state_.player(player).draws_before_last_draw = state_.player(player).draws_this_turn;
         state_.player(player).draws_this_turn += static_cast<int>(chosen_cards.size());
         events_.emit(CardsDrawnEvent{player, static_cast<int>(chosen_cards.size())});
     }

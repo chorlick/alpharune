@@ -45,6 +45,12 @@ constexpr CardDefId kSunDisc = 21;
 constexpr CardDefId kLegionRearguard = 10;   // Fury, 2 Energy, [Accelerate]
 constexpr CardDefId kRekSaiBreacher = 352;
 constexpr CardDefId kEzrealProdigy = 470;
+constexpr CardDefId kWraithOfEchoes = 118;
+constexpr CardDefId kLucianMerciless = 435;
+constexpr CardDefId kDravenAudacious = 469;
+constexpr CardDefId kShardOfUndoing = 736;
+constexpr CardDefId kJayceBrilliantInventor = 855;
+constexpr CardDefId kFrigidJewel = 636;
 
 class Batch4bTest : public CardTestFixture {
 protected:
@@ -691,6 +697,136 @@ TEST_F(Batch4bTest, D58_AnEffectPlayThatPaysTheCostOffersAccelerateWithIt) {
     EXPECT_FALSE(o(rearguard).is_exhausted);
     EXPECT_EQ(ps(P1).rune_pool.energy, 0);
     EXPECT_EQ(ps(P1).rune_pool.universal_power, 0);
+}
+
+// ─── B6  "The first time ... each turn" counts the turn's events ────────────
+// CR 383.1: "the [Nth] time" followed by an event is the trigger condition;
+// 383.1.b's Wraith of Echoes example. The first such event of the turn is the
+// first, whether or not the card was there for it, and an ability that
+// triggered but never resolved still was the first time.
+TEST_F(Batch4bTest, B6_WraithOfEchoes_AFriendlyDeathBeforeItEnteredWasTheFirst) {
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kShipyardSkulker);
+    auto early = addUnit(P1, kShipyardSkulker, 2);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(early); });
+    addUnit(P1, kWraithOfEchoes, 0);
+    auto later = addUnit(P1, kShipyardSkulker, 2);
+    const int hand = handSize(P1);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(later); });
+    EXPECT_EQ(handSize(P1), hand) << "the second friendly death of the turn";
+}
+
+TEST_F(Batch4bTest, B6_WraithOfEchoes_TheFirstFriendlyDeathDraws) {
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kShipyardSkulker);
+    addUnit(P1, kWraithOfEchoes, 0);
+    auto a = addUnit(P1, kShipyardSkulker, 2);
+    auto b = addUnit(P1, kShipyardSkulker, 2);
+    const int hand = handSize(P1);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(a); });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(b); });
+    EXPECT_EQ(handSize(P1), hand + 1);
+}
+
+// "The first time I conquer each turn": an ability that triggered and was
+// taken off the chain without resolving (countered) was the first time.
+TEST_F(Batch4bTest, B6_LucianMerciless_ASecondConquerIsNotTheFirstEvenIfTheFirstNeverResolved) {
+    auto lucian = addUnit(P1, kLucianMerciless, 0, 0);
+    size_t items_second = 99;
+    withEngine([&](GameEngine& e) {
+        auto& ex = e.testHook_executor();
+        ex.queueTriggeredAbility(lucian, P1, TriggerType::WhenIConquer);
+        auto& chain = e.mutableState().chain.items;
+        ASSERT_EQ(chain.size(), 1u);
+        chain.clear();   // countered before it resolved
+        ex.queueTriggeredAbility(lucian, P1, TriggerType::WhenIConquer);
+        items_second = chain.size();
+        chain.clear();
+    });
+    EXPECT_EQ(items_second, 0u);
+}
+
+TEST_F(Batch4bTest, B6_DravenAudacious_ASecondCombatWinIsNotTheFirst) {
+    auto draven = addUnit(P1, kDravenAudacious, 0, 0);
+    size_t items_second = 99;
+    withEngine([&](GameEngine& e) {
+        auto& ex = e.testHook_executor();
+        ex.queueTriggeredAbility(draven, P1, TriggerType::WhenIWinCombat);
+        auto& chain = e.mutableState().chain.items;
+        ASSERT_EQ(chain.size(), 1u);
+        chain.clear();
+        ex.queueTriggeredAbility(draven, P1, TriggerType::WhenIWinCombat);
+        items_second = chain.size();
+        chain.clear();
+    });
+    EXPECT_EQ(items_second, 0u);
+}
+
+// "The first time I conquer each turn" is of this object: a Lucian that left
+// the board and was played again is a new object (CR 124.1) whose first
+// conquer is a first time.
+TEST_F(Batch4bTest, B6_LucianMerciless_ANewObjectHasItsOwnFirstTime) {
+    auto lucian = addUnit(P1, kLucianMerciless, 0, 0);
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().queueTriggeredAbility(lucian, P1, TriggerType::WhenIConquer);
+        e.mutableState().chain.items.clear();
+    });
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.bounceToHand(lucian); });
+    ASSERT_TRUE(inHand(P1, lucian));
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) {
+        ex.playIgnoringCost(P1, lucian, LocationId{BattlefieldLocation{bfId(0)}});
+    });
+    ASSERT_TRUE(onBoard(lucian));
+    size_t items = 0;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().queueTriggeredAbility(lucian, P1, TriggerType::WhenIConquer);
+        items = e.mutableState().chain.items.size();
+        e.mutableState().chain.items.clear();
+    });
+    EXPECT_EQ(items, 1u);
+}
+
+// "When you play me or the first time you play a non-token gear each turn":
+// a gear played before Jayce entered was the first.
+TEST_F(Batch4bTest, B6_JayceBrilliantInventor_AGearPlayedBeforeHeEnteredWasTheFirst) {
+    playThroughEngine(addToHand(P1, kSunDisc));
+    auto jayce = addUnit(P1, kJayceBrilliantInventor, 0);
+    gear(P1, kSunDisc, /*exhausted=*/true);   // something to ready
+    auto second = addToHand(P1, kSunDisc);
+    std::vector<std::string> lines = traced([&] { playThroughEngine(second); });
+    (void)jayce;
+    EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Jayce, Brilliant Inventor"));
+}
+
+// "The first time a friendly unit dies during your Beginning Phase each turn".
+TEST_F(Batch4bTest, B6_ShardOfUndoing_ADeathBeforeItEnteredWasTheFirst) {
+    state.turn.phase = TurnPhase::BeginningStep;
+    state.turn.turn_player = P1;
+    auto early = addUnit(P1, kShipyardSkulker, 2);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(early); });
+    gear(P1, kShardOfUndoing);
+    auto later = addUnit(P1, kShipyardSkulker, 2);
+    auto theirs = addUnit(P2, kShipyardSkulker, 2);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.killObject(later); });
+    EXPECT_TRUE(onBoard(theirs)) << "not the first friendly death of that Beginning Phase";
+}
+
+// The same root, Frigid Jewel 636: "When you draw your second card each turn".
+TEST_F(Batch4bTest, B6_FrigidJewel_AfterTheSecondDrawALaterDrawDoesNotTrigger) {
+    for (int i = 0; i < 6; ++i) addToDeck(P1, kShipyardSkulker);
+    addUnit(P1, kShipyardSkulker, 2);
+    resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.drawCards(P1, 2); });
+    gear(P1, kFrigidJewel);
+    std::vector<std::string> lines =
+        traced([&] { resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.drawCards(P1, 1); }); });
+    EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Frigid Jewel")) << "the third card";
+}
+
+TEST_F(Batch4bTest, B6_FrigidJewel_TwoCardsDrawnAtOnceIncludeTheSecond) {
+    for (int i = 0; i < 6; ++i) addToDeck(P1, kShipyardSkulker);
+    addUnit(P1, kShipyardSkulker, 2);
+    gear(P1, kFrigidJewel);
+    std::vector<std::string> lines =
+        traced([&] { resolveThroughEngine([&](EffectExecutor& ex, GameState&) { ex.drawCards(P1, 2); }); });
+    EXPECT_TRUE(anyLineHas(lines, "TRIGGER: Frigid Jewel"));
 }
 
 }  // namespace riftbound::test::batch_4b

@@ -26,43 +26,22 @@ public:
         return it == g.string_state.end() ? "" : it->second;
     }
 
-    // "As you play this, name a tag." The controller names it: the ability
-    // goes through the chain as the card is played (AsYouPlayMe) and offers
-    // the tags that are public knowledge — on units on the board, on the
-    // legends and Chosen Champions, and on unit cards in trash or banishment —
-    // the opponent's first, most common first. At most kMaxTagChoices are
-    // offered (the int-coded MakeChoice answers have 16 slots).
-    TriggerType triggerType() const override { return TriggerType::AsYouPlayMe; }
-    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+    // "As you play this, name a tag." Named as the card is played (CR 355.1):
+    // no chain item, no priority window, before its cost. Any tag of the
+    // game's list may be named (CR 763, 763.1), not only those on cards the
+    // player can see (testing phase D46).
+    void asYouPlayChoices(CardContext& ctx) override {
         if (!ctx.state.objectExists(ctx.source)) return;
-        const auto tags = nameableTags(ctx.state, ctx.controller);
-        auto name_it = [&](const std::string& tag) {
-            ctx.state.getObject(ctx.source).string_state["named_tag"] = tag;
-            RIFT_TRACE(ctx.events, "THE LIST: named tag \"" + tag + "\"");
-        };
-        if (tags.empty()) {
-            RIFT_TRACE(ctx.events, "THE LIST: no tag to name");
-            return;
-        }
-        if (!ctx.state.chain.resuming.has_value()) {   // no chain item to suspend on
-            name_it(tags.front());
-            return;
-        }
-        auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == kNamed) return;
-        if (ri.resume_point != kAsking) {
-            std::vector<Intent> options;
-            for (size_t i = 0; i < tags.size(); ++i)
-                options.push_back(valChoice(ctx.controller, static_cast<int>(i),
-                                            "Name the tag: " + tags[i]));
-            ctx.executor.requestChoice(ctx.controller, std::move(options), "The List: name a tag");
-            ri.resume_point = kAsking;
-            return;
-        }
-        int picked = takenValue(ctx, 0);
-        if (picked < 0 || picked >= static_cast<int>(tags.size())) picked = 0;
-        ri.resume_point = kNamed;
-        name_it(tags[static_cast<size_t>(picked)]);
+        const auto& tags = allTags();
+        std::vector<std::string> labels;
+        labels.reserve(tags.size());
+        for (const auto& t : tags) labels.push_back("Name the tag: " + t);
+        const int picked = ctx.executor.chooseValueNow(ctx.controller, labels,
+                                                       "The List: name a tag");
+        const std::string& tag = tags[static_cast<size_t>(
+            picked >= 0 && picked < static_cast<int>(tags.size()) ? picked : 0)];
+        ctx.state.getObject(ctx.source).string_state["named_tag"] = tag;
+        RIFT_TRACE(ctx.events, "THE LIST: named tag \"" + tag + "\"");
     }
 
     std::vector<ActivatedAbility> activatedAbilities() const override {
@@ -108,45 +87,27 @@ public:
         RIFT_TRACE(ctx.events, "THE LIST: -2 [M] this turn to a \"" + tag + "\" unit");
     }
 private:
-    static constexpr int kAsking = 20;
-    static constexpr int kNamed = 21;
-    static constexpr size_t kMaxTagChoices = 16;
-
-    /// Tags `player` can name, most useful first: the opponent's (by how many
-    /// of their units on the board carry each, then alphabetically), then
-    /// the player's own.
-    static std::vector<std::string> nameableTags(const GameState& state, PlayerId player) {
-        std::vector<std::string> out;
-        auto add = [&out](const std::string& tag) {
-            if (out.size() < kMaxTagChoices &&
-                std::find(out.begin(), out.end(), tag) == out.end()) out.push_back(tag);
-        };
-        for (PlayerId side : {opponent(player), player}) {
-            // On the board, most common first.
-            std::map<std::string, int> on_board;
-            for (const auto& [id, obj] : state.objects.onBoard())
-                if (obj.isUnit() && obj.controller == side && obj.location.has_value())
-                    for (const auto& t : obj.tags) on_board[t]++;
-            std::vector<std::pair<std::string, int>> ranked(on_board.begin(), on_board.end());
-            std::stable_sort(ranked.begin(), ranked.end(),
-                             [](const auto& a, const auto& b) { return a.second > b.second; });
-            for (const auto& [tag, n] : ranked) add(tag);
-            // Legend, Chosen Champion, and unit cards in the public piles.
-            const auto& ps = state.player(side);
-            std::set<std::string> rest;
-            auto collect = [&](GameObjectId id, bool units_only) {
-                if (id == kInvalidId || !state.objectExists(id)) return;
-                const auto& obj = state.getObject(id);
-                if (units_only && !obj.isUnit()) return;
-                rest.insert(obj.tags.begin(), obj.tags.end());
-            };
-            collect(ps.legend_zone, false);
-            collect(ps.champion_zone, false);
-            for (auto id : ps.trash) collect(id, true);
-            for (auto id : ps.banishment) collect(id, true);
-            for (const auto& tag : rest) add(tag);
-        }
-        return out;
+    /// The tags that exist in Riftbound (CR 763.1), in that order.
+    static const std::vector<std::string>& allTags() {
+        static const std::vector<std::string> kTags = {
+            "Ahri", "Akali", "Akshan", "Ambessa", "Anivia", "Annie", "Aphelios", "Ashe", "Azir",
+            "Bandle City", "Bard", "Bilgewater", "Bird", "Blitzcrank", "Bomb", "Caitlyn", "Cat",
+            "Darius", "Demacia", "Demon", "Diana", "Dog", "Dr. Mundo", "Dragon", "Draven", "Ekko",
+            "Elite", "Equipment", "Evelynn", "Ezreal", "Fae", "Fiora", "Fizz", "Freljord", "Galio",
+            "Gangplank", "Garen", "Graves", "Heimerdinger", "Hwei", "Icathia", "Illaoi", "Ionia",
+            "Irelia", "Ivern", "Ixtal", "Janna", "Jarvan IV", "Jax", "Jayce", "Jhin", "Jinx",
+            "K'Sante", "Kai'Sa", "Karma", "Karthus", "Katarina", "Kathkan", "Kayle", "Kayn",
+            "Kennen", "Kha'Zix", "Kog'Maw", "LeBlanc", "Lee Sin", "Leona", "Lillia", "Lucian",
+            "Lulu", "Lux", "Malzahar", "Master Yi", "Mech", "Mel", "Miss Fortune", "Mordekaiser",
+            "Morgana", "Mount Targon", "Nami", "Nasus", "Neeko", "Nidalee", "Nilah", "Nocturne",
+            "Noxus", "Orianna", "Ornn", "Piltover", "Pirate", "Poppy", "Poro", "Pyke", "Qiyana",
+            "Recruit", "Rek'Sai", "Rell", "Renata Glasc", "Renekton", "Rengar", "Riven", "Rumble",
+            "Sentinel", "Seraphine", "Sett", "Shadow Isles", "Shen", "Shurima", "Sivir", "Sona",
+            "Soraka", "Spider", "Spirit", "Swain", "Syndra", "Taric", "Teemo", "The Void",
+            "Trifarian", "Tryndamere", "Twisted Fate", "Udyr", "Vayne", "Vex", "Vi", "Viktor",
+            "Volibear", "Warwick", "Xerath", "Xin Zhao", "Yasuo", "Yone", "Yordle", "Yuumi", "Zaun",
+            "Zed", "Ziggs", "Zilean"};
+        return kTags;
     }
     const CardDef def_ = [] {
         CardDef d;

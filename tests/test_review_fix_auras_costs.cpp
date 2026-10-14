@@ -769,7 +769,10 @@ TEST_F(AurasCostsTest, Repeat_PowerComesFromRecyclingTheRuneToTheRuneDeck) {
     EXPECT_FALSE(o(r).is_exhausted);
     const auto& deck = s().player(P1).main_deck;
     EXPECT_EQ(std::find(deck.begin(), deck.end(), r), deck.end()) << "not in the Main Deck";
-    EXPECT_EQ(s().player(P1).power_spent_this_turn, 1);
+    // The base [R] from the pool and the Repeat's Power from the rune: both
+    // are spent (testing phase I3, by design: Power from the pool used not to
+    // count — old expectation 1).
+    EXPECT_EQ(s().player(P1).power_spent_this_turn, 2);
     EXPECT_EQ(o(target).temp_might_bonus, 2) << "the effect ran twice";
 }
 

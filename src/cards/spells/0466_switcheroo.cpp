@@ -34,19 +34,30 @@ public:
                                    .must_be_at_battlefield = true};
     }
     bool needsPlayTimeTargetPair() const override { return true; }
+    // From facedown both units are chosen at the battlefield it was hidden at
+    // (CR 811.1.d.2): playable only with two units there it can choose.
+    bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller, const CardDB&,
+                                 BattlefieldId battlefield) const override {
+        return chooseableUnits(state, controller, [&](const GameObject& o) {
+                   return o.battlefieldId() == std::optional<BattlefieldId>{battlefield};
+               }).size() >= 2;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // chooseableUnits honours "can't be chosen by enemy spells and
         // abilities" for both picks.
         auto first_legal = chooseableUnits(ctx.state, ctx.controller,
             [](const GameObject& o) { return o.isAtBattlefield(); });
+        // Played from facedown: only units at its battlefield (CR 811.1.d.2).
+        first_legal = atHiddenBattlefield(ctx.state, ctx.source, std::move(first_legal));
         auto second_fn = [&](GameObjectId picked_a) {
             std::vector<GameObjectId> out;
             if (!ctx.state.objectExists(picked_a)) return out;
             auto bf_a = ctx.state.getObject(picked_a).battlefieldId();
             if (!bf_a) return out;
-            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.id != picked_a && o.isAtBattlefield() && o.battlefieldId() == bf_a;
-            });
+            return atHiddenBattlefield(ctx.state, ctx.source,
+                chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                    return o.id != picked_a && o.isAtBattlefield() && o.battlefieldId() == bf_a;
+                }));
         };
         auto [a, b] = pickTargetPair(ctx, "Switcheroo", first_legal, second_fn);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)

@@ -16,36 +16,32 @@ class IvernFriendToAll : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
 
-    std::vector<TriggerType> triggerTypes() const override {
-        return {TriggerType::AsYouPlayMe, TriggerType::WhenIConquerOrHold};
-    }
+    TriggerType triggerType() const override { return TriggerType::WhenIConquerOrHold; }
 
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        if (ctx.firing_trigger == TriggerType::AsYouPlayMe) {
-            doChooseTag(ctx);
-        } else if (ctx.firing_trigger == TriggerType::WhenIConquerOrHold) {
-            doScore(ctx);
-        }
+        doScore(ctx);
+    }
+
+    // "As you play me, choose Bird, Cat, Dog, or Poro. I gain that tag."
+    // Chosen as he is played (CR 355.1): no chain item, no priority window
+    // (testing phase D46). Each play chooses afresh: his tags are his printed
+    // ones plus this play's choice.
+    void asYouPlayChoices(CardContext& ctx) override {
+        if (!ctx.state.objectExists(ctx.source)) return;
+        static const std::vector<std::string> kTags = {"Bird", "Cat", "Dog", "Poro"};
+        int mode = ctx.executor.chooseValueNow(ctx.controller, kTags,
+                                               "Ivern, Friend to All: choose a tag");
+        if (mode < 0 || mode >= 4) mode = 0;
+        const std::string& chosen = kTags[static_cast<size_t>(mode)];
+        auto& self = ctx.state.getObject(ctx.source);
+        std::vector<std::string> tags = def_.tags;
+        if (std::find(tags.begin(), tags.end(), chosen) == tags.end()) tags.push_back(chosen);
+        self.tags = tags;
+        RIFT_TRACE(ctx.events, "IVERN FRIEND: chose tag [" + chosen + "]");
     }
 
 private:
-    void doChooseTag(CardContext& ctx) {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        static const std::vector<std::string> kTags = {"Bird", "Cat", "Dog",
-                                                        "Poro"};
-        int mode = pickMode(ctx, "Ivern, Friend to All: choose a tag",
-                            /*num_modes=*/4, kTags);
-        if (mode == -1) return;  // waiting for agent choice
-        if (mode < 0 || mode >= 4) mode = 0;
-        const std::string& chosen = kTags[mode];
-        auto& self = ctx.state.getObject(ctx.source);
-        auto& tags = self.tags;
-        if (std::find(tags.begin(), tags.end(), chosen) == tags.end()) {
-            tags.push_back(chosen);
-        }
-        RIFT_TRACE(ctx.events, "IVERN FRIEND: chose tag [" + chosen + "]");
-    }
 
     void doScore(CardContext& ctx) {
         auto pres = scanFriendlyTags(ctx.state, ctx.controller);

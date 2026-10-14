@@ -1069,7 +1069,6 @@ TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
         {"units/0362_royal_entourage.cpp", {1, "Legends (the Legend Zone)"}},
         {"units/0377_jax_unmatched.cpp", {1, "Equipment you own in any zone, the hand included"}},
         {"units/0432_fiora_peerless.cpp", {1, "its own instances by card id; clears a counter off the board"}},
-        {"battlefields/0274_fortified_position.cpp", {1, "units given its Shield \"this combat\"; clears the memory off the board"}},
         {"units/0716_crimson_pigeons.cpp", {2, "its own instances by card id; combat designations"}},
         {"battlefields/0764_black_flame_altar.cpp", {1, "battlefield cards, which have no location"}},
     };
@@ -1738,7 +1737,8 @@ protected:
         play.player = caster;
         play.card = spell;
         play.targets = {unit};
-        withEngine([&](GameEngine& e) {
+        // The caster's play, on whatever turn the test is in (testing phase B8).
+        withEngineDefaultTurn([&](GameEngine& e) {
             e.testHook_executeIntent(play);
             settleLikeTheEngine(e);
         }, nullptr, nullptr, caster);

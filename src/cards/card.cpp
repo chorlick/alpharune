@@ -83,15 +83,17 @@ void Card::forgetPlayPayments(GameState& state, const Card* card, PlayerId playe
     if (!state.objectExists(object)) return;
     auto& counters = state.getObject(object).card_counters;
     counters.erase(kAdditionalCostPaid);
-    // An [Accelerate] another card gave this play (Rek'Sai, Breacher:
-    // "Friendly units played from anywhere other than a player's hand have
-    // [Accelerate]") is marked on the card as its cost is paid and taken by
-    // the play that enters it. A play that does not enter through
-    // GameEngine::resolvePermanent (an effect play: EffectExecutor::
-    // playPayingCost) left the mark behind, and the card's next play from
-    // hand, with no Rek'Sai on the board, was offered Accelerate. Like any
-    // other per-play flag it is dropped as a play begins.
-    counters.erase(kGrantedAccelerate);
+    // Whether [Accelerate] was decided / paid for a play, and from where the
+    // play came (GameEngine::decideAccelerate): per-play flags, dropped as a
+    // play begins. (Whether a card on the board gives the unit [Accelerate]
+    // is judged for each play, GameEngine::accelerateAvailable.)
+    counters.erase(kAccelerateDecided);
+    counters.erase(kAccelerateFromHand);
+    // "The first time I ... each turn" belongs to the object's life on the
+    // board: played again, it is a new object (CR 124.1).
+    if (card)
+        for (TriggerType t : card->triggerTypes())
+            if (card->firstTimeEachTurn(t)) counters.erase(firstTimeKey(t));
     // "Played from facedown" belongs to one play too (GameEngine::
     // executePlayFromHidden stamps it right after this): a card returned and
     // played again the same turn is not bound to that battlefield (CR
@@ -598,7 +600,10 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
 namespace {
 std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& card,
                                                 const std::vector<GameObjectId>& in) {
-    const int payable = ctx.executor.payableAnyPower(ctx.controller);
+    const bool by_spell = ctx.state.chain.resuming.has_value() &&
+                          ctx.state.chain.resuming->is_spell;
+    const int payable = ctx.executor.payableAnyPower(
+        ctx.controller, by_spell ? SpendFor::Spell : SpendFor::Other);
     const bool ignores = card.ignoresDeflect();
     std::vector<GameObjectId> out;
     out.reserve(in.size());
@@ -615,17 +620,24 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
 // the resolving chain item.
 void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     if (t == kInvalidId || !ctx.state.objectExists(t)) return;
+    // Chosen, then its Deflect paid: a spell paying ahead of its cost judges
+    // what is left with this choice counted (EffectExecutor::payAnyPower).
+    if (ctx.state.chain.resuming.has_value())
+        ctx.state.chain.resuming->chosen_objects.push_back(t);
     if (!card.ignoresDeflect()) {
         const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
         if (cost > 0) {
-            ctx.executor.payAnyPower(ctx.controller, cost);
+            // A spell's Deflect is a cost of playing that spell (CR
+            // 356.2.a.2): Power "to play spells" pays it (testing phase D50).
+            const bool by_spell = ctx.state.chain.resuming.has_value() &&
+                                  ctx.state.chain.resuming->is_spell;
+            ctx.executor.payAnyPower(ctx.controller, cost,
+                                     by_spell ? SpendFor::Spell : SpendFor::Other);
             RIFT_TRACE(ctx.events, "DEFLECT: " + std::string(toString(ctx.controller)) +
                                 " pays " + std::to_string(cost) + " [A] to choose " +
                                 ctx.state.getObject(t).name);
         }
     }
-    if (ctx.state.chain.resuming.has_value())
-        ctx.state.chain.resuming->chosen_objects.push_back(t);
     // "If you've chosen an enemy unit this turn" (Hungry Wolf). A unit is a
     // unit on the board (CR 141.1.a): a unit card picked out of a hand, deck
     // or trash is a card, not an enemy unit.
@@ -768,10 +780,12 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     if (picked.has_value() && !picked->chosen_objects.empty()) {
         t = picked->chosen_objects.front();
     }
-    RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " +
-                         (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
-                                                    : std::string("?")) +
-                         " (id=" + toString(t) + ")");
+    // Only for who may know the card when it is hidden (testing phase D11).
+    RIFT_TRACE_FOR(ctx.events, audienceNaming(ctx.state, ctx.controller, {t}),
+                   "TGT_PICKED: " + label + " = " +
+                       (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
+                                                  : std::string("?")) +
+                       " (id=" + toString(t) + ")");
     commitChoice(ctx, *this, t);
     store(t);
     return t;
@@ -975,7 +989,9 @@ std::vector<GameObjectId> Card::enumerateLegalTargets(
             const int deflect = deflectCostFor(state, controller, id);
             if (deflect > 0) {
                 if (!payable_power.has_value())
-                    payable_power = payableAnyPower(state, controller);
+                    payable_power = payableAnyPower(
+                        state, controller,
+                        def().card_type == CardType::Spell ? SpendFor::Spell : SpendFor::Other);
                 if (deflect > *payable_power) continue;
             }
         }
@@ -1120,9 +1136,10 @@ bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId
 bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms) {
     if (!canPayEquip(ctx.state, ctx.controller, ctx.source, unit, terms)) return false;
     const EquipCost cost = netEquipCost(ctx.state, ctx.controller, ctx.source, unit, terms);
-    if (!resource::pay(ctx.state, ctx.events, ctx.controller, cost.energy, cost.power,
-                       cost.power_any_domain ? Domain::Count : cost.power_domain,
-                       SpendFor::Gear))
+    if (!ctx.executor.payResources(ctx.controller, cost.energy, cost.power,
+                                   resource::maskOf(cost.power_any_domain ? Domain::Count
+                                                                          : cost.power_domain),
+                                   SpendFor::Gear))
         return false;
     if (!payEquipExtraCost(ctx, unit)) return false;
     // The extra cost may have removed either end ("Kill a friendly unit").

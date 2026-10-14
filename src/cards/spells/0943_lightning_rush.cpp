@@ -36,6 +36,16 @@ public:
                 knowledge::shown(ctx.state, GameObjectId::fromRaw(ri.resume_data[i]),
                                  knowledge::only(ctx.controller));
             }
+            // "As you look at me" replacements (Nocturne, Horrifying; D71): a
+            // card that leaves as it is looked at is not one of the three.
+            {
+                std::vector<int32_t> kept;
+                for (auto v : ri.resume_data)
+                    if (ctx.executor.seenOnTopOfDeck(ctx.controller, GameObjectId::fromRaw(v)))
+                        kept.push_back(v);
+                ri.resume_data = kept;
+                if (ri.resume_data.empty()) { ri.resume_point = 2; return; }
+            }
             std::vector<Intent> opts;
             for (auto v : ri.resume_data)
                 opts.push_back(objChoice(ctx.controller, GameObjectId::fromRaw(v)));

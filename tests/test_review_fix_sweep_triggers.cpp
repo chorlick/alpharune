@@ -1738,7 +1738,10 @@ TEST_F(SweepTriggersTest, DelayedAbility_WatchedPlayerIsNotItsController) {
     withEngine([&](GameEngine& e) { e.testHook_scoreHold(P1, BattlefieldId::fromRaw(0)); e.testHook_runChain(); });
     EXPECT_EQ(obj(taken).zone, ZoneType::Banishment);
 
-    // P2 holds a battlefield with a Blue Sentinel there.
+    // P2 holds a battlefield with a Blue Sentinel there, on P2's turn (the
+    // test named P2 as turn player and ran on P1's turn until withEngine
+    // stopped ignoring that: testing phase B8).
+    state.turn.turn_player = P2;
     addUnit(P2, kBlueSentinel, 0, 1);
     state.battlefields[1].controller = P2;
     int ashe_items = 0;
@@ -1903,6 +1906,7 @@ TEST_F(SweepTriggersTest, PlayIgnoringCost_HonoursEntersReadyEffects) {
     stockDeck(P2, 2);
     playThroughEngine(addToHand(P2, kConfront));
     auto after_confront = addToHand(P2, kLoyalPoro);
+    state.turn.turn_player = P2;   // the turn the test names (testing phase B8)
     withEngine([&](GameEngine& e) { e.testHook_executor().playIgnoringCost(P2, after_confront); },
                nullptr, nullptr, P2);
     EXPECT_FALSE(obj(after_confront).is_exhausted);

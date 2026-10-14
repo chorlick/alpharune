@@ -440,10 +440,10 @@ TEST_F(JhinDeckTest, UncheckedPower_ExhaustsFriendliesAndDealsTwelveAtBFs) {
 TEST_F(JhinDeckTest, TimeWarp_QueuesExtraTurn) {
     auto src = addToHand(P1, 122);
     EffectExecutor exec(state, events, card_db);
-    int queue_before = state.player(P1).additional_turns.size();
+    int queue_before = state.additionalTurnsOf(P1);
     invokeOnResolve(src, 122, P1, {}, exec);
-    EXPECT_EQ(state.player(P1).additional_turns.size(), queue_before + 1);
-    EXPECT_EQ(state.player(P1).additional_turns.back(), P1);
+    EXPECT_EQ(state.additionalTurnsOf(P1), queue_before + 1);
+    EXPECT_EQ(state.turn.additional_turn_queue.front(), P1);
 }
 
 // ─── Production Surge ──────────────────────────────────────────────────────

@@ -54,59 +54,30 @@ All items closed: `plans/completed/10-testing-phase.md` (report: `plans/reports/
 
 Batch 4 is split so that its card-level part can run beside the engine-flow batches:
 - **4a (cards, validator, test tooling; started 2026-10-11 beside batch 1):** all 23 items closed (V1, D12, D18, D20, D45, D47, D52, D55, D56, D59, D62, D65, D66, D69, D70, D73, D75, D81, F3, F4, F9, A1, A2): `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-4a.md`). D73 was also listed under batch 2; it is closed here.
-- **4b (generators, payments, log audience, questions; after the engine-flow batches):** D9, D11, D25, D28, D37, D43, D46, D48, D50, D58, D63, D71, D74, D80.
+- **4b (generators, payments, log audience, questions; after the engine-flow batches):** D9, D11, D25, D28, D37, D43, D46, D48, D50, D58, D63, D71, D74, D80. All closed, with B3, B6-B8, G1, G2, G4, G18, G21-G25, H1, H2, I3 and the batch-4b part of H3: `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-4b.md`).
 
-- [ ] **D9** Every payment that is not a card's base cost: the engine chooses which runes are exhausted and recycled — LIKELY
-- [ ] **D11** Hidden information in log lines whose audience is both players — CERTAIN
-- [ ] **D25** Hidden cards (Guards!, Hidden Blade, Edge of Night, Pyke, Returned, Wages of Pain, Temporal Breach): a facedown card is never offered in its controller's own Neutral Open State — LIKELY / CERTAIN
-- [ ] **D28** Deathgrip: playable with a single friendly unit (no "another friendly unit" to choose) — QUESTION
-- [ ] **D37** Rengar, Trophy Hunter: the enemy-occupied battlefield is never a play location in a Neutral Open state — LIKELY
-- [ ] **D43** Ezreal, Prodigy + Thousand-Tailed Watcher (any Accelerate): Accelerate is not an "optional additional cost" for Ezreal's discount — CERTAIN
-- [ ] **D46** The List: "As you play this, name a tag" is run as a triggered ability with priority windows, and only tags already public can be named — LIKELY / QUESTION
-- [ ] **D48** Temporal Breach (and every effect that plays a unit "ignoring its cost"): Accelerate is never offered — LIKELY
-- [ ] **D50** Daughter of the Void: its "[A]. Use only to play spells" cannot pay the Deflect of a spell — CODE-ONLY / LIKELY
-- [ ] **D58** Rek'Sai, Breacher + Void Burrower: a unit played from banishment is not offered Accelerate — CERTAIN
-- [ ] **D63** Rengar, Trophy Hunter in the Champion Zone is never offered as an [Ambush] play — LIKELY
-- [ ] **D71** Nocturne, Horrifying: the "As you look at or reveal me" replacement is a triggered ability on the chain — CERTAIN / QUESTION
-- [ ] **D74** Facebreaker from facedown: offered with no friendly + enemy pair at its battlefield (and as up to 20 identical intents) — CERTAIN
-- [ ] **D80** Lonely Poro: "died alone" when every other friendly unit there died in the same damage step — QUESTION
 
 
 ## Found by batch 1 (2026-10-11, `plans/reports/batch-1.md` sections 5 and 11) — each is in the batch named
 
 - [ ] **B2** (batch 3) `GameEngine::executePlayFromHidden` never clears `__played_from_facedown`; a card played from facedown, returned and played from hand the same turn can read a stale mark. One helper for the three "from face down" cards and an engine-side clear — CODE-ONLY
-- [ ] **B3** (batch 4b) Immortal Phoenix 37: `WhenYouKillAUnitWithASpell` is also dispatched to a Phoenix on the board, which is not "play me from your trash" — CODE-ONLY
 - [ ] **B5** (batch 3) Zed, From the Shadows 810: the token's destination is chosen at resolution (no finalize pass) — CODE-ONLY
-- [ ] **B6** (batch 4b) "First time each turn" cards (Wraith of Echoes, Lucian, Merciless, Draven, Audacious) count from their own "performed" counter: one that enters after the event already happened this turn still triggers on the next — CODE-ONLY
-- [ ] **B7** (batch 4b) `kMaxDamageOptions` 64 / `kMaxSearchNodes` 20,000 cap the combat-damage assignments offered: on a crowded board legal assignments are withheld — CODE-ONLY
-- [ ] **B8** (batch 4b) `CardTestFixture::withEngine` keeps the first `turn_player` silently on a second call in one test: make it throw — tooling
 - [ ] **B9** (batch 2, done: D60, D76, D23 closed by batch 1, pinned by `Batch2Combat.D60_*`, `.D76_*`, `.D23_*`) Verify against their cited games whether batch 1 closed D60, D76, D23; (batch 4a, done: pinned by `Batch4aTest.D55_LeBlanc_TheTemporaryKillDoesNotHappenAtHerBattlefield`) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
 
 ## Found by reading 19 ISMCTS games (2026-10-11, `plans/reports/test-games19.md`, detail in `docs/testing-findings-games19-2026-10.md` section 4) — seen on the binary BEFORE batch 1; each is first re-checked on the current tree
 
-- [ ] **G1** (batch 4b) 1v1: the player going first is made to skip the first draw. CR 487.7 / 488.7 give 1v1 only the second player's extra rune; the no-draw sentence is in 489.7-491.7 (multiplayer). The engine cites "CR 482.7" (old numbering); `BurnOutScoringTest.FirstPlayerFirstTurn_DrawPhaseSkipped` pins it — CERTAIN (all 19)
-- [ ] **G2** (batch 4b) Time Warp on the opponent's turn: the Additional Turn replaces the owner's regular turn instead of being inserted before it (CR 735, 737) — the spell does nothing — CERTAIN (g11)
-- [ ] **G4** (batch 4b) Setup: the battlefield is an agent decision; a Duel (CR 487.5) picks at random, a Match (488.5) chooses — which mode is an engine game? — QUESTION (to the project) (all)
 - [ ] **G14** (batch 3) A chosen target that left the board and came back is still acted on: Amateur Recital moved a unit Temporal Breach had banished and replayed (CR 359.3.e.4 in terms) — CERTAIN (g14)
 - [ ] **G15** (batch 3) Activated abilities with a target or mode pay their whole cost before the choice (Heart of the Tempest, Defender of Tomorrow, Matriarch of War, Bounty Hunter; CR 403-405) — CERTAIN (g06 g16 g18)
 - [ ] **G16** (batch 3) A play-time-target spell played by Fizz, Trickster is paid for before its target is chosen (Punch First) — CERTAIN (g12)
 - [ ] **G17** (batch 3) Emperor's Divide: the units to move are chosen after RESOLVE; the unit named at the play only stands for the battlefield — LIKELY (g10)
 - [ ] **G19** (batch 3) Defender of Tomorrow is activated, paid and put on the chain with nothing to choose (known root D67) — CERTAIN (g16)
 - [ ] **G20** (batch 3) Public Execution is offered, paid ([5] + 2 Power by Flow) and put on the chain with no legal pair (known root D8 / F7; the gate must test pairs) — CERTAIN (g16)
-- [ ] **G18** (batch 4b) Defender of Tomorrow: "Ready a gear" refuses a ready gear (its pick list is narrower than its text) — CERTAIN (g16)
-- [ ] **G21** (batch 4b) Kennen, Keeper of Balance played from facedown stuns a unit in the enemy base (known root D70; CR 811.1.d.3) — CERTAIN (g04)
-- [ ] **G22** (batch 4b) Hidden units (Tornado Warrior, Tideturner) are offered and played onto Rockfall Path — CERTAIN (g08)
-- [ ] **G23** (batch 4b) A Brush that replaced Vilemaw's Lair keeps "Units can't move from here to base" (slot flags survive the replacement; Rockfall Path / Forgotten Monument by code) — LIKELY (g02)
-- [ ] **G24** (batch 4b) Green Father's "may" is withheld when the battlefield is already a Brush — LIKELY (g02)
-- [ ] **G25** (batch 4b) Astral Heron: with the first card of the turn countered, no card of that turn triggers it — QUESTION (g08)
 - [ ] **G27** (batch 3) Sightings that widen known items (report section "Known items seen again"): Gold's "Kill this" paid at resolution (D38), [Add] as a chain item on five more cards (D30/D31), a Flow replay offered at Focus (D5, batch 2), Astral Heron's discount spent on the opponent's turn (D18), Defy takes the top item only (D21), Relentless Pursuit joins D3 / D41 — each named card gets its own test when its item is fixed
 - [ ] **G28** (after the batches) ISMCTS at 50 simulations plays near-uniformly (End Turn with ready runes, helpful effects on enemy units, option [0] of two-option prompts favoured, opponent's objects chosen at Targon's Peak): check whether the search tells own from opposing objects in a prompt and whether option order biases it — agents, observation
 
 ## Found by batch 4a (2026-10-14, `plans/reports/batch-4a.md` sections 8 and 9)
 
-- [ ] **H1** (batch 4b) Fortified Position: its "this combat" Shield is applied by the card's `applyPassiveAura`, so it ends if the battlefield card is replaced (Green Father) mid-combat; an effect a resolved ability created should outlast its source — CODE-ONLY
-- [ ] **H2** (batch 4b) `EffectExecutor::healObject` has no in-play guard: it emits `"healed"` for an object that has left the board — CODE-ONLY
-- [ ] **H3** (batch 4b) Verify against their cited games and pin: G23 and G21 (probably closed by 4a: battlefield rules re-read on replacement; Kennen's play effect bound to his battlefield); (batch 3) B2's stale-mark half (closed by `Card::forgetPlayPayments`; the one-helper half stays open)
+- [ ] **H3** (batch 3) Verify and pin B2's stale-mark half (closed by `Card::forgetPlayPayments`; the one-helper half stays open). (The batch-4b part — G21 and G23 verified against batch 4a's fixes and pinned: Batch4bTest.G21_KennenFromFacedown_AUnitInTheEnemyBaseIsNotOffered, .G23_ABrushOverVilemawsLairLetsUnitsMoveToBase — is done.)
 
 ## Batch 5 — Trainer-facing engine work (owner, 2026-10-14: settled before v6 starts; trainer plan `../riftbound-trainer/plans/README.md` section 0)
 
@@ -118,7 +89,6 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
 
-- [ ] **I3** (batch 4b) Sivir, Mercenary: `power_spent_this_turn` counts only Power from a recycled rune; Power paid from the pool (Gold's [A], floating Power) is not counted as spent — CODE-ONLY
 - [ ] **I4** (batch 5) Throughput is still about 12% below the pre-batch-1 rate (batch 2: 520 -> 650 games/s): the card aura hooks (`applyPassiveAura` for every card in play each Cleanup), `refreshFlowGrants` (rebuilt each pass), the two checksums and the StateSettled emission; recovering it needs a per-hook declaration of what an aura reads, or cheaper hooks. Game throughput matters for training (owner) — perf
 - [ ] **T6** Derived facts as exact inputs (owner discussion, 2026-10-14: what the engine computes the network should not have to re-derive, and what a player could infer about hidden cards must be available): expose to the observation, per observer — effective Might and keywords after continuous effects, damage and lethal-on-board, combat designations and the combat in progress, each player's spendable resources (ready runes, floating Energy / Power, restricted pools) and the open timing window, and the opponent's legal card pool (cards of their legend's Domains, released sets, no banned card, minus copies already seen beyond the copy limit). Test: each fact matches what the engine itself uses for its rules on every decision of a few hundred games — trainer items 8-10
 
@@ -132,3 +102,9 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 - [ ] **J2** (batch 3) CR 323.11 / 323.12 apply in every Neutral Open State Cleanup; only `advanceMainPhase` begins staged showdowns and combats, so one staged outside the Main Phase waits for it — CODE-ONLY
 - [ ] **J3** (batch 3) CR 468.3.d.1 decides "stage another combat" from who is present at the result; `combatResolutionStep` decides it from who is present after the 468.4 chain — CODE-ONLY
+
+## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
+
+- [ ] **K1** (batch 3) An effect play that pays a card's cost loses that play's paid flags: `EffectExecutor::playPayingCost` pays through `payAdditionalPlayCosts` (setting `kAdditionalCostPaid` / an `OptionalAdditionalCost::paid_flag`), then the shared play path runs `Card::forgetPlayPayments` and erases them, so "if you paid the additional cost" cards played by Void Burrower or Wild Claw read it as unpaid (Zaun Punk, Bard, Mercurial, Safety Inspector) — CODE-ONLY
+- [ ] **K2** (after the owner's answer to G4) If an engine game is a Match game (CR 488.5), `GameRunner` / `BatchRunner` need series support so games two and three exclude battlefields already used (488.5, 488.6) — waits on G4
+- [ ] **K3** (orchestrator) Throughput of master after batch 4b not measured (the run lane was busy): 1,000 games, 1 thread, fiora vs yi_rebuild, three alternating runs, master before and after 4b, on an idle machine — perf

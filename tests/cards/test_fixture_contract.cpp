@@ -57,6 +57,20 @@ TEST_F(FixtureContractTest, HandSetControlNeedsAUnitToSurviveACleanup) {
 
 // ── 9.D8: Predict with no picker keeps the card ─────────────────────────────
 
+// withEngine sets the turn player only while the game has not started
+// (phase Setup); afterwards the state's turn player stands. A turn player a
+// test NAMES that differs from the one standing would be ignored silently, so
+// it is refused (testing phase B8).
+TEST_F(FixtureContractTest, WithEngineRefusesATurnPlayerItWouldIgnore) {
+    withEngine([](GameEngine&) {}, nullptr, nullptr, P1);
+    EXPECT_EQ(state.turn.turn_player, P1);
+    EXPECT_THROW(withEngine([](GameEngine&) {}, nullptr, nullptr, P2), std::logic_error);
+    EXPECT_NO_THROW(withEngine([](GameEngine&) {}, nullptr, nullptr, P1)) << "the same one";
+    EXPECT_NO_THROW(withEngine([](GameEngine&) {})) << "none named";
+    // (The helpers that play a card pass its controller only as a default, so
+    // P2 may play a card on P1's turn: the rest of the suite does that.)
+}
+
 TEST_F(FixtureContractTest, PredictWithNoPickerKeepsTheCard) {
     addToDeck(P1, kInvalidId);
     auto top = addToDeck(P1, kInvalidId);

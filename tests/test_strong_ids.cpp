@@ -384,7 +384,7 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0876_wild_claw.cpp", 3},
         {"src/cards/spells/0894_decree_of_discord.cpp", 2},
         {"src/cards/spells/0927_shuriken_flip.cpp", 1},
-        {"src/cards/spells/0943_lightning_rush.cpp", 3},
+        {"src/cards/spells/0943_lightning_rush.cpp", 4},   // +1: the look's replacement filter (D71)
         {"src/cards/units/0109_dr_mundo_expert.cpp", 1},
         {"src/cards/units/0141_kinkou_monk.cpp", 2},
         {"src/cards/units/0347_rell_magnetic.cpp", 1},

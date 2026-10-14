@@ -92,8 +92,15 @@ void GameEngine::initSubsystems() {
     effect_executor_->setPlayCostFns(
         [this](PlayerId p, GameObjectId card) { return canAfford(p, card); },
         [this](PlayerId p, GameObjectId card) {
-            return payCardCost(p, card, payAdditionalPlayCosts(p, card, 0));
+            // [Accelerate] is decided with the play's other choices, before the
+            // cost, and paid with it (CR 355.1.a; testing phase D58).
+            auto adj = payAdditionalPlayCosts(p, card, 0);
+            adj = decideAccelerate(p, card, adj, 0);
+            return payCardCost(p, card, adj);
         });
+    effect_executor_->setOfferAccelerate([this](PlayerId p, GameObjectId card, bool from_hand) {
+        return offerAccelerateOnItsOwn(p, card, from_hand);
+    });
     chain_manager_->setEffectExecutor(effect_executor_.get());
     // CR 334: the chain's loop handles outstanding tasks — the Cleanup —
     // before it finalizes, after every finalization and after every
@@ -359,26 +366,8 @@ const StepResult& GameEngine::resumeFromSnapshot(GameState snapshot_state,
                 runTurnFromPhase(turn_player, resume_at);
             }
             if (!state_.game_over) {
-                // Apply the same turn-transition logic runTurnLoop uses.
-                auto& p1 = state_.players[0];
-                auto& p2 = state_.players[1];
-                if (!p1.additional_turns.empty()) {
-                    auto next = p1.additional_turns.front();
-                    p1.additional_turns.erase(p1.additional_turns.begin());
-                    state_.turn.turn_player = next;
-                    state_.turn.is_additional_turn = true;
-                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-                } else if (!p2.additional_turns.empty()) {
-                    auto next = p2.additional_turns.front();
-                    p2.additional_turns.erase(p2.additional_turns.begin());
-                    state_.turn.turn_player = next;
-                    state_.turn.is_additional_turn = true;
-                    RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-                } else {
-                    state_.turn.turn_player = opponent(state_.turn.turn_player);
-                    state_.turn.is_additional_turn = false;
-                }
-                state_.turn.turn_number++;
+                // The same turn transition runTurnLoop makes.
+                advanceTurnQueue();
                 runTurnLoop();
             }
 
@@ -502,11 +491,12 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
 
 void GameEngine::setupBattlefields(const DeckSubmission& deck1,
                                      const DeckSubmission& deck2) {
-    // Each player picks one of their three battlefields (CR 480.5 says
-    // random for single-game, CR 481.5 says agent choice for match
-    // play). We unconditionally route through the agent — RandomAgent
-    // picks uniformly which satisfies CR 480.5; HumanAgent / MCTS get
-    // to actually choose, which CR 481.5 requires for match play.
+    // Each player picks one of their three battlefields. CR 487.5 (1v1 Duel,
+    // best of one) selects it at random; CR 488.5 (1v1 Match) lets the player
+    // select it. An engine game asks the agent — the Match reading; a
+    // RandomAgent's uniform pick is what a Duel would do. Which mode an engine
+    // game is was left to the project (testing phase G4, pinned by
+    // Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield).
     //
     // The choice is Intent::battlefield_pool_index: the position of the
     // card in the deck's battlefield list (0..N-1). It is not a
@@ -594,6 +584,7 @@ void GameEngine::determineTurnOrder() {
     std::uniform_int_distribution<int> coin(0, 1);
     state_.turn.turn_player = coin(rng_) == 0 ? PlayerId::Player1 : PlayerId::Player2;
     state_.turn.starting_player = state_.turn.turn_player;
+    state_.turn.regular_turn_player = state_.turn.turn_player;
     state_.turn.turn_number = 0;
 
     // Mark both players as being on their first turn
@@ -630,6 +621,7 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
     // can be visually separated from its DECISION # context.
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the CHOSE line below, unread
+        if (!chosen.cards_to_mulligan.empty()) events_.noteUnheardLine();   // two copies
     } else {
         std::string who = std::string("[") + toString(chosen.player) + "] ";
         if (chosen.cards_to_mulligan.empty()) {
@@ -640,9 +632,13 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
                 if (!mull_str.empty()) mull_str += ", ";
                 if (state_.objectExists(cid)) mull_str += state_.getObject(cid).name;
             }
-            RIFT_TRACE(events_, "CHOSE: " + who + "Mulligan " +
-                             std::to_string(chosen.cards_to_mulligan.size()) +
-                             " [" + mull_str + "]");
+            // Which cards are set aside is the player's own knowledge; the
+            // other player learns how many (testing phase D11).
+            const std::string count = std::to_string(chosen.cards_to_mulligan.size());
+            RIFT_TRACE_FOR(events_, LogAudience::only(chosen.player),
+                           "CHOSE: " + who + "Mulligan " + count + " [" + mull_str + "]");
+            RIFT_TRACE_FOR(events_, LogAudience::only(opponent(chosen.player)),
+                           "CHOSE: " + who + "Mulligan " + count);
         }
     }
     if (chosen.type == IntentType::MulliganDecision) {
@@ -696,28 +692,7 @@ void GameEngine::runTurnLoop() {
 
         if (state_.game_over) break;
 
-        // Check for additional turns (CR 734-738)
-        // Check both players' queues
-        auto& p1 = state_.players[0];
-        auto& p2 = state_.players[1];
-        if (!p1.additional_turns.empty()) {
-            auto next = p1.additional_turns.front();
-            p1.additional_turns.erase(p1.additional_turns.begin());
-            state_.turn.turn_player = next;
-            state_.turn.is_additional_turn = true;
-            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-        } else if (!p2.additional_turns.empty()) {
-            auto next = p2.additional_turns.front();
-            p2.additional_turns.erase(p2.additional_turns.begin());
-            state_.turn.turn_player = next;
-            state_.turn.is_additional_turn = true;
-            RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
-        } else {
-            // Normal turn alternation
-            state_.turn.turn_player = opponent(state_.turn.turn_player);
-            state_.turn.is_additional_turn = false;
-        }
-        state_.turn.turn_number++;
+        advanceTurnQueue();
     }
 
     if (!state_.game_over) {
@@ -727,6 +702,26 @@ void GameEngine::runTurnLoop() {
         state_.game_over_reason = "Max turns reached";
         events_.emit(GameOverEvent{PlayerId::None, "Max turns reached"});
     }
+}
+
+void GameEngine::advanceTurnQueue() {
+    // Turn order is a looping queue of the players' regular turns (CR 736).
+    // An Additional Turn is inserted right after the current turn (CR 735,
+    // 738: the newest first); it does not change the Turn Order, and after it
+    // the queue goes on with its previously queued turns (CR 737).
+    auto& t = state_.turn;
+    if (!t.is_additional_turn) t.regular_turn_player = t.turn_player;
+    if (!t.additional_turn_queue.empty()) {
+        const PlayerId next = t.additional_turn_queue.front();
+        t.additional_turn_queue.erase(t.additional_turn_queue.begin());
+        t.turn_player = next;
+        t.is_additional_turn = true;
+        RIFT_TRACE(events_, std::string("ADDITIONAL_TURN: ") + toString(next));
+    } else {
+        t.turn_player = opponent(t.regular_turn_player);
+        t.is_additional_turn = false;
+    }
+    t.turn_number++;
 }
 
 void GameEngine::runTurn(PlayerId player) {
@@ -963,7 +958,8 @@ void GameEngine::channelPhase() {
     auto player = state_.turn.turn_player;
     int count = 2;
 
-    // The second player channels an extra rune on their first turn (CR 480.7).
+    // The second player channels an extra rune on their first turn (CR 487.7 /
+    // 488.7, the First Turn Process of a 1v1 Duel / Match).
     // Who went first is what the coin toss recorded (CR 116), not whose turn
     // number 0 happens to be: an extra turn or a changed turn order does not
     // make anyone else "the second player".
@@ -999,17 +995,13 @@ void GameEngine::drawPhase() {
         return;
     }
 
-    // CR 482.7 / 483.7 / 484.7: the player going first does not draw a
-    // card during their first Draw Phase of the game. (The player going
-    // second receives a compensating extra channel in channelPhase().)
-    if (state_.player(player).is_first_turn &&
-        player == state_.turn.starting_player) {
-        RIFT_TRACE(events_, "DRAW PHASE: " + std::string(player == PlayerId::Player1 ? "P1" : "P2") +
-                          " skips draw (first turn, going first — CR 482.7)");
-    } else {
-        // Draw 1 card (CR 315.4.b)
-        drawCards(player, 1);
-    }
+    // Draw 1 card (CR 315.4.b). In 1v1 the player going first draws too: the
+    // First Turn Process of a Duel and a Match (CR 487.7 / 488.7) is only the
+    // second player's extra rune (channelPhase). "The player going first does
+    // not draw a card during their first Draw Phase" is the text of the
+    // multiplayer modes (CR 489.7 / 490.7 / 491.7), which this engine does
+    // not play.
+    drawCards(player, 1);
 
     // Empty rune pools (CR 315.4.d)
     emptyRunePools();
@@ -1640,10 +1632,12 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     it->chosen_objects.push_back(t);
     while (it->resume_data.size() < 6) it->resume_data.push_back(0);
     it->resume_data[5] = 1;   // "target was chosen at finalization" (read by Card::pickTarget)
-    RIFT_TRACE(events_, "TARGET (finalize): " +
-                     (state_.objectExists(it->source) ? state_.getObject(it->source).name
-                                                      : std::string("?")) +
-                     " -> " + state_.getObject(t).name);
+    // A facedown card or one in a hand is named only for who may know it (D11).
+    RIFT_TRACE_FOR(events_, audienceNaming(state_, chooser, {t}),
+                   "TARGET (finalize): " +
+                       (state_.objectExists(it->source) ? state_.getObject(it->source).name
+                                                        : std::string("?")) +
+                       " -> " + state_.getObject(t).name);
 
     commitEngineChosenTarget(*card, chooser, t, item_id);
     if (one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve))
@@ -1661,7 +1655,13 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
     if (!card.ignoresDeflect()) {
         const int deflect = deflectCostFor(state_, chooser, t);
         if (deflect > 0) {
-            effect_executor_->payAnyPower(chooser, deflect);
+            bool by_spell = false;
+            for (const auto& ci : state_.chain.items)
+                if (ci.id == item_id) by_spell = ci.is_spell;
+            if (state_.chain.resuming.has_value() && state_.chain.resuming->id == item_id)
+                by_spell = state_.chain.resuming->is_spell;
+            effect_executor_->payAnyPower(chooser, deflect,
+                                          by_spell ? SpendFor::Spell : SpendFor::Other);
             RIFT_TRACE(events_, "DEFLECT: " + std::string(toString(chooser)) + " pays " +
                              std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name);
@@ -1742,7 +1742,8 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
     std::vector<GameObjectId> remaining = legal, picked;
     while (picked.size() < needed) {
         std::vector<Intent> options;
-        const int payable = effect_executor_->payableAnyPower(chooser);
+        const int payable = effect_executor_->payableAnyPower(
+            chooser, item->is_spell ? SpendFor::Spell : SpendFor::Other);
         std::vector<GameObjectId> offered;
         for (auto t : remaining)
             if (!deflect_matters || deflectCostFor(state_, chooser, t) <= payable)
@@ -1886,53 +1887,153 @@ void GameEngine::placeBelowWhatItsPlayTriggered(ChainItemId item_id, ChainItemId
     std::rotate(first, self, self + 1);
 }
 
-Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId card_id,
-                                                  const Card::PlayCostAdjust& prepay,
-                                                  int extra_any_power) {
-    auto& card = state_.getObject(card_id);
-    card.card_counters.erase("__accelerate");
-    if (!card.isUnit() || prepay.ignore_cost) return prepay;
-    const bool granted = card.card_counters.count("__granted_accelerate") &&
-                         card.card_counters["__granted_accelerate"] != 0;
-    if (!card.keywords.has(Keyword::Accelerate) && !granted) return prepay;
-    // A unit with no Domain pays the Power with [A] (CR 805.1.b.2), which is
-    // not the card's own Power: that case is asked as the unit enters
-    // (resolvePermanent), from what is left after the cost.
-    if (card.domains.empty()) return prepay;
-    // [1] and one Power of the unit's own Domains (CR 805.1.b.1), added to
-    // the card's cost: one payment, judged as a whole.
-    Card::PlayCostAdjust with = prepay;
-    with.energy_reduction -= 1;
-    with.power_reduction -= 1;
-    card.card_counters["__accelerate"] = 1;   // decided: not paid
-    if (granted) card.card_counters["__granted_accelerate"] = 0;
-    if (!canAffordWith(player, card_id, extra_any_power, with)) return prepay;
+namespace {
+// `discount` units of "[1] or [A] less" taken off (energy, power), the Energy
+// half first or the Power half first; what one half cannot use goes to the other.
+std::pair<int, int> afterEitherDiscount(int energy, int power, int discount, bool power_first) {
+    int& first = power_first ? power : energy;
+    int& second = power_first ? energy : power;
+    const int a = std::min(first, discount);
+    first -= a;
+    second -= std::min(second, discount - a);
+    return {energy, power};
+}
+}  // namespace
 
+bool GameEngine::accelerateAvailable(PlayerId player, GameObjectId card_id,
+                                     bool from_hand) const {
+    if (!state_.objectExists(card_id)) return false;
+    const auto& card = state_.getObject(card_id);
+    if (!card.isUnit() || card.card_def_id == kInvalidId) return false;
+    if (card.keywords.has(Keyword::Accelerate)) return true;
+    // A card on the player's board may give the unit being played
+    // [Accelerate] for this play (Rek'Sai, Breacher: "played from anywhere
+    // other than a player's hand"; Card::grantsAccelerateTo).
+    for (const auto& [oid, obj] : state_.objects.onBoard()) {
+        if (obj.controller != player || obj.card_def_id == kInvalidId) continue;
+        const Card* granter = card_registry_.get(obj.card_def_id);
+        if (granter && granter->grantsAccelerateTo(state_, oid, card, from_hand)) return true;
+    }
+    return false;
+}
+
+std::optional<std::pair<int, int>> GameEngine::chooseAccelerateHalf(
+    PlayerId player, const std::function<bool(int energy, int power)>& payable) {
+    // [Accelerate] is an Optional Additional Cost (CR 805.1): "optional
+    // additional costs you pay cost [1] or [A] less" applies to it (CR
+    // 356.4.c, 356.4.f; Card::optionalCostDiscount), the payer choosing the
+    // half when both are payable and differ.
+    const int disc = optionalCostDiscount(player);
+    const auto e_first = afterEitherDiscount(1, 1, disc, false);
+    const auto p_first = afterEitherDiscount(1, 1, disc, true);
+    const bool e_ok = payable(e_first.first, e_first.second);
+    const bool p_ok = payable(p_first.first, p_first.second);
+    if (!e_ok && !p_ok) return std::nullopt;
+    if (e_ok && p_ok && e_first != p_first) {
+        Intent e; e.type = IntentType::MakeChoice; e.player = player;
+        e.chosen_value = 0; e.choice_label = "cost [1] less";
+        Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
+        const bool pf = decideNow(player, {e, pw},
+            "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
+        return pf ? p_first : e_first;
+    }
+    return e_ok ? e_first : p_first;
+}
+
+bool GameEngine::askAccelerate(PlayerId player, const GameObject& card) {
     Intent decline;
     decline.type = IntentType::MakeChoice;
     decline.player = player;
     decline.chosen_value = 0;  // 0 = decline
-    Intent accept;
-    accept.type = IntentType::MakeChoice;
-    accept.player = player;
-    accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
+    Intent accept = decline;
+    accept.chosen_value = 1;   // 1 = pay [1][C] for Accelerate
     decline.declines = true;   // the "no" of a yes/no (Intent::declines)
     std::vector<Intent> opts = {decline, accept};
     state_.decision_index++;
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                      " (" + toString(player) + "): pay [1][" +
-                     std::string(toString(card.domains.front())) +
+                     (card.domains.empty() ? std::string("A")
+                                           : std::string(toString(card.domains.front()))) +
                      "] for Accelerate on " + card.name + "? [decline|pay] [2 options]");
     auto chosen = askAgent(player, opts);
     if (on_decision) on_decision(state_, opts, chosen);
-    auto& again = state_.getObject(card_id);
-    if (chosen.chosen_value.value_or(0) != 1) {
-        RIFT_TRACE(events_, "ACCELERATE: " + again.name + " declined");
+    return chosen.chosen_value.value_or(0) == 1;
+}
+
+Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId card_id,
+                                                  const Card::PlayCostAdjust& prepay,
+                                                  int extra_any_power) {
+    auto& card = state_.getObject(card_id);
+    card.card_counters.erase(Card::kAccelerateDecided);
+    if (!card.isUnit()) return prepay;
+    const bool from_hand =
+        state_.player(player).current_play_source == Intent::PlaySource::Hand;
+    card.card_counters[Card::kAccelerateFromHand] = from_hand ? 1 : 2;
+    if (prepay.ignore_cost) return prepay;
+    if (!accelerateAvailable(player, card_id, from_hand)) return prepay;
+    // A unit with no Domain pays the Power with [A] (CR 805.1.b.2), which is
+    // not the card's own Power: that case is asked as the unit enters
+    // (resolvePermanent), from what is left after the cost.
+    if (card.domains.empty()) return prepay;
+    card.card_counters[Card::kAccelerateDecided] = 1;   // decided: not paid
+    // [1] and one Power of the unit's own Domains (CR 805.1.b.1), less any
+    // discount on optional additional costs, added to the card's cost: one
+    // payment, judged as a whole.
+    auto with_half = [&](int energy, int power) {
+        Card::PlayCostAdjust with = prepay;
+        with.energy_reduction -= energy;
+        with.power_reduction -= power;
+        return with;
+    };
+    auto payable = [&](int energy, int power) {
+        return canAffordWith(player, card_id, extra_any_power, with_half(energy, power));
+    };
+    if (!chooseAccelerateHalfPayable(player, payable)) return prepay;
+    if (!askAccelerate(player, state_.getObject(card_id))) {
+        RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " declined");
         return prepay;
     }
-    RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [1] + power to enter ready");
-    again.card_counters["__accelerate"] = 2;   // paid with the cost: enters ready
-    return with;
+    const auto half = chooseAccelerateHalf(player, payable);
+    auto& again = state_.getObject(card_id);
+    if (!half.has_value()) return prepay;   // (judged payable just above)
+    RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [" + std::to_string(half->first) +
+                     "] + " + std::to_string(half->second) + " power to enter ready");
+    again.card_counters[Card::kAccelerateDecided] = 2;   // paid with the cost: enters ready
+    return with_half(half->first, half->second);
+}
+
+bool GameEngine::chooseAccelerateHalfPayable(
+    PlayerId player, const std::function<bool(int energy, int power)>& payable) const {
+    const int disc = optionalCostDiscount(player);
+    const auto e_first = afterEitherDiscount(1, 1, disc, false);
+    const auto p_first = afterEitherDiscount(1, 1, disc, true);
+    return payable(e_first.first, e_first.second) || payable(p_first.first, p_first.second);
+}
+
+bool GameEngine::offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, bool from_hand) {
+    // For a play that pays no cost of its own first — from facedown, "play it,
+    // ignoring its cost" (CR 356.1.b.3: the Accelerate cost is still added),
+    // a unit with no Domain: [1] and one Power of the unit's Domains ([A] for
+    // none), on its own.
+    if (!accelerateAvailable(player, card_id, from_hand)) return false;
+    const auto& card = state_.getObject(card_id);
+    const resource::DomainMask mask = resource::maskOf(card.domains.get());
+    auto payable = [&](int energy, int power) {
+        return resource::canPayIn(state_, player, energy, power, mask, SpendFor::Unit);
+    };
+    if (!chooseAccelerateHalfPayable(player, payable)) return false;
+    if (!askAccelerate(player, card)) {
+        RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
+        return false;
+    }
+    const auto half = chooseAccelerateHalf(player, payable);
+    if (!half.has_value()) return false;
+    if (!effect_executor_->payResources(player, half->first, half->second, mask, SpendFor::Unit))
+        return false;
+    RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " pays [" +
+                     std::to_string(half->first) + "] + " + std::to_string(half->second) +
+                     " power to enter ready");
+    return true;
 }
 
 void GameEngine::announcePermanentPlayed(GameObjectId card_id, PlayerId player) {
@@ -2886,6 +2987,9 @@ void GameEngine::executePlayCard(const Intent& intent) {
         for (const auto& bf : state_.battlefields)
             if (bf.id == bf_id) location_power = std::max(0, bf.paid_play_power);
     }
+    // "As you play me" choices (CR 355.1), made as the play begins, before
+    // anything is paid.
+    effect_executor_->makeAsYouPlayChoices(intent.player, intent.card);
     bool paid_via_grant = false;
     if (intent.play_source == Intent::PlaySource::Trash)
         paid_via_grant = payTrashReplayGrant(intent.player, intent.card);
@@ -3105,6 +3209,16 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                 return g ? canPayTrashGrant(who, what, *g, all, {t})
                          : (!via_grant && canAffordChoosing(who, what, all, {t}));
             });
+            // A Deflect paid ahead of the cost offers only the runes that
+            // leave the spell payable with what is chosen so far (D9).
+            effect_executor_->setAheadOfCostCheck([this, who, what, via_grant]() {
+                std::vector<GameObjectId> chosen;
+                if (state_.chain.resuming.has_value()) chosen = state_.chain.resuming->chosen_objects;
+                const auto* g = via_grant ? trashGrantFor(who, what) : nullptr;
+                if (via_grant) return g && canPayTrashGrant(who, what, *g, chosen, {});
+                return chosen.empty() ? canAfford(who, what)
+                                      : canAffordChoosing(who, what, chosen, {});
+            });
             // (Deflect for these choices is paid as each is made: none is
             // owed when the spell's own cost is judged.)
             const PrePlayPayable payable = [this, who, what, via_grant](
@@ -3127,9 +3241,11 @@ void GameEngine::executePlaySpell(const Intent& intent) {
                                 : collectFinalizeChoices(std::move(pre));
             } catch (...) {
                 effect_executor_->setChoiceFilter(nullptr);
+                effect_executor_->setAheadOfCostCheck(nullptr);
                 throw;
             }
             effect_executor_->setChoiceFilter(nullptr);
+            effect_executor_->setAheadOfCostCheck(nullptr);
             done.pre_play_choices = false;
             cost_targets = done.chosen_objects;
             if (!payable(cost_targets))
@@ -3564,68 +3680,29 @@ void GameEngine::resolvePermanent(const ChainItem& item) {
         // decision to the agent. (Previously auto-applied whenever
         // affordable, which silently spent the player's energy + rune
         // every time the Accelerate cost happened to be payable.)
-        const bool granted_accelerate = card.card_counters.count("__granted_accelerate") &&
-                                        card.card_counters["__granted_accelerate"] != 0;
-        if (granted_accelerate) card.card_counters["__granted_accelerate"] = 0;
         // Decided — and paid — with the card's cost (decideAccelerate; CR
         // 355.1.a, 805.2.b: "as long as the cost was paid, that unit will
-        // still enter ready"). The prompt below is for the plays that do not
-        // pay a cost of their own first (from facedown, a no-Domain unit).
+        // still enter ready"). Asked here, on its own, for the plays that do
+        // not pay a cost of their own first: from facedown, a unit with no
+        // Domain (offerAccelerateOnItsOwn).
         int accelerate_decided = 0;
-        if (auto ad = card.card_counters.find("__accelerate"); ad != card.card_counters.end()) {
+        if (auto ad = card.card_counters.find(Card::kAccelerateDecided); ad != card.card_counters.end()) {
             accelerate_decided = ad->second;
             card.card_counters.erase(ad);
         }
         if (accelerate_decided == 2) enters_ready = true;
-        if (accelerate_decided == 0 &&
-            (card.keywords.has(Keyword::Accelerate) || granted_accelerate)) {
-            // CR 805.1.b.1: the Power must match one of the unit's own domains;
-            // 805.1.b.2: a unit with no domain pays it with [A].
-            std::optional<Domain> domain_to_pay;
-            if (card.domains.empty()) {
-                if (canPayAdditionalCost(item.controller, 1, 1, Domain::Count, true))
-                    domain_to_pay = Domain::Count;
-            } else {
-                for (Domain d : card.domains) {
-                    if (canPayAdditionalCost(item.controller, 1, 1, d, true)) {
-                        domain_to_pay = d;
-                        break;
-                    }
-                }
-            }
-            if (domain_to_pay.has_value()) {
-                Intent decline;
-                decline.type = IntentType::MakeChoice;
-                decline.player = item.controller;
-                decline.chosen_value = 0;  // 0 = decline
-                Intent accept;
-                accept.type = IntentType::MakeChoice;
-                accept.player = item.controller;
-                accept.chosen_value = 1;   // 1 = pay [1][D] for Accelerate
-                decline.declines = true;   // the "no" of a yes/no (Intent::declines)
-                std::vector<Intent> opts = {decline, accept};
-
-                state_.decision_index++;
-                RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
-                                 " (" + toString(item.controller) + "): "
-                                 "pay [1][" + (*domain_to_pay == Domain::Count ? "A"
-                                     : toString(*domain_to_pay)) +
-                                 "] for Accelerate on " + card.name +
-                                 "? [decline|pay] [2 options]");
-
-                auto chosen = askAgent(item.controller, opts);
-                if (on_decision) on_decision(state_, opts, chosen);
-
-                bool wants_pay = chosen.chosen_value.value_or(0) == 1;
-                if (wants_pay) {
-                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " pays [1] + power to enter ready");
-                    payAdditionalCost(item.controller, 1, 1, *domain_to_pay, true);
-                    enters_ready = true;
-                } else {
-                    RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
-                }
-            }
+        if (accelerate_decided == 0) {
+            // Where the play came from: recorded with its choices (a play
+            // from facedown is not from a hand).
+            bool from_hand = !card.card_counters.count("__played_from_facedown") ||
+                             card.card_counters["__played_from_facedown"] == 0;
+            if (auto fh = card.card_counters.find(Card::kAccelerateFromHand);
+                fh != card.card_counters.end())
+                from_hand = fh->second == 1;
+            if (offerAccelerateOnItsOwn(item.controller, item.source, from_hand))
+                enters_ready = true;
         }
+        state_.getObject(item.source).card_counters.erase(Card::kAccelerateFromHand);
         // [Ambush] (CR 822.1.b) grants only a play location and [Reaction]
         // timing ("I have [Reaction] as long as I'm being played to a
         // battlefield where you control Units"). It does NOT make the unit
@@ -4118,8 +4195,10 @@ void GameEngine::executeHideCard(const Intent& intent) {
             pw.chosen_value = 0; pw.choice_label = "pay [A]";
             Intent en = pw; en.chosen_value = 1;
             en.choice_label = "pay [" + std::to_string(hide_cost.energy) + "]";
+            // (The prompt's header is a line both players read: it names no
+            // card, the one being hidden is in the player's hand — D11.)
             pay_energy = decideNow(intent.player, {pw, en},
-                "Hide cost for " + card.name).chosen_value.value_or(0) == 1;
+                "Hide cost").chosen_value.value_or(0) == 1;
         }
         if (pay_energy)
             payAdditionalCost(intent.player, hide_cost.energy, 0, Domain::Count, SpendFor::Other);
@@ -4178,6 +4257,7 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
 
     // Play ignoring base cost — permanents go to the BF they were hidden at
     if (card.isPermanent()) {
+        effect_executor_->makeAsYouPlayChoices(intent.player, intent.card);   // CR 355.1
         card.location = BattlefieldLocation{bf_id};
         // Route through chain like normal plays
         auto& ps = state_.player(intent.player);
@@ -4319,10 +4399,32 @@ bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
     return units == 1 && enemies == 1;
 }
 
-bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
+std::vector<GameObjectId> GameEngine::handAndChampion(PlayerId player) const {
+    const auto& ps = state_.player(player);
+    std::vector<GameObjectId> out = ps.hand;
+    if (ps.champion_zone != kInvalidId && state_.objectExists(ps.champion_zone) &&
+        state_.getObject(ps.champion_zone).zone == ZoneType::ChampionZone)
+        out.push_back(ps.champion_zone);
+    return out;
+}
+
+bool GameEngine::ambushLocation(const Card* card_obj, PlayerId player,
                                 const BattlefieldState& bf) const {
+    if (bf.hasUnitsFrom(player, state_.objects)) return true;
+    return card_obj && card_obj->ambushToEnemyBattlefields() &&
+           bf.hasUnitsFrom(opponent(player), state_.objects);
+}
+
+bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
+                                const BattlefieldState& bf, const GameObject* unit) const {
     const auto& ps = state_.player(player);
     if (bf.blocks_unit_play) return false;  // Rockfall Path
+    // [Ambush] "I may be played to a battlefield where you control Units"
+    // (CR 822.1.b): a location permission of its own, not tied to the
+    // [Reaction] timing it also grants — so it holds in the Main Phase too
+    // (testing phase D37).
+    if (unit && unit->hasKeyword(Keyword::Ambush) && ambushLocation(card_obj, player, bf))
+        return true;
     // Play-to-location permissions the card prints (CR 355.2), and the ones
     // another card grants every unit this player plays.
     const unsigned extra = card_obj ? card_obj->extraPlayLocations() : 0u;
@@ -4400,7 +4502,7 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
 
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
-            const bool can_play_here = unitPlayableAt(card_obj, player, bf);
+            const bool can_play_here = unitPlayableAt(card_obj, player, bf, &card);
 
             if (can_play_here) {
                 Intent bf_play = play_intent;
@@ -4511,6 +4613,12 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         }
     }
 
+    // Facedown cards: from the turn after they were hidden they have
+    // [Reaction] (CR 811.6), which "is not restricted to Closed States or
+    // Showdowns" and includes every other timing (CR 813.2) — its controller's
+    // own Main Phase too (testing phase D25).
+    generateHiddenPlayActions(player, IntentType::PlayActionCard, actions);
+
     // Hide cards with [Hidden] keyword facedown at controlled battlefields
     // (CR 811.1.b: "While this card is in your hand or in your Champion Zone").
     std::vector<GameObjectId> hide_sources = ps.hand;
@@ -4582,8 +4690,9 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
                                     actions);
     }
 
-    // Ambush: play units with [Ambush] during showdowns
-    for (auto card_id : state_.player(player).hand) {
+    // Ambush: play units with [Ambush] during showdowns — from the hand or
+    // the Champion Zone (CR 420.1.a; testing phase D63).
+    for (auto card_id : handAndChampion(player)) {
         if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
@@ -4591,16 +4700,12 @@ std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
 
         const Card* amb = card.card_def_id != kInvalidId
             ? card_registry_.get(card.card_def_id) : nullptr;
-        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
             if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
-            bool here = bf.hasUnitsFrom(player, state_.objects);
-            // Rengar, Trophy Hunter: may Ambush to a BF with enemy units even
-            // without units of your own there.
-            if (!here && enemy_bf_ok)
-                here = bf.hasUnitsFrom(opponent(player), state_.objects);
-            if (!here) continue;
+            // A battlefield where the player has units, or (Rengar, Trophy
+            // Hunter) one with enemy units.
+            if (!ambushLocation(amb, player, bf)) continue;
             Intent ambush;
             ambush.type = IntentType::PlayActionCard;
             ambush.player = player;
@@ -4700,7 +4805,7 @@ void GameEngine::generateReactionPermanentActions(PlayerId player, IntentType in
             actions.push_back(play);
             if (ps.units_play_base_only) continue;  // Mageseeker Warden
             for (const auto& bf : state_.battlefields) {
-                if (!unitPlayableAt(card_obj, player, bf)) continue;
+                if (!unitPlayableAt(card_obj, player, bf, &card)) continue;
                 Intent bf_play = play;
                 bf_play.play_location = BattlefieldLocation{bf.id};
                 actions.push_back(bf_play);
@@ -4731,8 +4836,9 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     // [Quick-Draw] / [Reaction] gear (attached as it lands, CR 819.1.d).
     generateReactionPermanentActions(player, IntentType::PlayReaction, actions);
 
-    // Ambush: play units with [Ambush] as Reactions to BFs where you have units
-    for (auto card_id : state_.player(player).hand) {
+    // Ambush: play units with [Ambush] as Reactions to BFs where you have
+    // units — from the hand or the Champion Zone (CR 420.1.a; testing phase D63).
+    for (auto card_id : handAndChampion(player)) {
         if (locked_out) break;
         auto& card = state_.getObject(card_id);
         if (!card.isUnit() || !card.hasKeyword(Keyword::Ambush)) continue;
@@ -4740,14 +4846,10 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
 
         const Card* amb = card.card_def_id != kInvalidId
             ? card_registry_.get(card.card_def_id) : nullptr;
-        const bool enemy_bf_ok = amb && amb->ambushToEnemyBattlefields();
         for (auto& bf : state_.battlefields) {
             if (bf.blocks_unit_play) continue;  // Rockfall Path
             if (state_.player(player).units_play_base_only) continue;  // Mageseeker Warden
-            bool here = bf.hasUnitsFrom(player, state_.objects);
-            if (!here && enemy_bf_ok)
-                here = bf.hasUnitsFrom(opponent(player), state_.objects);
-            if (!here) continue;
+            if (!ambushLocation(amb, player, bf)) continue;
             Intent ambush;
             ambush.type = IntentType::PlayReaction;
             ambush.player = player;
@@ -4864,9 +4966,29 @@ void GameEngine::generateHiddenPlayActions(PlayerId player, IntentType intent_ty
             // Must be hidden on a previous turn to gain Reaction
             if (card.hidden_on_turn >= state_.turn.turn_number) continue;
             if (card.isSpell() && ps.cant_play_spells_this_turn) continue;
+            // A hidden unit is played to that battlefield (CR 811.1.d.1); where
+            // units can't be played, or not by this player, it is not played at
+            // all — "can't" wins (CR 054.1; testing phase G22). The same rule as
+            // an effect play (EffectExecutor::unitMayBePlayedTo).
+            if (card.isUnit() && (bf.blocks_unit_play || ps.units_play_base_only)) continue;
 
             if (card.card_def_id != kInvalidId && card.isSpell()) {
                 Card* card_obj = card_registry_.get(card.card_def_id);
+                // A spell whose two targets are prompts (needsPlayTimeTargetPair)
+                // is one play, as from hand; the pair is chosen at that
+                // battlefield as it is finalized (CR 811.1.d.2), and with no
+                // pair there it cannot be played from facedown (811.1.d;
+                // testing phase D74).
+                if (card_obj && card_obj->needsPlayTimeTargetPair()) {
+                    if (!card_obj->hasLegalChoicesHiddenAt(state_, player, card_db_, bf.id))
+                        continue;
+                    Intent play;
+                    play.type = intent_type;
+                    play.player = player;
+                    play.card = card_id;
+                    actions.push_back(play);
+                    continue;
+                }
                 if (card_obj) {
                     auto req = card_obj->getTargetRequirements();
                     if (req.count > 0) {
@@ -5855,14 +5977,7 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     // resolve.
     auto assignOneSide = [&](PlayerId assigner, int total_damage,
                              const std::vector<GameObjectId>& targets) -> std::optional<Intent> {
-        auto adv = advanceCombatDamage(assigner, total_damage, targets);
-        if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
-        state_.decision_index++;
-        auto chosen = askAgent(assigner, adv.legal);
-        if (on_decision) {
-            on_decision(state_, adv.legal, chosen);
-        }
-        return chosen;
+        return assignCombatDamage(assigner, total_damage, targets);
     };
 
     // CR 467.2.c: "Starting with the Attacker, each player assigns ...";
@@ -5879,6 +5994,98 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     const SimultaneousTriggers together(state_.chain);
     if (att_assigned) resolveCombatDamageDecision(*att_assigned);
     if (def_assigned) resolveCombatDamageDecision(*def_assigned);
+}
+
+std::optional<Intent> GameEngine::assignCombatDamage(PlayerId assigner, int total_damage,
+                                                    const std::vector<GameObjectId>& targets) {
+    auto adv = advanceCombatDamage(assigner, total_damage, targets);
+    if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
+    if (adv.kind == CombatDamageAdvance::Kind::NeedDecision) {
+        state_.decision_index++;
+        auto chosen = askAgent(assigner, adv.legal);
+        if (on_decision) on_decision(state_, adv.legal, chosen);
+        return chosen;
+    }
+    // Step by step (testing phase B7): more distinct assignments than one
+    // decision offers. The assigner names, in the tier order, the unit that
+    // takes lethal damage next (CR 460.2.c.3, 460.2.c.6); the last one named
+    // takes what is left (460.2.c.4). Every legal assignment is reachable.
+    const bool any_damage_lethal = anyDamageIsLethalFor(assigner);
+    std::vector<GameObjectId> flat;
+    std::vector<int> tier_of;
+    combatDamageTiers(assigner, targets, flat, tier_of);
+    std::vector<bool> taken(flat.size(), false);
+    std::vector<DamageAssignment> cur;
+    int remaining = total_damage;
+    while (remaining > 0) {
+        int tier = -1;
+        for (size_t k = 0; k < flat.size(); ++k)
+            if (!taken[k]) { tier = tier_of[k]; break; }
+        if (tier < 0) break;
+        std::vector<size_t> open;
+        for (size_t k = 0; k < flat.size(); ++k)
+            if (!taken[k] && tier_of[k] == tier) open.push_back(k);
+        size_t pick = open.front();
+        if (open.size() > 1) {
+            std::vector<Intent> options;
+            for (auto k : open) {
+                Intent o;
+                o.type = IntentType::MakeChoice;
+                o.player = assigner;
+                o.chosen_objects = {flat[k]};
+                o.choice_label = "Combat damage: lethal to " + state_.getObject(flat[k]).name +
+                                 " next";
+                options.push_back(std::move(o));
+            }
+            state_.decision_index++;
+            RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                             " (" + toString(assigner) + "): combat damage, which unit next [" +
+                             std::to_string(options.size()) + " options]");
+            const Intent chosen = askAgent(assigner, options);
+            if (on_decision) on_decision(state_, options, chosen);
+            if (state_.game_over) return std::nullopt;   // a concession
+            for (auto k : open)
+                if (!chosen.chosen_objects.empty() && chosen.chosen_objects.front() == flat[k])
+                    pick = k;
+        }
+        const int lethal =
+            combatDamageNeededForLethal(state_.getObject(flat[pick]), any_damage_lethal);
+        const int assigned = std::min(remaining, lethal);
+        cur.push_back({flat[pick], assigned});
+        taken[pick] = true;
+        remaining -= assigned;
+    }
+    if (remaining > 0 && !cur.empty()) cur.back().damage += remaining;
+    return Intent::assignCombatDamage(assigner, std::move(cur));
+}
+
+void GameEngine::combatDamageTiers(PlayerId assigner, const std::vector<GameObjectId>& targets,
+                                   std::vector<GameObjectId>& flat,
+                                   std::vector<int>& tier_of) const {
+    // Dune Surfer: "You ignore [Tank] while assigning combat damage here."
+    bool ignore_tank = false;
+    if (!targets.empty()) {
+        if (auto tbf = state_.getObject(targets.front()).battlefieldId())
+            for (const auto& b : state_.battlefields)
+                if (b.id == *tbf) ignore_tank = b.ignore_tank[playerIndex(assigner)];
+    }
+    std::vector<GameObjectId> tiers[3];
+    for (auto tid : targets) {
+        const auto& obj = state_.getObject(tid);
+        if (obj.hasKeyword(Keyword::Tank) && !ignore_tank) tiers[0].push_back(tid);
+        else if (obj.hasKeyword(Keyword::Backline)) tiers[2].push_back(tid);
+        else                                        tiers[1].push_back(tid);
+    }
+    flat.clear();
+    tier_of.clear();
+    for (int bi = 0; bi < 3; ++bi) {
+        std::sort(tiers[bi].begin(), tiers[bi].end());
+        for (auto id : tiers[bi]) {
+            if (!canTakeCombatDamage(state_.getObject(id))) continue;   // CR 467.2.c.10
+            flat.push_back(id);
+            tier_of.push_back(bi);
+        }
+    }
 }
 
 GameEngine::CombatDamageAdvance GameEngine::testHook_advanceCombatDamage(
@@ -5913,20 +6120,6 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
     // buckets, enumerate permutations within each, concatenate, and run
     // greedy-lethal on every ordering. Identical resulting allocations
     // are deduped.
-    // Dune Surfer: "You ignore [Tank] while assigning combat damage here."
-    bool ignore_tank = false;
-    if (!targets.empty()) {
-        if (auto tbf = state_.getObject(targets.front()).battlefieldId())
-            for (const auto& b : state_.battlefields)
-                if (b.id == *tbf) ignore_tank = b.ignore_tank[playerIndex(assigner)];
-    }
-    std::vector<GameObjectId> tanks, mids, backs;
-    for (auto tid : targets) {
-        auto& obj = state_.getObject(tid);
-        if (obj.hasKeyword(Keyword::Tank) && !ignore_tank) tanks.push_back(tid);
-        else if (obj.hasKeyword(Keyword::Backline)) backs.push_back(tid);
-        else                                        mids.push_back(tid);
-    }
 
     // The key is the sorted (target, damage) list itself (it used to be that
     // list printed into a string — plans/06 item 6.11).
@@ -5955,31 +6148,29 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
     // Two orders that have killed the same set of units lead to the same
     // continuations, so each set is expanded once. (Permuting whole buckets is
     // factorial: 16 token defenders never finished.)
-    std::vector<std::vector<GameObjectId>> buckets = {tanks, mids, backs};
-    for (auto& b : buckets) std::sort(b.begin(), b.end());
     std::vector<GameObjectId> flat;
     std::vector<int> bucket_of;
-    for (int bi = 0; bi < 3; ++bi)
-        for (auto id : buckets[bi]) {
-            if (!canTakeCombatDamage(state_.getObject(id))) continue;   // CR 467.2.c.10
-            flat.push_back(id);
-            bucket_of.push_back(bi);
-        }
+    combatDamageTiers(assigner, targets, flat, bucket_of);
 
-    // Bounds: the option list feeds an agent's action space, and the search
-    // must stay cheap on huge boards. Past either bound the remaining orders
-    // are not offered; the default cascade is always present.
+    // Bounds: one decision offers at most kMaxDamageOptions assignments, and
+    // the search must stay cheap on huge boards. Past either bound the
+    // assignment is made step by step instead (assignCombatDamage), so no
+    // legal assignment is withheld (testing phase B7).
     constexpr size_t kMaxDamageOptions = 64;
     constexpr int kMaxSearchNodes = 20000;
     emitIfNew(buildDefault());
+    bool too_many = flat.size() > 60;
 
-    if (flat.size() <= 60) {
+    if (!too_many) {
         std::set<uint64_t> expanded;
         int nodes = 0;
         std::vector<DamageAssignment> cur;
         // (A lambda that is handed itself: no std::function per combat.)
         auto walk = [&](auto&& self, uint64_t taken, int remaining) -> void {
-            if (options.size() >= kMaxDamageOptions || ++nodes > kMaxSearchNodes) return;
+            if (options.size() > kMaxDamageOptions || ++nodes > kMaxSearchNodes) {
+                too_many = true;
+                return;
+            }
             // Current bucket = the first one that still has an untaken unit.
             int bucket = -1;
             for (size_t k = 0; k < flat.size(); ++k)
@@ -6002,10 +6193,18 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
                 cur.push_back({flat[k], assigned});
                 self(self, next, left);
                 cur.pop_back();
-                if (options.size() >= kMaxDamageOptions || nodes > kMaxSearchNodes) return;
+                if (options.size() > kMaxDamageOptions || nodes > kMaxSearchNodes) {
+                    too_many = true;
+                    return;
+                }
             }
         };
         walk(walk, 0, total_damage);
+    }
+    if (too_many || options.size() > kMaxDamageOptions) {
+        options.clear();
+        adv.kind = CombatDamageAdvance::Kind::StepByStep;
+        return adv;
     }
 
     adv.kind = CombatDamageAdvance::Kind::NeedDecision;
@@ -6493,6 +6692,9 @@ void GameEngine::recalculateAuras() {
             if (!state_.objectExists(gear_id)) continue;
             Card* gear_card = card_registry_.get(state_.getObject(gear_id).card_def_id);
             if (!gear_card) continue;
+            // What else the effect text gives the bearer (a tag): before any
+            // card hook reads it (Card::applyToBearer).
+            gear_card->applyToBearer(state_, gear_id, id);
 
             // Keywords from effect_text. [Assault N] / [Shield N] are pushed
             // once, with their value, below — not also as a bare keyword,
@@ -6527,6 +6729,29 @@ void GameEngine::recalculateAuras() {
                 ae.keyword_value = es;
                 obj.aura_effects.push_back(ae);
             }
+        }
+    }
+
+    // Step 1a'': "this combat" keywords resolved abilities gave (GameState::
+    // combat_keywords): applied while their combat goes on and the unit is on
+    // the board, whatever became of the card that gave them; dropped after.
+    {
+        auto& cks = state_.combat_keywords;
+        cks.erase(std::remove_if(cks.begin(), cks.end(),
+            [&](const GameState::CombatKeyword& ck) {
+                if (ck.turn != state_.turn.turn_number || !state_.objectExists(ck.unit) ||
+                    !state_.getObject(ck.unit).location.has_value())
+                    return true;
+                for (const auto& bf : state_.battlefields)
+                    if (bf.id == ck.battlefield) return !bf.combat_in_progress;
+                return true;
+            }), cks.end());
+        for (const auto& ck : cks) {
+            GameObject::AuraEffect ae;
+            ae.source = ck.unit;
+            ae.keyword = ck.keyword;
+            ae.keyword_value = ck.value;
+            state_.getObject(ck.unit).aura_effects.push_back(ae);
         }
     }
 
@@ -7586,18 +7811,6 @@ int GameEngine::optionalCostDiscount(PlayerId player) const {
     return std::max(0, total);
 }
 
-namespace {
-// `discount` units of "[1] or [A] less" taken off (energy, power), the Energy
-// half first or the Power half first; what one half cannot use goes to the other.
-std::pair<int, int> afterEitherDiscount(int energy, int power, int discount, bool power_first) {
-    int& first = power_first ? power : energy;
-    int& second = power_first ? energy : power;
-    const int a = std::min(first, discount);
-    first -= a;
-    second -= std::min(second, discount - a);
-    return {energy, power};
-}
-}  // namespace
 
 bool GameEngine::canPayOptionalCost(PlayerId player, int energy, int power,
                                     resource::DomainMask domains, SpendFor spend_for) const {
@@ -7630,7 +7843,7 @@ bool GameEngine::payOptionalCost(PlayerId player, int energy, int power,
             "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
     }
     const auto net = power_first ? p_first : e_first;
-    return resource::payIn(state_, events_, player, net.first, net.second, domains, spend_for);
+    return effect_executor_->payResources(player, net.first, net.second, domains, spend_for);
 }
 
 void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId card_id,
@@ -8090,22 +8303,9 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     int energy_needed = cost.energy;
     int power_needed = cost.power;
 
-    // A card on the player's board may give the unit being played [Accelerate]
-    // (Card::grantsAccelerateTo). Mark it so resolvePermanent offers the usual
-    // optional [1][C] (CR 805.1.b — a "may pay", never a mandatory surcharge).
-    // The cost-payment path has no Intent, so the play source comes from the
-    // transient PlayerState::current_play_source (set in executePlayCard).
-    if (card.isUnit()) {
-        const bool from_hand = ps.current_play_source == Intent::PlaySource::Hand;
-        for (auto& [oid, obj] : state_.objects.onBoard()) {
-            if (obj.controller != player || !obj.location.has_value()) continue;
-            if (obj.card_def_id == kInvalidId) continue;
-            const Card* granter = card_registry_.get(obj.card_def_id);
-            if (!granter || !granter->grantsAccelerateTo(state_, oid, card, from_hand)) continue;
-            card.card_counters["__granted_accelerate"] = 1;
-            break;
-        }
-    }
+    // ([Accelerate] a card on the board gives this play — Card::
+    // grantsAccelerateTo — is decided with the rest of the play's choices,
+    // before this payment: decideAccelerate / accelerateAvailable.)
     // Consume the one-shot modifiers that applied to this card ("your next
     // spell / unit / card costs ...") — from this player's list and, for the
     // ones that reach across, the opponent's. A one-shot that did not apply
@@ -8143,6 +8343,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
 
     // Spend floating Power the same way: restricted [A] this kind of card may
     // use, this card's domains, then [A].
+    const int power_before_pool = power_needed;
     if (power_needed > 0) {
         ps.rune_pool.takeRestrictedPower(spend_for, power_needed);
         for (auto d : def.domains) {
@@ -8156,6 +8357,9 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
         ps.rune_pool.universal_power -= from_uni;
         power_needed -= from_uni;
     }
+    // Power from the pool is spent like a recycled rune's (Sivir, Mercenary;
+    // testing phase I3).
+    resource::notePowerSpent(ps, power_before_pool - power_needed);
 
     // Initialize cursor for the rune-pick phase
     GameState::CostPaymentCursor cur;
@@ -8330,7 +8534,9 @@ bool GameEngine::payAdditionalCost(PlayerId player, int energy, int power,
 
 bool GameEngine::payAdditionalCost(PlayerId player, int energy, int power,
                                     Domain domain, SpendFor spend_for) {
-    return resource::pay(state_, events_, player, energy, power, domain, spend_for);
+    // The payer names the runes (testing phase D9).
+    return effect_executor_->payResources(player, energy, power, resource::maskOf(domain),
+                                          spend_for);
 }
 
 
@@ -8355,9 +8561,9 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         auto cost = trashGrantCost(player, card_id, grant, targets, false);
         if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
             cost = trashGrantCost(player, card_id, grant, targets, true);
-        ok = resource::payIn(state_, events_, player, cost.energy, cost.power, cost.domains, f);
+        ok = effect_executor_->payResources(player, cost.energy, cost.power, cost.domains, f);
         if (ok && cost.extra_any > 0)
-            ok = resource::pay(state_, events_, player, 0, cost.extra_any, Domain::Count, f);
+            ok = effect_executor_->payResources(player, 0, cost.extra_any, resource::kAnyDomain, f);
     }
     if (ok && grant.banish_after && state_.objectExists(card_id))
         state_.getObject(card_id).banish_on_leave_chain = true;
@@ -8416,7 +8622,10 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
         if (on_decision) on_decision(state_, adv.legal, chosen);
         adv = resolveCostPaymentDecision(chosen);
     }
-    if (extra_any > 0) effect_executor_->payAnyPower(player, extra_any);
+    if (extra_any > 0)
+        effect_executor_->payAnyPower(player, extra_any,
+            state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
+                                          : SpendFor::Other);
     return true;
 }
 
@@ -8501,11 +8710,14 @@ void GameEngine::killUnit(GameObjectId unit_id) {
 
     state_.turn.any_unit_died_this_turn = true;
     state_.player(controller).unit_died_this_turn = true;
+    ++state_.player(controller).unit_deaths_this_turn;
     // Shadow Watcher: a friendly unit dying during its controller's Beginning
     // Phase (CR 315.2: the Beginning and Scoring Steps of that player's own
     // turn — isBeginningPhase; not the Awaken Phase, CR 315.1).
-    if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller)
+    if (isBeginningPhase(state_.turn.phase) && state_.turn.turn_player == controller) {
         state_.player(controller).unit_died_in_beginning_this_turn = true;
+        ++state_.player(controller).unit_deaths_in_beginning_this_turn;
+    }
     events_.emit(UnitDiedEvent{unit_id, controller,
         was_at.value_or(BaseLocation{controller}), might,
         state_.getObject(unit_id).last_known.killed_by});
@@ -8743,60 +8955,83 @@ Intent GameEngine::queryAgent(PlayerId player) {
 
     auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
 
+    // Whether the choice names a card the other player may not know.
+    const auto names_hidden = [&] {
+        std::vector<GameObjectId> named{chosen.card, chosen.ability_source};
+        named.insert(named.end(), chosen.targets.begin(), chosen.targets.end());
+        named.insert(named.end(), chosen.units_to_move.begin(), chosen.units_to_move.end());
+        named.insert(named.end(), chosen.chosen_objects.begin(), chosen.chosen_objects.end());
+        for (auto id : named)
+            if (hiddenFrom(state_, id, opponent(player))) return true;
+        return false;
+    };
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the CHOSE line below, unread
+        if (names_hidden()) events_.noteUnheardLine();   // and its other player's copy
     } else {
-        std::string choice_str = toString(chosen.type);
-        if (chosen.card != kInvalidId && state_.objectExists(chosen.card)) {
-            choice_str += " " + state_.getObject(chosen.card).name;
-        }
-        if (chosen.ability_source != kInvalidId && state_.objectExists(chosen.ability_source)) {
-            choice_str += " (src=" + state_.getObject(chosen.ability_source).name + ")";
-        }
-        if (!chosen.targets.empty()) {
-            choice_str += " tgt=[";
-            for (size_t i = 0; i < chosen.targets.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                if (state_.objectExists(chosen.targets[i]))
-                    choice_str += state_.getObject(chosen.targets[i]).name;
-                else
-                    choice_str += "?" + toString(chosen.targets[i]);
+        // Written twice when the choice names a card the other player may not
+        // know (a card in hand being hidden or played, a facedown card): the
+        // chooser's line names it, the other player's says "a hidden card"
+        // (testing phase D11). Otherwise one line for both.
+        const PlayerId other = opponent(player);
+        bool redacted = false;
+        auto describe = [&](bool for_other) {
+            auto nameOf = [&](GameObjectId oid) -> std::string {
+                if (!state_.objectExists(oid)) return "?" + toString(oid);
+                if (for_other && hiddenFrom(state_, oid, other)) {
+                    redacted = true;
+                    return "(a hidden card)";
+                }
+                return state_.getObject(oid).name;
+            };
+            std::string choice_str = toString(chosen.type);
+            if (chosen.card != kInvalidId && state_.objectExists(chosen.card))
+                choice_str += " " + nameOf(chosen.card);
+            if (chosen.ability_source != kInvalidId && state_.objectExists(chosen.ability_source))
+                choice_str += " (src=" + nameOf(chosen.ability_source) + ")";
+            if (!chosen.targets.empty()) {
+                choice_str += " tgt=[";
+                for (size_t i = 0; i < chosen.targets.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    choice_str += nameOf(chosen.targets[i]);
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
-        }
-        if (!chosen.units_to_move.empty()) {
-            choice_str += " units=[";
-            for (size_t i = 0; i < chosen.units_to_move.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                if (state_.objectExists(chosen.units_to_move[i]))
-                    choice_str += state_.getObject(chosen.units_to_move[i]).name;
+            if (!chosen.units_to_move.empty()) {
+                choice_str += " units=[";
+                for (size_t i = 0; i < chosen.units_to_move.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    choice_str += nameOf(chosen.units_to_move[i]);
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
-        }
-        // MakeChoice carries its "answer" in chosen_objects (discard pick,
-        // predict recycle, rune exhaust target, etc.). Name them in the
-        // trace so a reader can correlate the MakeChoice line with what
-        // actually moved zones in the surrounding trace.
-        if (!chosen.chosen_objects.empty()) {
-            choice_str += " pick=[";
-            for (size_t i = 0; i < chosen.chosen_objects.size(); ++i) {
-                if (i > 0) choice_str += ",";
-                auto oid = chosen.chosen_objects[i];
-                if (state_.objectExists(oid))
-                    choice_str += state_.getObject(oid).name +
-                                  "(id=" + toString(oid) + ")";
-                else
-                    choice_str += "?" + toString(oid);
+            // MakeChoice carries its "answer" in chosen_objects (discard pick,
+            // predict recycle, rune exhaust target, etc.). Name them in the
+            // trace so a reader can correlate the MakeChoice line with what
+            // actually moved zones in the surrounding trace.
+            if (!chosen.chosen_objects.empty()) {
+                choice_str += " pick=[";
+                for (size_t i = 0; i < chosen.chosen_objects.size(); ++i) {
+                    if (i > 0) choice_str += ",";
+                    const auto oid = chosen.chosen_objects[i];
+                    choice_str += nameOf(oid) + "(id=" + toString(oid) + ")";
+                }
+                choice_str += "]";
             }
-            choice_str += "]";
+            if (chosen.chosen_battlefield != kInvalidId)
+                choice_str += " bf=" + toString(chosen.chosen_battlefield);
+            // Player tag at the front so the line scans independently of
+            // the surrounding DECISION # context.
+            return "CHOSE: [" + std::string(toString(player)) + "] " + choice_str;
+        };
+        const std::string full = describe(false);
+        const std::string public_line = describe(true);
+        if (!redacted) {
+            RIFT_TRACE(events_, full);
+        } else {
+            RIFT_TRACE_FOR(events_, LogAudience::only(player), full);
+            RIFT_TRACE_FOR(events_, LogAudience::only(other), public_line);
         }
-        if (chosen.chosen_battlefield != kInvalidId) {
-            choice_str += " bf=" + toString(chosen.chosen_battlefield);
-        }
-        // Player tag at the front so the line scans independently of
-        // the surrounding DECISION # context.
-        RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) +
-                         "] " + choice_str);
     }
 
     if (on_decision) {

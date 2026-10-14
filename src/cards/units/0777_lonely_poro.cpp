@@ -16,6 +16,9 @@ class LonelyPoro_777 : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIDie; }
+    // (Whether units that die together leave it "alone" is judge question 12,
+    // docs/judge-questions-2026-10.md; testing phase D80. Both printings read
+    // it this way.)
     // "If I died alone": no other friendly unit was here as I died — judged
     // from the last-known information (CR 383.2.c.3.b), which for units that
     // die at the same time is taken for all of them before the first leaves.

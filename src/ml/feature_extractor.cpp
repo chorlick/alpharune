@@ -667,8 +667,8 @@ void extractStateFeatures(const GameState& state,
     features.push_back(static_cast<float>(cost_mod_sum(opp_ps.cost_modifiers)));
 
     // Additional turn queue depth (self, opp).
-    features.push_back(static_cast<float>(self_ps.additional_turns.size()));
-    features.push_back(static_cast<float>(opp_ps.additional_turns.size()));
+    features.push_back(static_cast<float>(state.additionalTurnsOf(perspective)));
+    features.push_back(static_cast<float>(state.additionalTurnsOf(opp)));
 
     // Contested-by-self per BF (×4).
     for (int i = 0; i < 4; ++i) {

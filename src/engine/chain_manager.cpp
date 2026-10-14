@@ -30,7 +30,9 @@ void ChainManager::payDeflectForChoices(ChainItem& item) {
     chosen.reserve(item.targets.size());
     for (auto t : item.targets) {
         const int deflect = executor_->deflectCostFor(item.controller, t);
-        if (deflect > 0 && !executor_->payAnyPower(item.controller, deflect)) {
+        if (deflect > 0 &&
+            !executor_->payAnyPower(item.controller, deflect,
+                                    item.is_spell ? SpendFor::Spell : SpendFor::Other)) {
             RIFT_TRACE(events_, "DEFLECT_UNPAID: " + std::string(toString(item.controller)) +
                              " cannot pay " + std::to_string(deflect) + " [A] to choose " +
                              state_.getObject(t).name + " — it is not chosen");

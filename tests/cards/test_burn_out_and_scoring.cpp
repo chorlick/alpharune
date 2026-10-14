@@ -505,7 +505,7 @@ TEST_F(BurnOutScoringTest, ContestedBF_StuckAfter0vs0Showdown_MoveByOpponentStag
     EXPECT_FALSE(bf.showdown_staged);
 }
 
-// ─── CR 482.7 / 483.7 / 484.7 — First Turn Process: first player skips draw ──
+// ─── CR 487.7 / 488.7 — First Turn Process of a 1v1 game: both players draw ──
 
 // Helper: push a fresh deck card directly into the engine's GameState
 // (fixture `state` is a separate object — addToDeck() doesn't touch the
@@ -523,9 +523,14 @@ GameObjectId seedDeckCard(GameState& s, PlayerId owner) {
 }
 }  // namespace
 
-TEST_F(BurnOutScoringTest, FirstPlayerFirstTurn_DrawPhaseSkipped) {
-    // Per CR 482.7: "The player going first does not draw a card during
-    // their first Draw Phase of the game." Going-second is unaffected.
+TEST_F(BurnOutScoringTest, FirstPlayerFirstTurn_DrawsInOneVersusOne) {
+    // CR 487.7 / 488.7 (1v1 Duel / Match), in full: "The player going second
+    // channels an extra Rune from their Rune Deck during their first Channel
+    // Phase of the game." The player going first draws as usual (CR
+    // 315.4.b). "The player going first does not draw a card during their
+    // first Draw Phase" is the text of 489.7 / 490.7 / 491.7 (multiplayer).
+    // (Testing phase G1. Old expectation: no draw, citing "CR 482.7" — the
+    // multiplayer rule under its old number, applied to 1v1.)
     makeEngineAndSeedBattlefields();
     auto& s = *eng_state();
     s.turn.turn_player = P1;
@@ -541,10 +546,9 @@ TEST_F(BurnOutScoringTest, FirstPlayerFirstTurn_DrawPhaseSkipped) {
 
     engine_->testHook_drawPhase();
 
-    EXPECT_EQ(s.player(P1).hand.size(), static_cast<size_t>(hand_before))
-        << "P1 (going first) must NOT draw on their first Draw Phase";
-    EXPECT_EQ(s.player(P1).main_deck.size(), static_cast<size_t>(deck_before))
-        << "Deck size unchanged when draw is skipped";
+    EXPECT_EQ(s.player(P1).hand.size(), static_cast<size_t>(hand_before + 1))
+        << "P1 (going first) draws on their first Draw Phase in 1v1";
+    EXPECT_EQ(s.player(P1).main_deck.size(), static_cast<size_t>(deck_before - 1));
 }
 
 TEST_F(BurnOutScoringTest, SecondPlayerFirstTurn_DrawPhaseDrawsNormally) {

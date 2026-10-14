@@ -23,6 +23,14 @@ public:
     TriggerType triggerType() const override {
         return TriggerType::WhenYouKillAUnitWithASpell;
     }
+    // "play me from your trash": the ability works from its owner's trash
+    // (CR 383.2.c.1 and its Immortal Phoenix example). The dispatch also
+    // reaches the killer's cards on the board; a Phoenix there does not
+    // trigger (testing phase B3).
+    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+                          TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
+        return state.objectExists(source) && state.getObject(source).zone == ZoneType::Trash;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         auto in_trash = [&]() { return ctx.state.getObject(ctx.source).zone == ZoneType::Trash; };
         // [1][R]: Energy from the pool or a ready rune, one Fury Power from the

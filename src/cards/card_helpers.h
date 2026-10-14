@@ -102,7 +102,7 @@ inline bool payOnePower(CardContext& ctx, PlayerId player,
                         std::optional<Domain> domain) {
     // The engine's own payment (engine/resource_payment.h): floating Power,
     // then a recycled rune from the player's base, an exhausted one first.
-    return resource::pay(ctx.state, ctx.events, player, 0, 1, domain.value_or(Domain::Count));
+    return ctx.executor.payResources(player, 0, 1, resource::maskOf(domain.value_or(Domain::Count)));
 }
 
 // ── Paying Energy inside an effect ("you may pay [N] to ...") ───────────────
@@ -117,7 +117,7 @@ inline int payableEnergy(const GameState& state, PlayerId player) {
 /// be covered.
 inline bool payEnergy(CardContext& ctx, PlayerId player, int amount) {
     if (amount <= 0) return true;
-    return resource::pay(ctx.state, ctx.events, player, amount, 0, Domain::Count);
+    return ctx.executor.payResources(player, amount, 0, resource::kAnyDomain);
 }
 
 // ── Card::mayChooseAtFinalization, the common shapes ──

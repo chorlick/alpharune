@@ -930,19 +930,23 @@ void GameEngine::scoringStep() {
     events_.emit(PhaseChangedEvent{old_phase, TurnPhase::ScoringStep,
                                     state_.turn.turn_player});
 
-    // Turn player Holds all battlefields they control (CR 315.2.b)
+    // CR 315.2.b.2: "The Turn Player Holds all Battlefields they Control" —
+    // one action: every hold is scored, and only then is anything finalized.
+    // The hold abilities are one batch, which their controllers order (CR
+    // 383.3.d); nothing an ability or a reaction does can change whether the
+    // next battlefield is held (finding D72: each hold's abilities used to
+    // resolve before the next hold). A hold that wins the game ends it there
+    // (scoreHold checks the win as the point is scored).
     auto player = state_.turn.turn_player;
-    // By index: resolving a hold trigger may add a battlefield, which
-    // reallocates the vector under a range-for.
-    for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
-        const BattlefieldId held_id = state_.battlefields[bi].id;
-        const auto held_by = state_.battlefields[bi].controller;
-        if (held_by.has_value() && *held_by == player) {
-            scoreHold(player, held_id);
-            if (state_.game_over) return;
-            // Process hold/score triggers
-            runChain();
-            if (state_.game_over) return;
+    {
+        const SimultaneousTriggers together(state_.chain);
+        for (size_t bi = 0; bi < state_.battlefields.size(); ++bi) {
+            const BattlefieldId held_id = state_.battlefields[bi].id;
+            const auto held_by = state_.battlefields[bi].controller;
+            if (held_by.has_value() && *held_by == player) {
+                scoreHold(player, held_id);
+                if (state_.game_over) return;
+            }
         }
     }
 

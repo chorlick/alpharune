@@ -722,6 +722,27 @@ void TriggerManager::onCardPlayed(const CardPlayedEvent& e) {
     if (e.card_type == CardType::Unit) announceUnitPlayed(e.object, e.player);
 }
 
+// "When you play a card from anywhere other than your hand," (Heart of the
+// Tempest): the trash (Flow, a play-from-trash permission, an effect), face
+// down, the Champion Zone, a deck or Banishment by an effect. Announced when
+// the play is completed (CR 420.4.a): a permanent once it has entered, a spell
+// as it resolves (onSpellResolved), never for a countered spell (420.4.a.1).
+void TriggerManager::announcePlayedNotFromHand(GameObjectId card, PlayerId controller) {
+    state_.player(controller).cards_played_not_from_hand_this_turn++;
+    std::vector<GameObjectId> watchers;
+    for (auto& [id, obj] : state_.objects.inPlay()) {
+        if (id == card || obj.controller != controller) continue;
+        if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
+        if (obj.card_def_id == kInvalidId) continue;
+        if (cardFiresOn(card_registry_, obj.card_def_id,
+                        TriggerType::WhenYouPlayACardNotFromHand))
+            watchers.push_back(id);
+    }
+    for (auto wid : watchers)
+        fireTrigger(wid, controller, 0, TriggerType::WhenYouPlayACardNotFromHand,
+                    /*subject=*/card);
+}
+
 void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
     const TriggerEventScope event_scope(state_.chain);
     // CR 420.4.a: "When you play a spell" / "When you play a card" trigger now,
@@ -744,6 +765,12 @@ void TriggerManager::onSpellResolved(const SpellResolvedEvent& e) {
     }
     for (auto& [id, t] : fires)
         fireTrigger(id, e.controller, energy_spent, t, /*subject=*/e.spell);
+    // The same play, completed: if it was not from a hand (finding G12).
+    if (auto it = state_.getObject(e.spell).card_counters.find(Card::kPlayedNotFromHand);
+        it != state_.getObject(e.spell).card_counters.end() && it->second != 0) {
+        it->second = 0;   // announced once, whatever the spell is played as next
+        announcePlayedNotFromHand(e.spell, e.controller);
+    }
 
     // Battlefield cards ("When a player plays a spell, they ..." — Abandoned
     // Hall; Forgotten Library). A battlefield's card object is not at a
@@ -1794,21 +1821,8 @@ void TriggerManager::onObjectStateChanged(const ObjectStateChangedEvent& e) {
     }
 
     if (e.what_changed == "played_not_from_hand") {
-        // "When you play a card from anywhere other than your hand," (trash via
-        // Flow, face down, Champion Zone).
-        state_.player(controller).cards_played_not_from_hand_this_turn++;
-        std::vector<GameObjectId> watchers;
-        for (auto& [id, obj] : state_.objects.inPlay()) {
-            if (id == e.object || obj.controller != controller) continue;
-            if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone) continue;
-            if (obj.card_def_id == kInvalidId) continue;
-            if (cardFiresOn(card_registry_, obj.card_def_id,
-                            TriggerType::WhenYouPlayACardNotFromHand))
-                watchers.push_back(id);
-        }
-        for (auto wid : watchers)
-            fireTrigger(wid, controller, 0, TriggerType::WhenYouPlayACardNotFromHand,
-                        /*subject=*/e.object);
+        // A permanent, announced once it has entered (CR 420.4.a, 383.4.a.2).
+        announcePlayedNotFromHand(e.object, controller);
         return;
     }
 

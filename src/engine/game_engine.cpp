@@ -2805,6 +2805,14 @@ void GameEngine::executePlayCard(const Intent& intent) {
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
+    // Where the card is played from. The Chosen Champion's play intent is the
+    // hand play's (the generator lists it with the hand's units, CR 420.1.a),
+    // but it is not from the hand: "from anywhere other than your hand"
+    // (Heart of the Tempest, finding G11) and "from hand" cost modifiers
+    // read this.
+    const Intent::PlaySource play_source =
+        (intent.play_source == Intent::PlaySource::Hand && card.zone == ZoneType::ChampionZone)
+            ? Intent::PlaySource::ChampionZone : intent.play_source;
     // CR 354: the card goes on the chain as the play begins. Its item is made
     // below, once the cost is paid; whatever the payment triggers meanwhile
     // is newer than it (placeBelowWhatItsPlayTriggered).
@@ -2850,7 +2858,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
     if (!intent.use_alt_play_cost && !paid_via_grant)
         prepay = payAdditionalPlayCosts(intent.player, intent.card, location_power);
 
-    ps.current_play_source = intent.play_source;
+    ps.current_play_source = play_source;
     if (intent.use_alt_play_cost) {
         // Alternative play cost (Jhin, Meticulous Killer: "play me for [B]"):
         // pay the card's alternativePlayCost instead of the printed cost.
@@ -2919,7 +2927,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
     card.card_counters["__announce_play"] = ps.cards_played_this_turn;
     card.card_counters["__announce_energy"] = energy_spent;
     card.card_counters["__announce_not_hand"] =
-        intent.play_source != Intent::PlaySource::Hand ? 1 : 0;
+        play_source != Intent::PlaySource::Hand ? 1 : 0;
 
     // CR 135.2.b.3 + CR 355.1 — "As you play me" / "As I am played"
     // instructions execute during the play action itself, not as a
@@ -3289,10 +3297,12 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
             ps.next_spell_bonus_damage = 0;
         }
     }
+    // "Played from anywhere other than your hand" is announced as the spell
+    // resolves, with its other play triggers (CR 420.4.a; finding G12).
+    card.card_counters[Card::kPlayedNotFromHand] =
+        intent.play_source != Intent::PlaySource::Hand ? 1 : 0;
     events_.emit(CardPlayedEvent{intent.card, intent.player,
         card.card_type, ps.cards_played_this_turn, total_energy_spent});
-    if (intent.play_source != Intent::PlaySource::Hand)
-        events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
 
     // Add spell to chain with targets. Carry energy_spent and repeats_paid
     // onto the chain item — ChainManager re-resolves the spell `repeats_paid`
@@ -4148,10 +4158,11 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     } else if (card.isSpell()) {
         auto& ps = state_.player(intent.player);
         ps.cards_played_this_turn++;
+        // Played from face down = from somewhere other than hand; announced as
+        // the spell resolves (CR 420.4.a; finding G12).
+        card.card_counters[Card::kPlayedNotFromHand] = 1;
         events_.emit(CardPlayedEvent{intent.card, intent.player,
             card.card_type, ps.cards_played_this_turn, /*energy_spent=*/0});
-        // Played from face down = from somewhere other than hand.
-        events_.emit(ObjectStateChangedEvent{intent.card, "played_not_from_hand"});
         const auto chain_id =
             chain_manager_->addSpell(intent.card, intent.player, intent.targets);
         // A spell that takes its target through Card::pickTarget was played

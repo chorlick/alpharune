@@ -162,6 +162,10 @@ private:
     /// "Your [Temporary] effects at my battlefield don't trigger."
     bool temporaryTriggerSuppressed(GameObjectId source) const;
 
+    /// "When you play a card from anywhere other than your hand": the play of
+    /// `card` by `controller` is completed (CR 420.4.a).
+    void announcePlayedNotFromHand(GameObjectId card, PlayerId controller);
+
     /// What Card::triggerConditionOn is asked with.
     Card::TriggerEvent triggerEventFor(GameObjectId source, PlayerId controller,
                                        TriggerType trigger, GameObjectId subject) const;

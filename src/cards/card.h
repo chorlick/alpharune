@@ -1006,6 +1006,13 @@ public:
     /// if you paid the additional cost, ..."). One key for every card, so
     /// that one place can forget it: forgetPlayPayments.
     static constexpr const char* kAdditionalCostPaid = "__additional_cost_paid";
+    /// On a spell: 1 if this play of it is not from a hand (the trash, face
+    /// down, by an effect from a deck or Banishment), 0 if it is. Written by
+    /// every spell play path as the spell is played; read when it resolves,
+    /// which is when "When you play a card from anywhere other than your hand"
+    /// triggers (CR 420.4.a; TriggerManager::onSpellResolved). A countered
+    /// spell triggers nothing (420.4.a.1).
+    static constexpr const char* kPlayedNotFromHand = "__played_not_from_hand";
     /// The mark GameEngine::beginCostPayment puts on a unit that another card
     /// gives [Accelerate] for this play (Card::grantsAccelerateTo); taken by
     /// GameEngine::resolvePermanent. A per-play flag: forgetPlayPayments drops it.

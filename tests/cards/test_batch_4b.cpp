@@ -829,4 +829,32 @@ TEST_F(Batch4bTest, B6_FrigidJewel_TwoCardsDrawnAtOnceIncludeTheSecond) {
     EXPECT_TRUE(anyLineHas(lines, "TRIGGER: Frigid Jewel"));
 }
 
+// ─── H1  Fortified Position: "It gains [Shield 2] this combat." ─────────────
+// An effect a resolved ability created lasts for its duration, whatever then
+// becomes of its source: the battlefield card replaced by a Brush mid-combat
+// does not end the Shield.
+TEST_F(Batch4bTest, H1_FortifiedPosition_TheShieldOutlivesTheBattlefieldCard) {
+    auto fort = battlefieldCard(0, kFortifiedPosition);
+    auto father = legendCard(P1, kGreenFather);
+    auto defender = addUnit(P1, kShipyardSkulker, 3, 0);
+    addUnit(P2, kShipyardSkulker, 3, 0);
+    combatInProgress(0, P2);
+    EnginePathAgent agent(EnginePathAgent::choosing(defender));
+    fireTriggerThroughEngine(fort, TriggerType::WhenYouDefendHere, &agent);
+    ASSERT_EQ(o(defender).current_might, 5);
+    AcceptingEnginePathAgent yes;
+    fireTriggerThroughEngine(father, TriggerType::WhenIConquerOrHold, &yes, fort);
+    ASSERT_NE(state.battlefields[0].card_object_id, fort) << "replaced by a Brush";
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    EXPECT_TRUE(o(defender).hasKeyword(Keyword::Shield)) << "\"this combat\"";
+    EXPECT_EQ(o(defender).current_might, 5);
+    // The combat ends: so does the Shield.
+    auto& bf = state.battlefields[0];
+    bf.combat_in_progress = false;
+    bf.attacker = bf.defender = std::nullopt;
+    withEngine([](GameEngine& e) { e.testHook_cleanup(); });
+    EXPECT_FALSE(o(defender).hasKeyword(Keyword::Shield));
+    EXPECT_EQ(o(defender).current_might, 3);
+}
+
 }  // namespace riftbound::test::batch_4b

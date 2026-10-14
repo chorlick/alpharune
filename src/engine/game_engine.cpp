@@ -6477,6 +6477,29 @@ void GameEngine::recalculateAuras() {
         }
     }
 
+    // Step 1a'': "this combat" keywords resolved abilities gave (GameState::
+    // combat_keywords): applied while their combat goes on and the unit is on
+    // the board, whatever became of the card that gave them; dropped after.
+    {
+        auto& cks = state_.combat_keywords;
+        cks.erase(std::remove_if(cks.begin(), cks.end(),
+            [&](const GameState::CombatKeyword& ck) {
+                if (ck.turn != state_.turn.turn_number || !state_.objectExists(ck.unit) ||
+                    !state_.getObject(ck.unit).location.has_value())
+                    return true;
+                for (const auto& bf : state_.battlefields)
+                    if (bf.id == ck.battlefield) return !bf.combat_in_progress;
+                return true;
+            }), cks.end());
+        for (const auto& ck : cks) {
+            GameObject::AuraEffect ae;
+            ae.source = ck.unit;
+            ae.keyword = ck.keyword;
+            ae.keyword_value = ck.value;
+            state_.getObject(ck.unit).aura_effects.push_back(ae);
+        }
+    }
+
     // Step 1b: Refresh per-object targeting-protection flags from each
     // card's canBeChosenByEnemy() override. Cards on board need their
     // flag set; off-board cards stay default-false. Cheap O(n) pass over

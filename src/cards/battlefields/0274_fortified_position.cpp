@@ -18,62 +18,28 @@ public:
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     // "When you defend here, choose a unit. It gains [Shield 2] this combat."
     // "A unit": any unit on the board, either player's (not only a defender).
-    // "This combat", not "this turn": the Shield is a continuous effect that
-    // lasts while the combat it was given in is going on (applyPassiveAura),
-    // as Fiora, Peerless's "this combat" is. The chosen unit remembers the
-    // amount, the battlefield of that combat and the turn; once that
-    // battlefield has no combat in progress the memory is dropped, so a unit
-    // that defends again later in the turn does not have it.
-    static constexpr const char* kShield = "__fortified_shield";
-    static constexpr const char* kCombatBf = "__fortified_combat_bf";   // battlefield + 1
-    static constexpr const char* kTurn = "__fortified_turn";            // turn + 1
+    // "This combat", not "this turn": a continuous effect for the combat going
+    // on here (EffectExecutor::giveKeywordThisCombat) that lasts until it ends
+    // even if this battlefield card is replaced meanwhile (testing phase H1).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const auto units = chooseableUnits(ctx.state, ctx.controller,
                                            [](const GameObject&) { return true; });
         GameObjectId picked = pickTarget(ctx, "Fortified Position (gain Shield 2)", units);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId) return;     // none / mistarget / waiting
-        const auto here = battlefieldOfCard(ctx.state, ctx.source);
-        if (!here.has_value() || !ctx.state.objectExists(picked)) return;
-        auto& unit = ctx.state.getObject(picked);
-        if (!unit.isUnit() || !unit.location.has_value()) return;   // it has left
-        auto& c = unit.card_counters;
-        const int combat = static_cast<int>(here->raw()) + 1;
-        const int turn = ctx.state.turn.turn_number + 1;
-        // A grant left from an earlier combat is not added to.
-        if (c[kCombatBf] != combat || c[kTurn] != turn) c[kShield] = 0;
-        c[kShield] += 2;
-        c[kCombatBf] = combat;
-        c[kTurn] = turn;
-        ctx.executor.recalculateContinuousEffects();
-        RIFT_TRACE(ctx.events, "FORTIFIED POSITION: defend -> " + unit.name +
-                            " gains [Shield 2] this combat");
-    }
-    void applyPassiveAura(GameState& state, PlayerId /*controller*/) const override {
-        // Called once per slot holding this card and not told which, so each
-        // unit is given its Shield once.
-        // (Every object: a unit that has left the board, or whose combat is over, has its memory dropped.)
-        for (auto& [id, obj] : state.objects) {
-            auto shield = obj.card_counters.find(kShield);
-            if (shield == obj.card_counters.end()) continue;
-            const int amount = shield->second;
-            const int combat = obj.card_counters[kCombatBf];
-            const bool this_turn = obj.card_counters[kTurn] == state.turn.turn_number + 1;
-            bool going = false;
-            for (const auto& bf : state.battlefields)
-                if (static_cast<int>(bf.id.raw()) + 1 == combat) going = bf.combat_in_progress;
-            if (!obj.location.has_value() || !this_turn || !going || amount <= 0) {
-                obj.card_counters.erase(kShield);
-                obj.card_counters.erase(kCombatBf);
-                obj.card_counters.erase(kTurn);
-                continue;
-            }
-            bool given = false;
-            for (const auto& ae : obj.aura_effects)
-                if (ae.source == id && ae.keyword == Keyword::Shield &&
-                    ae.keyword_value == amount) given = true;
-            if (!given) auraKeyword(obj, id, Keyword::Shield, amount);
-        }
+        // "This combat": the one at this battlefield. A token that replaced
+        // this card since is the same object for what refers to it (CR
+        // 439.1.a), so "here" is the slot that holds either.
+        auto here = battlefieldOfCard(ctx.state, ctx.source);
+        if (!here.has_value())
+            for (const auto& bf : ctx.state.battlefields)
+                if (bf.replaced_card == std::optional<GameObjectId>{ctx.source}) here = bf.id;
+        if (!here.has_value()) return;
+        if (!ctx.state.objectExists(picked) || !ctx.state.getObject(picked).location.has_value())
+            return;   // it has left
+        ctx.executor.giveKeywordThisCombat(picked, Keyword::Shield, 2, *here);
+        RIFT_TRACE(ctx.events, "FORTIFIED POSITION: defend -> " +
+                            ctx.state.getObject(picked).name + " gains [Shield 2] this combat");
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouDefendHere; }
 private:

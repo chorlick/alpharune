@@ -168,6 +168,12 @@ public:
     void bounceToHand(GameObjectId target);
     void giveTemporaryMight(GameObjectId target, int amount, int minimum = 0);
     void giveTemporaryKeyword(GameObjectId target, Keyword kw, int value);
+    /// "<unit> gains [kw value] this combat" for the combat going on at
+    /// `battlefield` (GameState::combat_keywords). A second grant of the same
+    /// keyword to the same unit for that combat adds its value. Nothing for a
+    /// unit not on the board or a battlefield with no combat.
+    void giveKeywordThisCombat(GameObjectId unit, Keyword kw, int value,
+                               BattlefieldId battlefield);
     /// Buff (CR 427): place a Buff counter on `target` if it has none. A unit
     /// that already has one is not buffed (CR 427.1.b.1 / 702.3) unless its
     /// Card::canHaveAnyNumberOfBuffs(). Returns true if a Buff was placed —

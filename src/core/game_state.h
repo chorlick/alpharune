@@ -990,6 +990,20 @@ struct GameState {
     // Delayed abilities (Phase 5, CR 389-392)
     std::vector<DelayedAbility> delayed_abilities;
 
+    /// "It gains [Keyword N] this combat": a continuous effect a resolved
+    /// ability created (EffectExecutor::giveKeywordThisCombat). It lasts while
+    /// the combat at `battlefield` that was going on when it was made goes on
+    /// and `unit` stays on the board, whatever becomes of the card that made
+    /// it; GameEngine::recalculateAuras applies it and drops it once over.
+    struct CombatKeyword {
+        GameObjectId unit = kInvalidId;
+        Keyword keyword = Keyword::Count;
+        int value = 0;
+        BattlefieldId battlefield = kInvalidId;
+        int turn = 0;
+    };
+    std::vector<CombatKeyword> combat_keywords;
+
     // Game result
     bool game_over = false;
     PlayerId winner = PlayerId::None;

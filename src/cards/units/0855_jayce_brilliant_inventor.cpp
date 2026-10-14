@@ -25,9 +25,8 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouPlayACard};
     }
     // "the first time you play a non-token gear each turn": judged when the
-    // gear is played. The stamp below is written as the ability goes on the
-    // chain, before another gear can be played.
-    bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
+    // gear's play is announced, from the turn's count of such plays.
+    bool triggerCondition(const GameState& state, GameObjectId /*source*/, PlayerId /*controller*/,
                           TriggerType trigger, GameObjectId subject) const override {
         if (trigger != TriggerType::WhenYouPlayACard) return true;
         if (subject == kInvalidId || !state.objectExists(subject)) return false;

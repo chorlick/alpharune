@@ -1041,6 +1041,24 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
     events_.emit(ObjectStateChangedEvent{target, "might_changed"});
 }
 
+void EffectExecutor::giveKeywordThisCombat(GameObjectId unit, Keyword kw, int value,
+                                           BattlefieldId battlefield) {
+    if (!state_.objectExists(unit) || !state_.getObject(unit).location.has_value()) return;
+    bool combat = false;
+    for (const auto& bf : state_.battlefields)
+        if (bf.id == battlefield) combat = bf.combat_in_progress;
+    if (!combat) return;
+    for (auto& ck : state_.combat_keywords)
+        if (ck.unit == unit && ck.keyword == kw && ck.battlefield == battlefield &&
+            ck.turn == state_.turn.turn_number) {
+            ck.value += value;
+            recalculateContinuousEffects();
+            return;
+        }
+    state_.combat_keywords.push_back({unit, kw, value, battlefield, state_.turn.turn_number});
+    recalculateContinuousEffects();
+}
+
 void EffectExecutor::giveTemporaryKeyword(GameObjectId target,
                                             Keyword kw, int value) {
     if (!state_.objectExists(target)) return;

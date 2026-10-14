@@ -40,11 +40,26 @@ public:
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        // Optional additional cost: spend 5 XP (only offered if affordable).
-        const int paid = confirmOptional(ctx, "Conscription: spend 5 XP (any enemy unit)",
-            [&]() { return ps.xp >= 5; });
-        if (paid == -1) return;  // waiting on agent
-        const bool widened = (paid == 1);
+        // Optional additional cost: spend 5 XP. Paying or not is offered only
+        // when the unit can then be chosen (CR 355.16: no choice that leads to
+        // an illegal one): with no enemy unit of 3 [M] or less, the cost is
+        // the only way to play it and is not asked (it was asked, and
+        // declining it left the spell with no target — a fuzz finding of
+        // testing phase batch 3).
+        const bool narrow_ok = !candidates(ctx.state, ctx.controller, false).empty();
+        const bool wide_ok = ps.xp >= 5 && !candidates(ctx.state, ctx.controller, true).empty();
+        const uint32_t mask = (narrow_ok ? 1u : 0u) | (wide_ok ? 2u : 0u);
+        int mode = -2;
+        if (mask == 3u) {
+            mode = pickMode(ctx, "Conscription: spend 5 XP as an additional cost?", 2,
+                            {"Don't spend 5 XP", "Spend 5 XP (any enemy unit)"}, mask);
+            if (mode == -1) return;  // waiting on agent
+        } else {
+            settleMode(ctx, mask == 2u ? 1 : 0);
+            mode = pickMode(ctx, "Conscription: spend 5 XP as an additional cost?", 2, {},
+                            mask == 0u ? 1u : mask);
+        }
+        const bool widened = (mode == 1);
 
         GameObjectId picked = pickTarget(ctx, "Conscription target",
                                          candidates(ctx.state, ctx.controller, widened));

@@ -63,6 +63,17 @@ constexpr CardDefId kZedFromTheShadows = 810;
 constexpr CardDefId kEmperorsDivide = 366;
 constexpr CardDefId kGuerillaWarfare = 260;
 constexpr CardDefId kSteraksGage = 379;
+constexpr CardDefId kHeartOfTheTempest = 942;
+constexpr CardDefId kDefenderOfTomorrow = 936;
+constexpr CardDefId kMatriarchOfWar = 940;
+constexpr CardDefId kBountyHunter = 262;
+constexpr CardDefId kDiviningShells = 723;
+constexpr CardDefId kSwiftScout = 259;
+constexpr CardDefId kForgeOfTheFuture = 212;
+constexpr CardDefId kKennenKeeper = 922;
+constexpr CardDefId kSinisterPoro = 699;
+constexpr CardDefId kIcevaleArcher = 627;
+constexpr CardDefId kTeemoStrategist = 121;
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -161,6 +172,44 @@ protected:
         });
         return out;
     }
+    GameObjectId legendOf(PlayerId p, CardDefId def) {
+        auto id = state.createObject();
+        auto& l = o(id);
+        const auto& d = card_db.get(def);
+        l.owner = p;
+        l.controller = p;
+        l.card_def_id = def;
+        l.name = d.name;
+        l.card_type = d.card_type;
+        l.zone = ZoneType::LegendZone;
+        ps(p).legend_zone = id;
+        return id;
+    }
+    /// Activate ability `index` of `source` the way a game does.
+    void activate(GameObjectId source, AgentInterface* p1, AgentInterface* p2 = nullptr,
+                  int index = 0, std::vector<GameObjectId> targets = {}) {
+        Intent i;
+        i.type = IntentType::ActivateAbility;
+        i.player = o(source).controller;
+        i.ability_source = source;
+        i.ability_index = index;
+        i.targets = std::move(targets);
+        withEngine([&](GameEngine& e) { e.testHook_executeIntent(i); settleLikeTheEngine(e); },
+                   p1, p2, i.player);
+    }
+    /// Whether P1 is offered an activation of `source` now.
+    bool activationOffered(GameObjectId source) {
+        bool out = false;
+        withEngine([&](GameEngine& e) {
+            e.testHook_cleanup();
+            for (const auto& i : e.generateLegalActions())
+                if (i.ability_source == source &&
+                    (i.type == IntentType::ActivateAbility ||
+                     i.type == IntentType::ActivateActionAbility ||
+                     i.type == IntentType::ActivateReactionAbility)) out = true;
+        });
+        return out;
+    }
     bool onChain(GameObjectId src) {
         for (const auto& ci : state.chain.items)
             if (ci.source == src) return true;
@@ -206,6 +255,23 @@ public:
             for (const auto& i : prompts[k])
                 if (i.choice_label.find(text) != std::string::npos) return static_cast<int>(k);
         return -1;
+    }
+};
+
+/// P1's agent that records, at its first prompt, what `look` reads.
+class LooksAtFirstPrompt : public EnginePathAgent {
+public:
+    std::function<void(const GameState&)> look;
+    bool looked = false;
+    using EnginePathAgent::EnginePathAgent;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        const bool is_choice = !legal.empty() && std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (is_choice && !looked && !isTriggerOrderPrompt(legal) && look) {
+            looked = true;
+            look(st);
+        }
+        return EnginePathAgent::selectAction(st, legal);
     }
 };
 
@@ -819,6 +885,217 @@ TEST_F(Batch3Test, D67_GuerillaWarfareChoosesTheCardsAsItIsPlayed) {
     ASSERT_FALSE(me.other_priority_at.empty());
     EXPECT_EQ(me.other_priority_at[0], 0) << "the trash is public: the cards are targets (CR 355.10.a.1)";
     EXPECT_TRUE(inHand(P1, hidden));
+}
+
+// ─── G15 / D38 / D15 / G19 / D67 / D41: an activated ability is put on the
+// chain, makes its choices, then pays (CR 402.1, 403.2, 404.2, 405.1) ────────
+
+TEST_F(Batch3Test, G15_HeartOfTheTempestChoosesBeforeItDisempowersAndExhausts) {
+    auto heart = legendOf(P1, kHeartOfTheTempest);
+    o(heart).empowered = 1;
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    bool exhausted = true;
+    int empowered = 0;
+    LooksAtFirstPrompt me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.look = [&](const GameState& st) {
+        exhausted = st.getObject(heart).is_exhausted;
+        empowered = st.getObject(heart).empowered;
+    };
+    activate(heart, &me);
+    ASSERT_TRUE(me.looked);
+    EXPECT_FALSE(exhausted) << "the target is chosen before the cost is paid";
+    EXPECT_EQ(empowered, 1);
+    EXPECT_TRUE(o(heart).is_exhausted);
+}
+
+TEST_F(Batch3Test, G15_BountyHunterChoosesBeforeItExhausts) {
+    auto bh = legendOf(P1, kBountyHunter);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    bool exhausted = true;
+    LooksAtFirstPrompt me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.look = [&](const GameState& st) { exhausted = st.getObject(bh).is_exhausted; };
+    activate(bh, &me);
+    ASSERT_TRUE(me.looked);
+    EXPECT_FALSE(exhausted);
+}
+
+TEST_F(Batch3Test, G15_MatriarchOfWarChoosesBeforeItPays) {
+    auto m = legendOf(P1, kMatriarchOfWar);
+    o(m).empowered = 1;
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    o(unit).is_exhausted = true;
+    fund(P1, 0, 1);
+    int power = -1;
+    LooksAtFirstPrompt me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    me.look = [&](const GameState& st) { power = st.player(P1).rune_pool.universal_power; };
+    activate(m, &me);
+    ASSERT_TRUE(me.looked);
+    EXPECT_EQ(power, 1) << "the [A] is paid after the unit is chosen";
+    EXPECT_FALSE(o(unit).is_exhausted);
+}
+
+TEST_F(Batch3Test, G15_DefenderOfTomorrowChoosesBeforeItPays) {
+    auto d = legendOf(P1, kDefenderOfTomorrow);
+    auto gear = addGear(P1, kLongSword);
+    o(gear).is_exhausted = true;
+    fund(P1, 1, 0);
+    int energy = -1;
+    LooksAtFirstPrompt me(EnginePathAgent::script({static_cast<int>(gear.raw()), EnginePathAgent::kRest}));
+    me.look = [&](const GameState& st) { energy = st.player(P1).rune_pool.energy; };
+    activate(d, &me);
+    ASSERT_TRUE(me.looked);
+    EXPECT_EQ(energy, 1) << "the [1] is paid after the gear is chosen";
+    EXPECT_FALSE(o(gear).is_exhausted);
+}
+
+TEST_F(Batch3Test, G19_DefenderOfTomorrowIsNotOfferedWithNoGear) {
+    auto d = legendOf(P1, kDefenderOfTomorrow);
+    fund(P1, 3, 0);
+    EXPECT_FALSE(activationOffered(d)) << "CR 403.3: no legal choice, not legal to activate";
+    addGear(P1, kLongSword);
+    EXPECT_TRUE(activationOffered(d));
+}
+
+TEST_F(Batch3Test, D67_SwiftScoutIsNotOfferedWithNoTeemoAndChoosesAtActivation) {
+    auto scout = legendOf(P1, kSwiftScout);
+    fund(P1, 3, 0);
+    EXPECT_FALSE(activationOffered(scout)) << "no Teemo unit to put in hand";
+    auto teemo = addUnit(P1, kTeemoStrategist, 0, 0);
+    ASSERT_TRUE(activationOffered(scout));
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(teemo.raw()), EnginePathAgent::kRest}));
+    me.other = &them;
+    activate(scout, &me, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0) << "the unit is chosen as it is activated";
+    EXPECT_TRUE(inHand(P1, teemo));
+}
+
+TEST_F(Batch3Test, D38_DiviningShellsIsKilledAsItIsActivated) {
+    auto shells = addGear(P1, kDiviningShells);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    class Watch : public CountsPriority {
+    public:
+        GameObjectId gear = kInvalidId;
+        bool gear_on_board_at_priority = false;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            if (!st.chain.items.empty() && st.getObject(gear).location.has_value())
+                gear_on_board_at_priority = true;
+            return CountsPriority::selectAction(st, legal);
+        }
+    } them;
+    them.gear = shells;
+    EnginePathAgent me(EnginePathAgent::script({static_cast<int>(unit.raw()), EnginePathAgent::kRest}));
+    activate(shells, &me, &them);
+    EXPECT_GT(them.priority, 0);
+    EXPECT_FALSE(them.gear_on_board_at_priority) << "\"Kill this\" is a cost, paid as it is activated";
+    EXPECT_EQ(o(unit).current_might, 4);
+}
+
+TEST_F(Batch3Test, D41_ForgeOfTheFutureChoosesItsCardsAsItIsActivated) {
+    auto forge = addGear(P1, kForgeOfTheFuture);
+    auto card = addToTrash(P2, kDredgeUp);
+    CountsPriority them;
+    NotesWhen me(EnginePathAgent::script({static_cast<int>(card.raw()), 0, EnginePathAgent::kRest}));
+    me.other = &them;
+    activate(forge, &me, &them);
+    ASSERT_FALSE(me.other_priority_at.empty());
+    EXPECT_EQ(me.other_priority_at[0], 0) << "the cards are targets (CR 355.10.a.1)";
+    EXPECT_TRUE(inDeck(P2, card));
+}
+
+TEST_F(Batch3Test, D15_EquipIsAnActivatedAbilityOnTheChain) {
+    // CR 377.3 "Activated Abilities use the chain"; 818.1.b.1 "Equip's choice
+    // is a Target": the opponent may respond before the gear attaches.
+    auto sword = addGear(P1, kLongSword);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    fund(P1, 0, 1);
+    class Watch : public CountsPriority {
+    public:
+        GameObjectId gear = kInvalidId;
+        bool unattached_at_priority = false;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            if (!st.chain.items.empty() && !st.getObject(gear).attached_to.has_value())
+                unattached_at_priority = true;
+            return CountsPriority::selectAction(st, legal);
+        }
+    } them;
+    them.gear = sword;
+    activate(sword, nullptr, &them, 0, {unit});
+    EXPECT_TRUE(them.unattached_at_priority);
+    EXPECT_EQ(o(sword).attached_to, std::optional<GameObjectId>{unit});
+}
+
+TEST_F(Batch3Test, D15_AnEquipWhoseUnitLeftAttachesNothing) {
+    auto sword = addGear(P1, kLongSword);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    fund(P1, 0, 1);
+    class Bounce : public EnginePathAgent {
+    public:
+        GameObjectId unit = kInvalidId;
+        GameEngine* engine = nullptr;
+        bool done = false;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            if (!done && !st.chain.items.empty() && engine) {
+                done = true;
+                engine->testHook_executor().bounceToHand(unit);
+            }
+            return EnginePathAgent::selectAction(st, legal);
+        }
+    } them;
+    them.unit = unit;
+    Intent i;
+    i.type = IntentType::ActivateAbility;
+    i.player = P1;
+    i.ability_source = sword;
+    i.targets = {unit};
+    withEngine([&](GameEngine& e) {
+        them.engine = &e;
+        e.testHook_executeIntent(i);
+        settleLikeTheEngine(e);
+    }, nullptr, &them, P1);
+    EXPECT_TRUE(them.done);
+    EXPECT_FALSE(o(sword).attached_to.has_value()) << "a mistarget: nothing to attach to";
+}
+
+// ─── F5: "you may pay [N] to <choose a unit>" — the Deflect and the [N]
+// together ────────────────────────────────────────────────────────────────
+
+TEST_F(Batch3Test, F5_SinisterPoroPaysTheDeflectAndItsOneFromOneReadyRune) {
+    // One ready rune: exhausted for [1] and recycled for the [A] of Deflect.
+    // The Deflect used to be paid by recycling the rune unexhausted, and the
+    // [1] could then not be paid (an engine error).
+    auto poro = addUnit(P1, kSinisterPoro, 0, 0);
+    auto deflector = addUnit(P2, kPoutyPoro, 0, 0);
+    addRune(P1, Domain::Body);
+    combatInProgress(0, P1);
+    EnginePathAgent me(EnginePathAgent::script({1, static_cast<int>(deflector.raw()), EnginePathAgent::kRest}));
+    EXPECT_NO_THROW(fireTriggerThroughEngine(poro, TriggerType::WhenIAttack, &me));
+    EXPECT_TRUE(o(deflector).isAtBase()) << "moved to its base";
+}
+
+TEST_F(Batch3Test, F5_KennenAndIcevaleOfferOnlyAUnitTheyCanPayFor) {
+    // Not enough for the [N] and the Deflect: the Deflect unit is not offered;
+    // the other one is.
+    for (CardDefId def : {kKennenKeeper, kIcevaleArcher}) {
+        SCOPED_TRACE(card_db.get(def).name);
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        auto me_unit = addUnit(P1, def, 0, 0);
+        auto deflector = addUnit(P2, kPoutyPoro, 0, 0);
+        auto plain = addUnit(P2, kInvalidId, 3, 0);
+        const int n = def == kKennenKeeper ? 2 : 1;
+        fund(P1, n, 0);   // exactly the [N]; nothing for a Deflect
+        combatInProgress(0, P1);
+        EnginePathAgent me(EnginePathAgent::script({1, static_cast<int>(plain.raw()), EnginePathAgent::kRest}));
+        const TriggerType t = def == kKennenKeeper ? TriggerType::WhenYouPlayMe : TriggerType::WhenIAttack;
+        EXPECT_NO_THROW(fireTriggerThroughEngine(me_unit, t, &me));
+        EXPECT_FALSE(me.wasOffered(deflector));
+        EXPECT_TRUE(me.wasOffered(plain));
+    }
 }
 
 // ─── B2 / H3: "from face down" is one test, of this play's stamp ─────────────

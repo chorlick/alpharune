@@ -474,6 +474,24 @@ public:
     bool addForPayment(PlayerId player, int energy, int power, resource::DomainMask mask,
                        SpendFor f);
 
+    // ── A cost owed after the choices (CR 403.2 -> 405.1) ──
+    /// What `player` still owes once the choices being made now are made: an
+    /// activated ability's cost (set by GameEngine::payAndQueueAbility while
+    /// it makes the ability's choices) or a "pay [N] to <choose>" of a
+    /// triggered ability (Card::owesAfterChoices, on the resolving item).
+    /// While there is one, a choice is offered only if its Deflect and this
+    /// cost can be paid together, and a Deflect is paid from what the cost
+    /// cannot use first (testing phase F5, G15).
+    struct OwedCost {
+        PlayerId player = PlayerId::None;
+        int energy = 0;
+        int power = 0;
+        resource::DomainMask mask = resource::kAnyDomain;
+        SpendFor spend_for = SpendFor::Other;
+    };
+    void setOwedCost(std::optional<OwedCost> c) { owed_ = c; }
+    std::optional<OwedCost> owedCost(PlayerId player) const;
+
     // ── The chain, from a card (CR 355.9.a.2) ──
     /// Take the item `id` off the chain wherever it lies — the one way a card
     /// counters a chosen spell or ability (ChainManager::removeItemFrom).
@@ -779,6 +797,7 @@ private:
     AddAbilitiesFn add_abilities_;
     ActivateNowFn activate_now_;
     AddProbeFn add_probe_;
+    std::optional<OwedCost> owed_;
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

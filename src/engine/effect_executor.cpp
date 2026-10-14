@@ -783,6 +783,21 @@ bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
     });
 }
 
+std::optional<EffectExecutor::OwedCost> EffectExecutor::owedCost(PlayerId player) const {
+    if (owed_.has_value() && owed_->player == player &&
+        (owed_->energy > 0 || owed_->power > 0)) return owed_;
+    if (const auto& r = state_.chain.resuming;
+        r.has_value() && r->controller == player && (r->owed_energy > 0 || r->owed_power > 0)) {
+        OwedCost c;
+        c.player = player;
+        c.energy = r->owed_energy;
+        c.power = r->owed_power;
+        c.mask = r->owed_power_mask;
+        return c;
+    }
+    return std::nullopt;
+}
+
 std::optional<ChainItem> EffectExecutor::removeChainItem(ChainItemId id) {
     return ChainManager::removeItemFrom(state_, id);
 }
@@ -842,11 +857,9 @@ bool EffectExecutor::payAnyPower(PlayerId player, int amount, SpendFor f) {
     // owesAfterChoices; testing phase F5): this Power — a Deflect — is paid
     // from what that cost cannot use first, and a ready rune gives its Energy
     // before it is recycled, so the cost stays payable.
-    if (const auto& owing = state_.chain.resuming;
-        owing.has_value() && owing->controller == player &&
-        (owing->owed_energy > 0 || owing->owed_power > 0)) {
-        const int e = owing->owed_energy, p = owing->owed_power;
-        const resource::DomainMask m = owing->owed_power_mask;
+    if (const auto owing = owedCost(player)) {
+        const int e = owing->energy, p = owing->power;
+        const resource::DomainMask m = owing->mask;
         addForPayment(player, e, p + amount, resource::kAnyDomain, f);
         const auto chooser = runeChooser();
         const std::function<bool()> still = [this, player, e, p, m, f]() {

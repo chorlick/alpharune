@@ -6581,9 +6581,10 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
 
 // ─── Forge of the Future 212 (not a defect) ─────────────────────────────────
 // "Kill this: Recycle up to 4 cards from trashes." With both trashes empty the
-// ability is still offered and its cost still paid. (By the time it resolves
-// the Forge itself is in a trash, so there is always a card to offer.) "None"
-// on the first prompt recycles nothing.
+// ability is still offered (zero is a legal choice, CR 355.13) and its cost
+// still paid. The cards are chosen as it is activated, before its cost (CR
+// 403.2; testing phase D41 — they used to be chosen as it resolved, by when
+// the Forge itself was in a trash): with nothing to choose nothing is asked.
 TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
     ASSERT_TRUE(ps(P1).trash.empty());
     ASSERT_TRUE(ps(P2).trash.empty());
@@ -6595,11 +6596,9 @@ TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
     });
     EXPECT_TRUE(offered) << "activatable with nothing to recycle (CR 355.13)";
     const int deck_before = deckSize(P1);
-    EnginePathAgent none(EnginePathAgent::script({0}));
+    EnginePathAgent none(EnginePathAgent::script({}));
     activate(forge, &none);
-    ASSERT_EQ(none.prompts.size(), 1u);
-    EXPECT_TRUE(none.wasOffered(forge)) << "killed as the cost: it is in a trash by now";
-    EXPECT_TRUE(promptOffersValue(none, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_TRUE(none.prompts.empty()) << "nothing in the trashes as it is activated";
     EXPECT_TRUE(inTrash(P1, forge)) << "\"Kill this\" was paid; nothing was recycled";
     EXPECT_EQ(deckSize(P1), deck_before);
 }

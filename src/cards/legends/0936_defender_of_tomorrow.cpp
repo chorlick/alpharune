@@ -33,6 +33,22 @@ public:
         return c;
     }
     unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    static int gearOnBoard(const GameState& state, PlayerId controller) {
+        int n = 0;
+        for (const auto& [id, obj] : state.objects.onBoard())
+            if (obj.isGear() && obj.location.has_value() &&
+                (obj.controller == controller || !obj.untargetable_by_enemy)) ++n;
+        return n;
+    }
+    // CR 403.3: "If legal options are not available for an Activated Ability,
+    // it is not legal to activate it" — no gear to ready, no activation
+    // (testing phase G19).
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller, GameObjectId source,
+                              int ability_index) const override {
+        if (!Card::canActivateAbilityAt(state, controller, source, ability_index)) return false;
+        if (ability_index == empowerAbilityIndex()) return true;
+        return gearOnBoard(state, controller) > 0;
+    }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "a gear": any gear on the board, ready or exhausted — the text says
         // nothing of "exhausted", and a ready gear is a valid choice (CR 355.9;
@@ -64,8 +80,10 @@ public:
         }
         bool two = false;
         if (empowered) {
+            // "Ready 2 gear" needs two to choose (CR 355.8).
+            const uint32_t mask = gearOnBoard(ctx.state, ctx.controller) >= 2 ? 0b11u : 0b01u;
             const int which = pickMode(ctx, "Defender of Tomorrow: which ability", 2,
-                                       {"Ready a gear", "Ready 2 gear"});
+                                       {"Ready a gear", "Ready 2 gear"}, mask);
             if (which == -1) return;          // waiting on the controller
             two = which == 1;
         }

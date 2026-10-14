@@ -206,6 +206,10 @@ public:
     /// Cost to activate the (single, legacy) ability.
     virtual ActivationCost getActivationCost() const { return {}; }
 
+    /// Whether the (single, legacy) activated ability [Add]s resources (CR
+    /// 430.2): it resolves as it is activated (ActivatedAbility::adds_resources).
+    virtual bool abilityAddsResources() const { return false; }
+
     /// Whether the (single, legacy) activated ability has [Action] timing
     /// (playable in showdowns).
     virtual bool isActionAbility() const { return false; }

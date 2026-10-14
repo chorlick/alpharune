@@ -609,10 +609,7 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
     // A cost the item still owes after its choices (Card::owesAfterChoices):
     // a choice is offered only if its Deflect and that cost can be paid
     // together (testing phase F5).
-    const ChainItem* owing = ctx.state.chain.resuming.has_value() &&
-                             (ctx.state.chain.resuming->owed_energy > 0 ||
-                              ctx.state.chain.resuming->owed_power > 0)
-        ? &*ctx.state.chain.resuming : nullptr;
+    const auto owing = ctx.executor.owedCost(ctx.controller);
     std::vector<GameObjectId> out;
     out.reserve(in.size());
     for (auto t : in) {
@@ -620,9 +617,8 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
         if (!ctx.executor.choiceAllowed(t)) continue;
         const int deflect = ignores ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
         if (owing) {
-            if (ctx.executor.canPayWithAdds(ctx.controller, owing->owed_energy, owing->owed_power,
-                                            owing->owed_power_mask,
-                                            by_spell ? SpendFor::Spell : SpendFor::Other, deflect))
+            if (ctx.executor.canPayWithAdds(ctx.controller, owing->energy, owing->power,
+                                            owing->mask, owing->spend_for, deflect))
                 out.push_back(t);
             continue;
         }
@@ -1285,6 +1281,32 @@ bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTer
     return true;
 }
 
+bool Card::payEquip(CardContext& ctx, GameObjectId unit, const EquipTerms& terms) {
+    if (!canPayEquip(ctx.state, ctx.controller, ctx.source, unit, terms)) return false;
+    const EquipCost cost = netEquipCost(ctx.state, ctx.controller, ctx.source, unit, terms);
+    if (!ctx.executor.payResources(ctx.controller, cost.energy, cost.power,
+                                   resource::maskOf(cost.power_any_domain ? Domain::Count
+                                                                          : cost.power_domain),
+                                   SpendFor::Gear))
+        return false;
+    return payEquipExtraCost(ctx, unit);
+}
+
+bool Card::attachByEquip(CardContext& ctx, GameObjectId unit) {
+    // Both must still be on the board, the unit still one its controller
+    // controls (the Equip's target, CR 818.1.b.1); otherwise a mistarget.
+    if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
+    if (ctx.state.getObject(unit).controller != ctx.controller) return false;
+    if (ctx.state.chain.resuming.has_value() &&
+        !ctx.state.stillTheChosenObject(*ctx.state.chain.resuming, unit))
+        return false;
+    // EffectExecutor::attachGear takes an attached Equipment off its old
+    // bearer first (unattachGear) and checks both ends are on the board.
+    if (!ctx.executor.attachGear(ctx.source, unit)) return false;
+    onEquipped(ctx, unit);
+    return true;
+}
+
 bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
                        GameObjectId unit) const {
     return canPayEquip(state, controller, gear, unit, EquipTerms{});
@@ -1373,6 +1395,8 @@ std::vector<ActivatedAbility> Card::activatedAbilities() const {
         // Single-ability cards don't use the multi-ability target-defer
         // hook today; opt in by overriding activatedAbilities() directly.
         .needs_activation_time_target = false,
+        .is_empower = false,
+        .adds_resources = abilityAddsResources(),
     } };
     appendEmpowerAbilities(out);
     return out;

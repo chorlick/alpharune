@@ -1612,6 +1612,19 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
             return;
         }
         legal = card->enumerateLegalTargets(state_, item.controller, item.ability_index, item.source);
+        // The ability's cost is owed after this choice (CR 403.2 -> 405.1): a
+        // target whose Deflect can't be paid with it is not offered (G15/F5).
+        if (const auto owed = effect_executor_->owedCost(item.controller)) {
+            std::vector<GameObjectId> payable;
+            for (auto t : legal) {
+                const int deflect = card->ignoresDeflect() ? 0
+                    : deflectCostFor(state_, item.controller, t);
+                if (effect_executor_->canPayWithAdds(item.controller, owed->energy, owed->power,
+                                                     owed->mask, owed->spend_for, deflect))
+                    payable.push_back(t);
+            }
+            legal = std::move(payable);
+        }
     }
     if (legal.empty()) {
         // Nothing to choose now: the card handles it as it resolves — and in
@@ -2246,110 +2259,118 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
     return done;
 }
 
-// Pay an activated ability's costs and put it on the chain. Returns true if a
-// chain item was added — the ability, or a trigger queued by an Equip — and
-// the caller then runs or resumes the chain; false if the activation completed
-// without one or was not possible.
+// Activate an ability (CR 400-407, 377.3): its chain item is added (pending,
+// CR 402.1), its choices are made (targets, modes, "may": CR 403.2 — the
+// target a play intent names, the engine's target prompt, or the card's
+// finalize pass), then its cost is paid (CR 404-405: a choice's Deflect and the
+// cost are judged and paid together — EffectExecutor::OwedCost), and it is
+// finalized (CR 407). What the choices or the payment triggered goes above it
+// (CR 818.1.c.1). Returns true if a chain item was added — the caller runs or
+// resumes the chain — and false if the activation was not possible (nothing is
+// changed then). An ability that [Add]s resolves at once instead (CR 430.2:
+// resolveAddAbilityNow) and returns false: it leaves no item and passes no
+// priority or Focus.
 bool GameEngine::payAndQueueAbility(const Intent& intent) {
+    last_activation_added_ = false;
     if (!state_.objectExists(intent.ability_source)) return false;
-    auto& source = state_.getObject(intent.ability_source);
-    // Skip card-def lookup for tokens (no CardDef). The rest of this
-    // handler reads from `source` directly; the previous `def` binding
-    // was dead and threw std::out_of_range when source was a token.
-    if (source.card_def_id == kInvalidId) return false;
+    // Skip card-def lookup for tokens (no CardDef).
+    if (state_.getObject(intent.ability_source).card_def_id == kInvalidId) return false;
     // Only an object in play has abilities to activate, and only its
     // controller activates them (the generators' first gate): an activation
     // of a card in a trash, a hand or a deck is refused, nothing is paid.
-    if (source.controller != intent.player) return false;
-    if (!source.location.has_value() && source.zone != ZoneType::LegendZone) return false;
+    {
+        const auto& src = state_.getObject(intent.ability_source);
+        if (src.controller != intent.player) return false;
+        if (!src.location.has_value() && src.zone != ZoneType::LegendZone) return false;
+    }
+    const PlayerId player = intent.player;
+    const GameObjectId source_id = intent.ability_source;
 
-    // Equip (CR 818): the gear's declared cost (Card::equipCost), less what
-    // applies to a gear's activated ability, is paid and the gear attached —
-    // all through Card::payEquipAndAttach, the same gate the generator asks
-    // (canPayEquip). An Equip that cannot be paid does nothing and was not
-    // offered. Attached Equipment is not handled here: its Equip is Inactive
-    // (CR 718.2, 721.2), so the intent falls through to its other abilities.
-    if (source.isGear() && !source.attached_to.has_value()) {
-        Card* gear_card = card_registry_.get(source.card_def_id);
-        if (gear_card && gear_card->hasEquipAbility()) {
-            // An Equip intent always names the unit (the generator emits one
-            // per payable (gear, unit) pair).
-            if (!intent.targets.empty()) {
-                CardContext equip_ctx{state_, events_, *effect_executor_,
-                                     intent.player, intent.ability_source};
-                equip_ctx.registry = &card_registry_;
-                const size_t chain_before = state_.chain.items.size();
-                const bool attached = gear_card->payEquipAndAttach(
-                    equip_ctx, intent.targets[0], equipTerms(intent.player));
-                if (attached) {
-                    // An Equip is an activated ability of a gear (CR 818.1):
-                    // it counts as this turn's gear ability.
-                    auto& aps = state_.player(intent.player);
-                    aps.abilities_activated_this_turn++;
-                    aps.gear_abilities_activated_this_turn++;
-                    cleanup();
-                }
-                // The Equip itself adds no chain item, but paying it or
-                // attaching may have queued triggers ("When you attach an
-                // Equipment to me"): the caller must run them now, not leave
-                // them on the chain for the next action.
-                return state_.chain.items.size() > chain_before;
-            }
+    // Equip (CR 818): "[Cost]: Attach this gear to a unit you control"
+    // (818.1.c.2) — an activated ability on the chain (CR 377.3; testing
+    // phase D15). The unit is its target (818.1.b.1), named by the intent; the
+    // gear's declared cost (Card::equipCost, less what applies to a gear's
+    // activated ability) is paid as it is activated (Card::payEquip); it
+    // attaches as it resolves (Card::attachByEquip). Attached Equipment is not
+    // handled here: its Equip is Inactive (CR 718.2, 721.2).
+    {
+        const auto& src = state_.getObject(source_id);
+        Card* gear_card = src.isGear() && !src.attached_to.has_value()
+            ? card_registry_.get(src.card_def_id) : nullptr;
+        if (gear_card && gear_card->hasEquipAbility() && !intent.targets.empty()) {
+            const GameObjectId unit = intent.targets[0];
+            if (!canPayEquip(player, source_id, unit)) return false;
+            const Card::EquipTerms terms = equipTerms(player);
+            const auto cost = gear_card->netEquipCost(state_, player, source_id, unit, terms);
+            effect_executor_->setOwedCost(EffectExecutor::OwedCost{
+                player, cost.energy, cost.power,
+                resource::maskOf(cost.power_any_domain ? Domain::Count : cost.power_domain),
+                SpendFor::Gear});
+            const ChainItemId item_id = chain_manager_->addAbility(
+                source_id, player, src.card_def_id, {unit}, /*is_activated=*/true,
+                intent.ability_index);
+            effect_executor_->setOwedCost(std::nullopt);
+            for (auto& ci : state_.chain.items)
+                if (ci.id == item_id) { ci.is_equip = true; break; }
+            // It counts as this turn's gear ability as it is activated.
+            auto& aps = state_.player(player);
+            aps.abilities_activated_this_turn++;
+            aps.gear_abilities_activated_this_turn++;
+            CardContext equip_ctx{state_, events_, *effect_executor_, player, source_id};
+            equip_ctx.registry = &card_registry_;
+            if (!gear_card->payEquip(equip_ctx, unit, terms))
+                throw std::logic_error("GameEngine::payAndQueueAbility: the Equip of " +
+                                       state_.getObject(source_id).name +
+                                       " was offered and could not be paid");
+            finalizeActivatedItem(item_id);
+            return true;
         }
     }
 
-    // Activated ability: exhaust source, pay cost, add to chain
-
-    // Pay activation cost via Card object. Phase 6r — read the
-    // per-ability cost from activatedAbilities()[intent.ability_index]
-    // so multi-ability cards pay the right cost for the right
-    // ability variant. Single-ability cards have ability_index=0
-    // (default) and the wrapping default impl returns their legacy
-    // getActivationCost() as the only element.
-    Card* ability_card = card_registry_.get(source.card_def_id);
-    // Aura-granted ability: the COST descriptor comes from the granting
-    // card, but the cost is paid by the BEARER (source) below.
+    // The ability's cost, from the card the ability comes from (an
+    // aura-granted ability's descriptor is the granting card's; the bearer
+    // pays it).
+    Card* ability_card = card_registry_.get(state_.getObject(source_id).card_def_id);
     Card* cost_card = (intent.granted_ability_def != kInvalidId)
         ? card_registry_.get(intent.granted_ability_def) : ability_card;
     ActivationCost act_cost;
+    bool adds = false;
     if (cost_card) {
         const auto& abilities = cost_card->abilities();
         int idx = intent.ability_index;
         if (idx < 0 || idx >= static_cast<int>(abilities.size())) idx = 0;
-        if (!abilities.empty()) act_cost = abilities[idx].cost;
+        if (!abilities.empty()) {
+            act_cost = abilities[idx].cost;
+            adds = abilities[idx].adds_resources;
+        }
         // State-aware reductions, Energy and Power (Bashful Bloom, Risen
-        // Altar), clamped ≥ 0.
-        act_cost = netActivationCost(*cost_card, intent.player, intent.ability_source, idx,
-                                     act_cost);
+        // Altar), clamped >= 0.
+        act_cost = netActivationCost(*cost_card, player, source_id, idx, act_cost);
     }
-    const SpendFor spend_for = spendForObject(source);
-    // Nothing is paid unless everything can be: an activation whose cost is
-    // out of reach is refused, never put on the chain for free. The generators
-    // gate on the same conditions, so this only stops a stale or hand-built
-    // intent.
-    // "Use only if ..." and the per-ability gate ([Empower] only if not
-    // Empowered, "use only if unattached", once a turn), asked of the card
-    // the ability comes from, for this source.
+    const SpendFor spend_for = spendForObject(state_.getObject(source_id));
+    // Nothing is done unless everything can be paid: an activation whose cost
+    // is out of reach is refused, never put on the chain for free. The
+    // generators gate on the same conditions, so this only stops a stale or
+    // hand-built intent.
     if (cost_card) {
         const auto& gate_abilities = cost_card->abilities();
         int gate_idx = intent.ability_index;
         if (gate_idx < 0 || gate_idx >= static_cast<int>(gate_abilities.size())) gate_idx = 0;
-        if (!cost_card->canActivateAbility(state_, intent.player)) return false;
+        if (!cost_card->canActivateAbility(state_, player)) return false;
         if (!gate_abilities.empty() &&
-            !cost_card->canActivateAbilityAt(state_, intent.player, intent.ability_source,
-                                             gate_idx))
+            !cost_card->canActivateAbilityAt(state_, player, source_id, gate_idx))
             return false;
     }
-    if (act_cost.exhaust && source.is_exhausted) return false;
+    if (act_cost.exhaust && state_.getObject(source_id).is_exhausted) return false;
     const Domain act_domain = act_cost.power_any_domain ? Domain::Count : act_cost.power_domain;
     if ((act_cost.power > 0 || act_cost.energy > 0) &&
-        !canPayAdditionalCost(intent.player, act_cost.energy, act_cost.power, act_domain,
-                              spend_for))
+        !effect_executor_->canPayWithAdds(player, act_cost.energy, act_cost.power,
+                                          resource::maskOf(act_domain), spend_for))
         return false;
     // A typed discard ("Discard a gear") needs that many cards of the type.
     auto typedDiscards = [&]() {
         std::vector<GameObjectId> out;
-        for (auto hid : state_.player(intent.player).hand)
+        for (auto hid : state_.player(player).hand)
             if (static_cast<int>(state_.getObject(hid).card_type) + 1 ==
                     act_cost.discard_type_filter) out.push_back(hid);
         return out;
@@ -2357,64 +2378,114 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
     if (act_cost.discard && act_cost.discard_count > 0 && act_cost.discard_type_filter != 0 &&
         static_cast<int>(typedDiscards().size()) < act_cost.discard_count)
         return false;
-    if (act_cost.xp_cost > 0 && state_.player(intent.player).xp < act_cost.xp_cost)
-        return false;
+    if (act_cost.xp_cost > 0 && state_.player(player).xp < act_cost.xp_cost) return false;
+    if (act_cost.kill_self && !state_.getObject(source_id).location.has_value()) return false;
+
+    // 1. The pending item (CR 402.1). The cost is owed while the choices are
+    //    made: a choice's Deflect is judged with it and paid from what it
+    //    cannot use (EffectExecutor::OwedCost).
+    effect_executor_->setOwedCost(EffectExecutor::OwedCost{
+        player, act_cost.energy, act_cost.power, resource::maskOf(act_domain), spend_for});
+    struct ClearOwed {
+        EffectExecutor& ex;
+        ~ClearOwed() { ex.setOwedCost(std::nullopt); }
+    } clear_owed{*effect_executor_};
+    const OpenClosedState oc_before = state_.turn.oc_state;
+    const bool chain_was_empty = state_.chain.items.empty();
+    const ChainItemId item_id =
+        chain_manager_->addAbility(source_id, player, state_.getObject(source_id).card_def_id,
+                                    intent.targets, /*is_activated=*/true, intent.ability_index);
+    // Carry the granted-ability source onto the chain item so resolution
+    // dispatches to the granting card's onActivate (Forge/Gardens/Heimer).
+    // Found by id: a "when you choose a friendly unit" trigger may already
+    // sit above the ability on the chain.
+    if (intent.granted_ability_def != kInvalidId)
+        for (auto& ci : state_.chain.items)
+            if (ci.id == item_id) {
+                ci.granted_ability_def = intent.granted_ability_def;
+                break;
+            }
+
+    // 2. Its choices (CR 403.2): the engine's target prompt, or the card's
+    //    finalize pass (where costs it pays under costDueNow are paid too).
+    for (auto& ci : state_.chain.items)
+        if (ci.id == item_id) {
+            ci.status = ChainItemStatus::Finalized;   // its choices are being made now
+            chooseTargetsAtFinalize(ci);
+            break;
+        }
+    for (const auto& ci : state_.chain.items)
+        if (ci.id == item_id && ci.required_choice_missing)
+            throw std::logic_error(
+                "GameEngine::payAndQueueAbility: " + state_.getObject(source_id).name +
+                " was activated with no legal choice for a required target (CR 403.3: it is"
+                " not legal to activate it)");
+    effect_executor_->setOwedCost(std::nullopt);
+
+    // 3. Its cost (CR 405.1).
+    auto& source = state_.getObject(source_id);
     if (act_cost.exhaust) {
         source.is_exhausted = true;
-        events_.emit(ObjectStateChangedEvent{intent.ability_source, "exhausted"});
+        events_.emit(ObjectStateChangedEvent{source_id, "exhausted"});
     }
     // "Disempower this," as a cost (Questionable Tome, Hextech Disc, ...).
     if (act_cost.disempower_self)
-        effect_executor_->disempower(intent.ability_source);
+        effect_executor_->disempower(source_id);
     // "Kill a friendly unit" as a cost: the chosen unit rides in targets.
     if (act_cost.kill_friendly_unit && !intent.targets.empty() &&
         state_.objectExists(intent.targets[0]))
         killUnit(intent.targets[0]);
-    // Pay energy (+ power) cost. Abilities with a power component pay
-    // both through the shared resource path (floating pool, then runes).
+    // Energy (+ Power): the shared resource path (floating pool, runes, and
+    // [Add] Reactions while paying, CR 430.3).
     if (act_cost.power > 0 || act_cost.energy > 0) {
-        const bool paid = payAdditionalCost(intent.player, act_cost.energy, act_cost.power,
-                                            act_domain, spend_for);
-        assert(paid && "activation resources were checked above");
-        (void)paid;
+        const bool paid = effect_executor_->payResources(player, act_cost.energy, act_cost.power,
+                                                         resource::maskOf(act_domain), spend_for);
+        if (!paid)
+            throw std::logic_error("GameEngine::payAndQueueAbility: " +
+                                   state_.getObject(source_id).name +
+                                   " made choices its cost could not then be paid with");
+    }
+    // "Kill this" as a cost (Gold, Divining Shells, Forge of the Future): the
+    // source is gone before anyone can respond (testing phase D38).
+    if (act_cost.kill_self && state_.getObject(source_id).location.has_value()) {
+        RIFT_TRACE(events_, "ACTIVATE_COST: kill self " + state_.getObject(source_id).name);
+        effect_executor_->killObject(source_id);
     }
     // Pay recycle-self cost: the source leaves the board for its OWNER's Main
     // Deck. Gear comes off (CR 719.5), a token ceases to exist instead
     // (CR 183.1), and the departure is announced like any other.
-    if (act_cost.recycle_self && source.location.has_value()) {
-        RIFT_TRACE(events_, "ACTIVATE_COST: recycle self " + source.name);
-        const LocationId was_at = *source.location;
-        effect_executor_->snapshotLastKnown(intent.ability_source, /*dying=*/false);
-        if (source.attached_to.has_value())
-            effect_executor_->unattachGear(intent.ability_source);
-        detachAllGear(intent.ability_source);
-        const bool is_token = source.isToken();
+    if (act_cost.recycle_self && state_.getObject(source_id).location.has_value()) {
+        auto& src = state_.getObject(source_id);
+        RIFT_TRACE(events_, "ACTIVATE_COST: recycle self " + src.name);
+        const LocationId was_at = *src.location;
+        effect_executor_->snapshotLastKnown(source_id, /*dying=*/false);
+        if (src.attached_to.has_value())
+            effect_executor_->unattachGear(source_id);
+        detachAllGear(source_id);
+        const bool is_token = src.isToken();
         if (is_token) {
-            source.zone = ZoneType::Banishment;
-            source.location = std::nullopt;
+            src.zone = ZoneType::Banishment;
+            src.location = std::nullopt;
         } else {
             // From the board, so both players know which card went down.
-            deck::putOnBottom(state_, source.owner, intent.ability_source, deck::Place::Public);
+            deck::putOnBottom(state_, src.owner, source_id, deck::Place::Public);
         }
-        events_.emit(LeftBoardEvent{intent.ability_source, intent.player, source.card_type,
+        events_.emit(LeftBoardEvent{source_id, player, src.card_type,
             was_at, is_token ? ZoneType::Banishment : ZoneType::MainDeck, false});
-        effect_executor_->announceRecycledToMainDeck(intent.ability_source);
+        effect_executor_->announceRecycledToMainDeck(source_id);
         // Announced as it left: in the deck it is a new object (CR 124.1).
-        effect_executor_->leftBoard(intent.ability_source);
+        effect_executor_->leftBoard(source_id);
     }
-    // "Banish this" as a cost: the source is gone before anyone can respond
-    // (CR 383.3: costs are paid as the ability is put on the chain). On board
-    // was checked at the top; the ability still resolves from the chain.
-    if (act_cost.banish_self && state_.getObject(intent.ability_source).location.has_value()) {
-        RIFT_TRACE(events_, "ACTIVATE_COST: banish self " +
-                         state_.getObject(intent.ability_source).name);
-        effect_executor_->banishObject(intent.ability_source);
+    // "Banish this" as a cost.
+    if (act_cost.banish_self && state_.getObject(source_id).location.has_value()) {
+        RIFT_TRACE(events_, "ACTIVATE_COST: banish self " + state_.getObject(source_id).name);
+        effect_executor_->banishObject(source_id);
     }
     // Pay discard cost
     if (act_cost.discard && act_cost.discard_count > 0) {
         RIFT_TRACE(events_, "ACTIVATE_COST: discard " + std::to_string(act_cost.discard_count));
         if (act_cost.discard_type_filter == 0) {
-            effect_executor_->discardCards(intent.player, act_cost.discard_count);
+            effect_executor_->discardCards(player, act_cost.discard_count);
         } else {
             // Typed discard ("Discard a spell" / "Discard a gear"): the
             // player chooses which matching card, one at a time (CR 422.1.a),
@@ -2426,54 +2497,33 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
                 for (auto hid : matching) {
                     Intent o;
                     o.type = IntentType::MakeChoice;
-                    o.player = intent.player;
+                    o.player = player;
                     o.chosen_objects = {hid};
                     options.push_back(std::move(o));
                 }
-                const Intent chosen = decideNow(intent.player, options,
+                const Intent chosen = decideNow(player, options,
                                                 "choose a card to discard (cost)");
                 GameObjectId pick = matching.front();
                 if (!chosen.chosen_objects.empty() &&
                     std::find(matching.begin(), matching.end(),
                               chosen.chosen_objects.front()) != matching.end())
                     pick = chosen.chosen_objects.front();
-                effect_executor_->applyDiscard(intent.player, pick);
+                effect_executor_->applyDiscard(player, pick);
             }
         }
     }
     // Pay XP cost
     if (act_cost.xp_cost > 0) {
-        state_.player(intent.player).xp -= act_cost.xp_cost;
-        RIFT_TRACE(events_, "ACTIVATE_COST: spend " +
-                          std::to_string(act_cost.xp_cost) + " XP");
+        state_.player(player).xp -= act_cost.xp_cost;
+        RIFT_TRACE(events_, "ACTIVATE_COST: spend " + std::to_string(act_cost.xp_cost) + " XP");
     }
-
-    // Add ability to chain and resolve. is_activated=true so
-    // stepResolve dispatches through Card::onActivate (not
-    // onTrigger). Triggered abilities flow through TriggerManager
-    // which calls addAbility with the default is_activated=false.
     {
-        auto& aps = state_.player(intent.player);
+        auto& aps = state_.player(player);
         aps.abilities_activated_this_turn++;
-        if (source.isGear()) aps.gear_abilities_activated_this_turn++;
+        if (state_.getObject(source_id).isGear()) aps.gear_abilities_activated_this_turn++;
     }
-    const auto ability_item_id =
-        chain_manager_->addAbility(intent.ability_source, intent.player,
-                                    source.card_def_id, intent.targets,
-                                    /*is_activated=*/true,
-                                    intent.ability_index);
-    // Carry the granted-ability source onto the chain item so resolution
-    // dispatches to the granting card's onActivate (Forge/Gardens/Heimer).
-    // Found by id: a "when you choose a friendly unit" trigger may already
-    // sit above the ability on the chain.
-    if (intent.granted_ability_def != kInvalidId)
-        for (auto& ci : state_.chain.items)
-            if (ci.id == ability_item_id) {
-                ci.granted_ability_def = intent.granted_ability_def;
-                break;
-            }
-    if (state_.objectExists(intent.ability_source)) {
-        auto& src = state_.getObject(intent.ability_source);
+    if (state_.objectExists(source_id)) {
+        auto& src = state_.getObject(source_id);
         // "Only once each turn" abilities count the activation, not the
         // resolution: a countered activation is still this turn's use.
         src.card_counters["__ability_used_turn_" + std::to_string(intent.ability_index)] =
@@ -2488,9 +2538,80 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
                 printed_energy = abilities[intent.ability_index].cost.energy;
         }
         src.card_counters["__ability_energy_cost"] = printed_energy;
-        events_.emit(ObjectStateChangedEvent{intent.ability_source, "ability_activated"});
+        events_.emit(ObjectStateChangedEvent{source_id, "ability_activated"});
     }
+
+    // 4. Finalized (CR 407), or — an [Add] ability — resolved at once (CR
+    //    430.2, 401.2).
+    last_activation_added_ = adds;
+    if (adds) {
+        resolveAddAbilityNow(item_id, oc_before, chain_was_empty);
+        return false;
+    }
+    finalizeActivatedItem(item_id);
     return true;
+}
+
+// CR 430.2: "Triggered and activated abilities that Add resources finalize
+// immediately when they are played, even when handling tasks or during the
+// resolution of spells and abilities, and resolve as soon as they are
+// finalized." 430.2.a: "Priority and Focus will not pass from Add abilities
+// ... Any ongoing Task or step in the FEPR process is paused." The item is
+// taken off the chain and resolved here — whatever is resolving now is set
+// aside meanwhile, as for a finalize pass — and the chain, the state and
+// whoever holds priority or Focus are as they were (testing phase D2).
+void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state_before,
+                                      bool chain_was_empty) {
+    auto item = ChainManager::removeItemFrom(state_, item_id);
+    if (!item.has_value()) return;
+    if (chain_was_empty && state_.chain.items.empty()) state_.turn.oc_state = state_before;
+    item->status = ChainItemStatus::Finalized;
+    std::optional<ChainItem> outer;
+    if (state_.chain.resuming.has_value()) outer = std::move(*state_.chain.resuming);
+    state_.chain.resuming = std::move(*item);
+    RIFT_TRACE(events_, "ADD: " +
+                     (state_.objectExists(state_.chain.resuming->source)
+                          ? state_.getObject(state_.chain.resuming->source).name.get()
+                          : std::string("?")) +
+                     " resolves as it is played (CR 430.2)");
+    events_.emit(ChainItemFinalizedEvent{state_.chain.resuming->id, state_.chain.resuming->source,
+                                         state_.chain.resuming->controller});
+    constexpr int kMaxChoices = 1024;
+    try {
+        for (int iter = 0; ; ++iter) {
+            if (iter >= kMaxChoices)
+                throw std::logic_error("GameEngine::resolveAddAbilityNow: an [Add] ability asked "
+                                       "more than 1024 choices");
+            resolveSpell(*state_.chain.resuming);
+            if (!effect_executor_->hasPendingChoice()) break;
+            auto pending = effect_executor_->consumePendingChoice();
+            // A probe (nothing seen, EventBus::quiet) answers with the first
+            // option; a game asks the player.
+            Intent choice = events_.quiet() || pending.legal.size() == 1
+                ? pending.legal.front()
+                : queryAgentForChain(pending.player, pending.legal);
+            effect_executor_->recordChoice(std::move(choice));
+        }
+    } catch (...) {
+        state_.chain.resuming.reset();
+        if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+        throw;
+    }
+    const ChainItem done = std::move(*state_.chain.resuming);
+    state_.chain.resuming.reset();
+    if (outer.has_value()) state_.chain.resuming = std::move(*outer);
+    events_.emit(ChainItemResolvedEvent{done.id, done.source, done.controller});
+}
+
+// CR 407: the activated ability is finalized — announced; players get
+// priority before it resolves.
+void GameEngine::finalizeActivatedItem(ChainItemId item_id) {
+    for (auto& ci : state_.chain.items) {
+        if (ci.id != item_id) continue;
+        ci.status = ChainItemStatus::Finalized;
+        events_.emit(ChainItemFinalizedEvent{ci.id, ci.source, ci.controller});
+        return;
+    }
 }
 
 void GameEngine::executeIntent(const Intent& intent) {
@@ -3668,6 +3789,18 @@ void GameEngine::resolveSpell(const ChainItem& item) {
     ctx.firing_trigger = item.fired_trigger;
     ctx.registry = &card_registry_;  // lets effects dispatch into other cards' logic
 
+    if (card && item.is_equip) {
+        // An Equip (CR 818.1.c.2): "attach this gear to a unit you control" —
+        // the unit it chose, if it is still a legal target (testing phase D15).
+        const GameObjectId unit = item.targets.empty() ? GameObjectId{kInvalidId}
+                                                       : item.targets.front();
+        if (unit != kInvalidId && card->attachByEquip(ctx, unit))
+            RIFT_TRACE(events_, "EQUIP: " + state_.getObject(item.source).name + " -> " +
+                             state_.getObject(unit).name);
+        else
+            RIFT_TRACE(events_, "EQUIP: nothing attached (the unit or the gear is gone)");
+        return;
+    }
     if (card) {
         if (item.is_ability) {
             // Activated abilities ([E]:, [N]:, etc. — player chose to
@@ -5790,11 +5923,20 @@ std::optional<PlayerId> GameEngine::resolveShowdownDecision(
         case IntentType::ActivateActionAbility: // [Action] [E]: abilities
         case IntentType::ActivateReactionAbility: // [Reaction] [E]: abilities
         case IntentType::ActivateAbility: {  // generic activate (safety)
+            const auto passed = state_.turn.players_passed_focus;
             state_.turn.players_passed_focus.clear();  // reset passes
+            last_activation_added_ = false;
             executeIntent(chosen);
             // HOT FEPR: the Cleanup and everything it puts on the chain (a
             // death, a delayed ability) before Focus passes (CR 335.1).
             runChain();
+            // CR 430.2.a: "Priority and Focus will not pass from Add
+            // abilities": an [Add] resolved at once keeps Focus with its
+            // player, and changes nothing about who has passed (D31).
+            if (last_activation_added_) {
+                state_.turn.players_passed_focus = passed;
+                return current_focus;
+            }
             // After chain resolves, focus passes to opponent
             return opponent(current_focus);
         }

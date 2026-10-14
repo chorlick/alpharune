@@ -1726,8 +1726,10 @@ TEST_F(SweepCostsTest, TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks)
     auto gear2 = addToHand(P1, kSkyfallOfAreion);
     auto act = offers();
     ASSERT_FALSE(act.empty());
+    // The target is chosen first, then the cost is paid (CR 403.2 -> 405.1;
+    // testing phase G15: the discard used to come first).
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(gear2.raw()), static_cast<int>(enemy.raw())}));
+        {static_cast<int>(enemy.raw()), static_cast<int>(gear2.raw())}));
     execute(act.front(), &agent);
     EXPECT_TRUE(agent.wasOffered(gear1));
     EXPECT_FALSE(agent.wasOffered(not_gear)) << "only gear pays a \"Discard a gear\" cost";

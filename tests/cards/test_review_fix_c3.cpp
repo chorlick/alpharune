@@ -1369,8 +1369,23 @@ TEST_F(C3Test, Conscription_WithoutTheXpOnlySmallUnitsAndTheRecallIsNotAMove) {
 TEST_F(C3Test, Conscription_SpendingFiveXpIsPaidOnceAndWidensTheChoice) {
     auto spell = addToHand(P1, kConscription);
     auto big = addUnit(P2, kInvalidId, 6, 0);
+    addUnit(P2, kInvalidId, 2, 1);   // a unit of 3 [M] or less: paying is then a choice
     setXp(P1, 7);
     StepAgent agent{V(1), O(big)};
+    playThroughEngine(spell, &agent);
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_EQ(state.player(P1).xp, 2);
+    EXPECT_EQ(state.getObject(big).controller, P1);
+}
+
+TEST_F(C3Test, Conscription_WithOnlyABigEnemyThePaymentIsNotAsked) {
+    // No enemy unit of 3 [M] or less: spending the XP is the only way to play
+    // it, so it is not offered as a choice (CR 355.16; batch 3 — declining it
+    // left the spell with no target).
+    auto spell = addToHand(P1, kConscription);
+    auto big = addUnit(P2, kInvalidId, 6, 0);
+    setXp(P1, 7);
+    StepAgent agent{O(big)};
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_EQ(state.player(P1).xp, 2);

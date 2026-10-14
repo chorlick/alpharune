@@ -829,6 +829,14 @@ private:
     /// A spell that made its choices before its cost (executePlaySpell) takes
     /// them over as it goes on the chain, and announces them.
     void adoptPrefinalizedChoices(ChainItem& item);
+    /// CR 407: an activated ability's choices and cost are done.
+    void finalizeActivatedItem(ChainItemId item_id);
+    /// CR 430.2: an ability that [Add]s resolves as it is played.
+    void resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state_before,
+                              bool chain_was_empty);
+    /// The last payAndQueueAbility was an [Add] ability, resolved at once:
+    /// Focus does not pass (CR 430.2.a).
+    bool last_activation_added_ = false;
     // (An item whose choices are made early — a spell an effect plays — is
     // marked ChainItemStatus::Finalized on the spot, which is what keeps the
     // chain's Finalize step from asking again.)

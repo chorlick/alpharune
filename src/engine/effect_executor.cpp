@@ -1844,6 +1844,31 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
 }
 
+int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
+                                   const std::string& what) {
+    if (labels.empty() || !agent_query_) return 0;
+    std::vector<Intent> options;
+    options.reserve(labels.size());
+    for (size_t k = 0; k < labels.size(); ++k) {
+        Intent i;
+        i.type = IntentType::MakeChoice;
+        i.player = player;
+        i.chosen_value = static_cast<int>(k);
+        i.choice_label = labels[k];
+        options.push_back(std::move(i));
+    }
+    const int v = ask(player, options, what).chosen_value.value_or(0);
+    return v >= 0 && v < static_cast<int>(labels.size()) ? v : 0;
+}
+
+void EffectExecutor::makeAsYouPlayChoices(PlayerId player, GameObjectId card) {
+    if (!state_.objectExists(card)) return;
+    Card* c = cardFor(state_.getObject(card).card_def_id);
+    if (!c) return;
+    CardContext ctx{state_, events_, *this, player, card};
+    c->asYouPlayChoices(ctx);
+}
+
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
                                               const std::vector<GameObjectId>& objects) {
     if (objects.empty()) return kInvalidId;
@@ -2752,6 +2777,9 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return false;
+    // "As you play me" choices come before the cost (CR 355.1 -> 356); only
+    // for a play that is going to be paid for.
+    if (!can_afford_ || can_afford_(player, card)) makeAsYouPlayChoices(player, card);
     if (!can_afford_ || !pay_cost_) {
         StagedEffectCost staged(state_.player(player), cost, state_.getObject(card).zone);
         if (!plainPay(state_, events_, player,
@@ -2773,6 +2801,11 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
 
 bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
                                        std::optional<LocationId> location) {
+    if (!state_.objectExists(card)) return false;
+    if (state_.getObject(card).isUnit() && location.has_value() &&
+        !unitMayBePlayedTo(player, *location))
+        return playIgnoringCostDecided(player, card, location, -1);   // not played
+    makeAsYouPlayChoices(player, card);   // CR 355.1
     return playIgnoringCostDecided(player, card, location, -1);
 }
 

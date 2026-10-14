@@ -51,6 +51,8 @@ constexpr CardDefId kDravenAudacious = 469;
 constexpr CardDefId kShardOfUndoing = 736;
 constexpr CardDefId kJayceBrilliantInventor = 855;
 constexpr CardDefId kFrigidJewel = 636;
+constexpr CardDefId kTheList = 700;
+constexpr CardDefId kIvernFriendToAll = 739;
 
 class Batch4bTest : public CardTestFixture {
 protected:
@@ -855,6 +857,41 @@ TEST_F(Batch4bTest, H1_FortifiedPosition_TheShieldOutlivesTheBattlefieldCard) {
     withEngine([](GameEngine& e) { e.testHook_cleanup(); });
     EXPECT_FALSE(o(defender).hasKeyword(Keyword::Shield));
     EXPECT_EQ(o(defender).current_might, 3);
+}
+
+// ─── D46  "As you play this, name a tag" ────────────────────────────────────
+// CR 355.1: a choice "As you play me" is made as the card is played — no
+// chain item, no priority window. CR 763 / 763.1: any tag of the list may be
+// named, not only those on public cards.
+TEST_F(Batch4bTest, D46_TheList_TheTagIsNamedAsItIsPlayed_AnyTagOfTheList) {
+    auto list = addToHand(P1, kTheList);
+    bool offered_zilean = false;
+    int tag_prompts = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label.find("Zilean") != std::string::npos) {
+                offered_zilean = true;
+                ++tag_prompts;
+                return i;
+            }
+        return legal.front();
+    });
+    std::vector<std::string> lines = traced([&] { playThroughEngine(list, &agent); });
+    ASSERT_TRUE(onBoard(list));
+    EXPECT_EQ(tag_prompts, 1);
+    EXPECT_TRUE(offered_zilean) << "a tag on no public card (CR 763.1)";
+    EXPECT_EQ(o(list).string_state["named_tag"], "Zilean");
+    EXPECT_FALSE(anyLineHas(lines, "TRIGGER: The List")) << "not a triggered ability";
+}
+
+TEST_F(Batch4bTest, D46_IvernFriendToAll_TheTagIsChosenAsHeIsPlayed) {
+    auto ivern = addToHand(P1, kIvernFriendToAll);
+    EnginePathAgent agent(EnginePathAgent::script({2}));   // Dog
+    std::vector<std::string> lines = traced([&] { playThroughEngine(ivern, &agent); });
+    ASSERT_TRUE(onBoard(ivern));
+    const auto& tags = o(ivern).tags.get();
+    EXPECT_NE(std::find(tags.begin(), tags.end(), std::string("Dog")), tags.end());
+    EXPECT_FALSE(anyLineHas(lines, "TRIGGER: Ivern")) << "not a triggered ability";
 }
 
 }  // namespace riftbound::test::batch_4b

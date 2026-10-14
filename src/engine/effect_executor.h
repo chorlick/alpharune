@@ -143,6 +143,12 @@ public:
     /// "its controller may pay ... instead"). Returns false when there is no
     /// agent to ask.
     bool confirmNow(PlayerId player, const std::string& label);
+    /// Ask `player` to pick one of `labels` right now (a choice made as a card
+    /// is played, CR 355.1). Returns the index; 0 when there is no agent.
+    int chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
+                       const std::string& what);
+    /// The "As you play me" choices of `card` (Card::asYouPlayChoices).
+    void makeAsYouPlayChoices(PlayerId player, GameObjectId card);
 
     /// "You may make new choices for it" (CR 750-755): the item's controller
     /// re-chooses its targets. Costs already paid are unaffected (755.1).

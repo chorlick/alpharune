@@ -53,44 +53,56 @@ GameObjectId taggedUnit(GameState& s, PlayerId owner, int might,
     return id;
 }
 
-TEST_F(CardTestFixture, TheList_OnPlayNamesMostCommonEnemyTag) {
-    auto gear = makeList(state, P1);
+// Testing phase D46 (by design). These three tests pinned the old naming: a
+// triggered ability on the chain that named the most common enemy tag (later a
+// choice among at most 16 public tags), and named nothing with no tagged unit
+// in view. "As you play this, name a tag" is a choice made as the card is
+// played (CR 355.1) among every tag that exists (CR 763, 763.1).
+// Old: TheList_OnPlayNamesMostCommonEnemyTag -> "Demacia" by a tie-break.
+// New: the player is offered every tag of CR 763.1 and names the one chosen.
+TEST_F(CardTestFixture, TheList_AsItIsPlayedThePlayerNamesAnyTagOfTheList) {
     taggedUnit(state, P2, 3, {"Poro"});
-    taggedUnit(state, P2, 3, {"Poro", "Demacia"});
-    taggedUnit(state, P2, 3, {"Demacia"});  // Poro:2, Demacia:2 → lexical "Demacia"
-
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    CardContext ctx{state, events, exec, P1, gear};
-    Card* c = card_registry.get(kTheList);
-    ASSERT_NE(c, nullptr);
-    c->onTrigger(ctx, {});
-
-    // Poro:2, Demacia:2 → tie broken lexically (std::map order) → "Demacia".
-    EXPECT_EQ(state.getObject(gear).string_state["named_tag"], "Demacia");
+    taggedUnit(state, P2, 3, {"Demacia"});
+    auto list = addToHand(P1, kTheList);
+    size_t offered = 0;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        offered = legal.size();
+        for (const auto& i : legal)
+            if (i.choice_label == "Name the tag: Yordle") return i;
+        return legal.front();
+    });
+    playThroughEngine(list, &agent);
+    EXPECT_EQ(offered, 137u) << "the 137 tags of CR 763.1";
+    EXPECT_EQ(state.getObject(list).string_state["named_tag"], "Yordle");
 }
 
-TEST_F(CardTestFixture, TheList_OnPlayClearWinnerNamed) {
-    auto gear = makeList(state, P1);
+// Old: TheList_OnPlayClearWinnerNamed -> "Poro", the most common enemy tag.
+// New: the most common enemy tag is named only if the player names it.
+TEST_F(CardTestFixture, TheList_AsItIsPlayedTheMostCommonEnemyTagIsNamedIfChosen) {
     taggedUnit(state, P2, 3, {"Poro"});
     taggedUnit(state, P2, 3, {"Poro"});
-    taggedUnit(state, P2, 3, {"Demacia"});  // Poro:2 > Demacia:1
-
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    CardContext ctx{state, events, exec, P1, gear};
-    card_registry.get(kTheList)->onTrigger(ctx, {});
-
-    EXPECT_EQ(state.getObject(gear).string_state["named_tag"], "Poro");
+    taggedUnit(state, P2, 3, {"Demacia"});
+    auto list = addToHand(P1, kTheList);
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Name the tag: Poro") return i;
+        return legal.front();
+    });
+    playThroughEngine(list, &agent);
+    EXPECT_EQ(state.getObject(list).string_state["named_tag"], "Poro");
 }
 
-TEST_F(CardTestFixture, TheList_OnPlayNoEnemyUnitsNamesNothing) {
-    auto gear = makeList(state, P1);
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    CardContext ctx{state, events, exec, P1, gear};
-    card_registry.get(kTheList)->onTrigger(ctx, {});
-
-    EXPECT_TRUE(state.getObject(gear).string_state.find("named_tag") ==
-                state.getObject(gear).string_state.end())
-        << "no tag anywhere in public view → no tag named";
+// Old: TheList_OnPlayNoEnemyUnitsNamesNothing -> no tag named.
+// New: with no tagged unit anywhere a tag is still named (CR 763.1).
+TEST_F(CardTestFixture, TheList_AsItIsPlayedATagIsNamedWithNoTaggedUnitInView) {
+    auto list = addToHand(P1, kTheList);
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label == "Name the tag: Zilean") return i;
+        return legal.front();
+    });
+    playThroughEngine(list, &agent);
+    EXPECT_EQ(state.getObject(list).string_state["named_tag"], "Zilean");
 }
 
 TEST_F(CardTestFixture, TheList_AbilityDebuffsOnlyNamedTagUnit) {

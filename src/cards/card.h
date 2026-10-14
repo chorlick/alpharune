@@ -81,6 +81,13 @@ public:
     // ── Permanent enters board ──
     /// Called when this permanent (unit/gear) enters the board from play.
     virtual void onPlay(CardContext& /*ctx*/) {}
+    /// "As you play me, choose / name ..." (CR 355.1): the choice made as the
+    /// card is played, before its cost — no chain item, no priority window.
+    /// Called by every play path as the play begins (GameEngine::
+    /// executePlayCard, executePlayFromHidden; EffectExecutor::playIgnoringCost
+    /// / playPayingCost). The card asks with the executor's synchronous
+    /// prompts (chooseValueNow, chooseObjectNow, confirmNow).
+    virtual void asYouPlayChoices(CardContext& /*ctx*/) {}
 
     // ── Activated abilities (single-ability legacy surface) ──
     /// Called when an activated ability ([E]:, [N]:, etc.) is used.

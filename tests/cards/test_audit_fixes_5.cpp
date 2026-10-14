@@ -605,35 +605,27 @@ TEST_F(AuditFix5Test, Rengar_RegisteredIdentity) {
 
 // ─── [739] Ivern, Friend to All ──────────────────────────────────────────────
 
-// AsYouPlayMe default (non-chain) path: pickMode falls back to mode 0 = "Bird";
-// the unit gains the Bird tag.
+// With no agent to ask (a bare executor) the choice made as Ivern is played
+// is the first, Bird. (Testing phase D46: the choice is Card::asYouPlayChoices,
+// no longer an AsYouPlayMe triggered ability fired by hand.)
 TEST_F(AuditFix5Test, IvernFriend_DefaultTagBird) {
     EffectExecutor exec(state, events, card_db);
     auto ivern = addUnit(P1, kIvernFriend, 6);
-
-    // Non-chain fireTriggerAs -> pickMode returns legal.front() == Bird.
-    fireTriggerAs(kIvernFriend, P1, ivern, TriggerType::AsYouPlayMe, exec);
+    CardContext ctx{state, events, exec, P1, ivern};
+    card_registry.get(kIvernFriend)->asYouPlayChoices(ctx);
 
     auto& tags = state.getObject(ivern).tags;
     EXPECT_NE(std::find(tags.begin(), tags.end(), "Bird"), tags.end())
         << "default tag choice is Bird";
 }
 
-// AsYouPlayMe chain path: agent picks a non-default mode (Dog) via pickMode.
+// The player picks a tag other than the first (Dog) as Ivern is played. The
+// options are [Bird, Cat, Dog, Poro], values 0..3. (Testing phase D46: was an
+// AsYouPlayMe triggered ability driven by hand.)
 TEST_F(AuditFix5Test, IvernFriend_AgentChoosesTag) {
-    EffectExecutor exec(state, events, card_db);
-    auto ivern = addUnit(P1, kIvernFriend, 6);
-
-    // pickMode publishes [Bird, Cat, Dog, Poro] with chosen_value 0..3.
-    // Pick the "Dog" intent (chosen_value == 2).
-    auto pickDog = [](const std::vector<Intent>& legal) -> Intent {
-        for (const auto& i : legal) {
-            if (i.chosen_value.has_value() && *i.chosen_value == 2) return i;
-        }
-        return legal.empty() ? Intent{} : legal.front();
-    };
-    driveResumableTrigger(kIvernFriend, P1, ivern, pickDog, exec,
-                          TriggerType::AsYouPlayMe);
+    auto ivern = addToHand(P1, kIvernFriend);
+    EnginePathAgent agent(EnginePathAgent::script({2}));
+    playThroughEngine(ivern, &agent);
 
     auto& tags = state.getObject(ivern).tags;
     EXPECT_NE(std::find(tags.begin(), tags.end(), "Dog"), tags.end())

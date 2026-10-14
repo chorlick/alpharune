@@ -64,23 +64,12 @@ constexpr CardDefId kBackOff         = 604;
 // ═══════════════════════════════════════════════════════════════════════════
 
 TEST_F(CardTestFixture, IvernFriend_GainsChosenTagOnAsYouPlayMe) {
-    // The tag choice moved from a hardcoded "Bird" in onPlay to an AGENT
-    // pickMode on the AsYouPlayMe trigger. Drive that trigger with a picker
-    // that selects the Bird mode (the kTags[0] mode), and assert Ivern gains
-    // the chosen tag.
-    auto ivern_id = addUnit(P1, kIvernFriend, /*might=*/0, /*at_bf=*/-1);
-    auto* card = card_registry.get(kIvernFriend);
-    ASSERT_NE(card, nullptr);
-
-    EffectExecutor exec(state, events, card_db);
-    // pickMode publishes one MakeChoice per mode (Bird/Cat/Dog/Poro). Bird is
-    // the first mode — pick legal[0].
-    driveResumableTrigger(
-        kIvernFriend, P1, ivern_id,
-        [](const std::vector<Intent>& legal) {
-            return legal.empty() ? Intent{} : legal.front();  // Bird
-        },
-        exec, TriggerType::AsYouPlayMe);
+    // The tag is chosen as Ivern is played (CR 355.1; testing phase D46 — it
+    // was a pickMode on an AsYouPlayMe triggered ability, driven here by
+    // hand). Bird is value 0.
+    auto ivern_id = addToHand(P1, kIvernFriend);
+    EnginePathAgent agent(EnginePathAgent::script({0}));
+    playThroughEngine(ivern_id, &agent);
 
     const auto& tags = state.getObject(ivern_id).tags;
     EXPECT_TRUE(std::find(tags.begin(), tags.end(), std::string("Bird")) != tags.end())

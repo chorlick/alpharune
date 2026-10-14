@@ -2900,6 +2900,9 @@ void GameEngine::executePlayCard(const Intent& intent) {
         for (const auto& bf : state_.battlefields)
             if (bf.id == bf_id) location_power = std::max(0, bf.paid_play_power);
     }
+    // "As you play me" choices (CR 355.1), made as the play begins, before
+    // anything is paid.
+    effect_executor_->makeAsYouPlayChoices(intent.player, intent.card);
     bool paid_via_grant = false;
     if (intent.play_source == Intent::PlaySource::Trash)
         paid_via_grant = payTrashReplayGrant(intent.player, intent.card);
@@ -4151,6 +4154,7 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
 
     // Play ignoring base cost — permanents go to the BF they were hidden at
     if (card.isPermanent()) {
+        effect_executor_->makeAsYouPlayChoices(intent.player, intent.card);   // CR 355.1
         card.location = BattlefieldLocation{bf_id};
         // Route through chain like normal plays
         auto& ps = state_.player(intent.player);

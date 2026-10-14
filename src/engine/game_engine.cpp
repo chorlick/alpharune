@@ -6055,7 +6055,75 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         (recalled || sole_remaining == PlayerId::None)
             ? std::nullopt : std::optional<PlayerId>(sole_remaining);
 
-    // Clear combat designations
+    // CR 468.3: the result. "When you win a combat" abilities trigger now and
+    // resolve before control is established (468.4).
+    events_.emit(CombatResultEvent{bf_id, combat_winner});
+    if (chain_manager_->chainExists() && !state_.game_over) runChain();
+    if (state_.game_over) return;
+
+    // CR 468.5: with no Showdown or Combat staged here, the player with units
+    // remaining establishes control. Who is here is read again: the chain
+    // above may have changed it.
+    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
+    if (!att_remaining.empty() && !def_remaining.empty()) {
+        // CR 468.3.d.1: "If No Result was reached, and both players have units
+        // remaining, stage a Showdown and a Combat at this battlefield." The
+        // battlefield stays Contested by the same player, so the next combat
+        // (with its showdown step) is staged for the same attacker; it begins
+        // after this one has ended (468.7), in the Cleanup that follows
+        // (CR 323.12, advanceMainPhase).
+        auto& bf = getBattlefield(bf_id);
+        bf.is_contested = true;
+        bf.contested_by = attacker;
+        bf.combat_staged = true;
+        RIFT_TRACE(events_, "COMBAT: no result at BF#" + toString(bf_id) +
+                         " with both players present -> another combat is staged");
+    } else {
+        // The battlefield is no longer Contested (468.5.a): nobody is
+        // contesting it and no combat is staged for it.
+        auto& bf = getBattlefield(bf_id);
+        bf.is_contested = false;
+        bf.contested_by = PlayerId::None;
+        bf.combat_staged = false;
+        sole_remaining = PlayerId::None;
+        if (!att_remaining.empty()) sole_remaining = attacker;
+        else if (!def_remaining.empty()) sole_remaining = defender;
+
+        if (sole_remaining != PlayerId::None) {
+            auto old_controller = bf.controller;
+            bf.controller = sole_remaining;
+            events_.emit(ControlChangedEvent{bf_id, old_controller, sole_remaining});
+            // CR 468.5.c: hidden cards here that do not share the
+            // battlefield's controller are removed as control is established.
+            removeForeignHiddenCards(bf_id);
+            // CR 468.5.d / 471.1: a defender who wins already controlled it —
+            // no Conquer.
+            if (!old_controller.has_value() || *old_controller != sole_remaining)
+                scoreConquer(sole_remaining, bf_id, old_controller);
+        } else {
+            // CR 468.5.b: nobody's units remain: the battlefield is uncontrolled.
+            const auto old_controller = bf.controller;
+            bf.controller = std::nullopt;
+            if (old_controller.has_value())
+                events_.emit(ControlChangedEvent{bf_id, old_controller, std::nullopt});
+            removeForeignHiddenCards(bf_id);
+        }
+        // CR 468.6: "Resolve any items on the chain from establishing control
+        // and associated FEPR before performing this step" — the conquer
+        // abilities resolve while the combat is still going on: the units
+        // still have their designations, "this combat" effects still apply
+        // (finding I2), and they read this combat's numbers (excess damage,
+        // finding B4).
+        if (chain_manager_->chainExists() && !state_.game_over) runChain();
+        if (state_.game_over) return;
+    }
+
+    // CR 468.7: the combat ends. "Remove Attacker and Defender Designation
+    // from all Units and Players" (468.7.a); "At the end of Combat or Combat
+    // ends effects take place" (468.7.b: "When a combat that I was in ends");
+    // "All 'this combat' effects expire simultaneously" (468.7.c: they last
+    // while the combat is in progress — Fiora, Peerless; Fortified Position).
     // (Every object, for the same reason; once per combat, under 0.1%.)
     for (auto& [id, obj] : state_.objects) {
         if (obj.combat_designation != CombatDesignation::None) {
@@ -6063,8 +6131,6 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
             obj.recomputeMight();
         }
     }
-
-    // End combat
     {
         auto& bf = getBattlefield(bf_id);
         bf.combat_in_progress = false;
@@ -6073,61 +6139,10 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         bf.defender = std::nullopt;
     }
     state_.turn.ns_state = NeutralShowdownState::Neutral;
-
     events_.emit(CombatEndedEvent{bf_id, combat_winner});
-
-    // CR 468.4: what determining the result put on the chain resolves before
-    // control is established.
-    if (chain_manager_->chainExists() && !state_.game_over) runChain();
-
-    // CR 468.5: with no Showdown or Combat staged here, the player with units
-    // remaining establishes control. Who is here is read again: the chain
-    // above may have changed it.
-    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
-    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
-    auto& bf = getBattlefield(bf_id);
-    if (!att_remaining.empty() && !def_remaining.empty()) {
-        // CR 468.3.d.1: "If No Result was reached, and both players have units
-        // remaining, stage a Showdown and a Combat at this battlefield." The
-        // battlefield stays Contested by the same player, so the next combat
-        // (with its showdown step) is staged for the same attacker and run
-        // before the turn player's next decision (advanceMainPhase).
-        bf.is_contested = true;
-        bf.contested_by = attacker;
-        bf.combat_staged = true;
-        RIFT_TRACE(events_, "COMBAT: no result at BF#" + toString(bf_id) +
-                         " with both players present -> another combat is staged");
-        return;
-    }
-    // The battlefield is no longer Contested: nobody is contesting it and no
-    // combat is staged for it (the invariant processContestedBattlefields
-    // keeps — a stale "combat staged" would be reported to agents and to the
-    // feature extractor for every decision asked before the next cleanup,
-    // e.g. the conquer triggers queued just below).
-    bf.is_contested = false;
-    bf.contested_by = PlayerId::None;
-    bf.combat_staged = false;
-    sole_remaining = PlayerId::None;
-    if (!att_remaining.empty()) sole_remaining = attacker;
-    else if (!def_remaining.empty()) sole_remaining = defender;
-
-    // Establish control (CR 461.5)
-    if (sole_remaining != PlayerId::None) {
-        auto old_controller = bf.controller;
-        bf.controller = sole_remaining;
-        events_.emit(ControlChangedEvent{bf_id, old_controller, sole_remaining});
-        // CR 468.5 / 471.1: a defender who wins already controlled it — no Conquer.
-        if (!old_controller.has_value() || *old_controller != sole_remaining)
-            scoreConquer(sole_remaining, bf_id, old_controller);
-    } else {
-        bf.controller = std::nullopt;
-    }
-    // CR 468.6: "Resolve any items on the chain from establishing control and
-    // associated FEPR before performing this step" (the end of the combat).
-    // So the conquer abilities of this combat resolve before another staged
-    // combat can begin (CR 323.12: only in a Neutral Open State) — they read
-    // this combat's numbers (excess damage, the last combat's battlefield,
-    // finding B4), not the next one's.
+    // What the end of the combat triggered resolves before anything else
+    // begins: a showdown or combat begins only in a Neutral Open State with
+    // nothing pending (CR 323.11 / 323.12).
     if (chain_manager_->chainExists() && !state_.game_over) runChain();
 }
 
@@ -7241,37 +7256,42 @@ void GameEngine::updateBattlefieldControl() {
             }
         }
 
-        // Remove facedown cards that belong to a player who doesn't control
-        // this battlefield: "Remove all Hidden cards from all Battlefields
-        // that are not controlled by the same player and place them in their
-        // owner's Trash." (CR 323.6.a; CR 107.3.d). EVERY hidden card, with no
-        // split by card type — a hidden unit or gear goes to the trash like a
-        // hidden spell.
-        // (Pinned by PerfEngineHiddenHourglass.NotPlayed_TheFacedownCardGoesToItsOwnersTrash;
-        // a card that WAS played from facedown is a permanent on the board
-        // and is recalled instead, CR 149.3 / 323.6 — recallMisplacedObjects.)
-        std::vector<GameObjectId> to_remove;
-        for (auto card_id : bf.facedown) {
-            if (!state_.objectExists(card_id)) continue;
-            auto& card = state_.getObject(card_id);
-            if (!bf.controller.has_value() || *bf.controller != card.controller) {
-                to_remove.push_back(card_id);
-            }
-        }
-        for (auto card_id : to_remove) {
-            auto it = std::find(bf.facedown.begin(), bf.facedown.end(), card_id);
-            if (it != bf.facedown.end()) bf.facedown.erase(it);
+        removeForeignHiddenCards(bf.id);
+    }
+}
 
-            auto& card = state_.getObject(card_id);
-            card.is_hidden = false;
-            card.hidden_at = kInvalidId;
-            card.zone = ZoneType::Trash;
-            card.location = std::nullopt;
-            state_.player(card.owner).trash.push_back(card_id);
-            settleInTrash(state_, events_, card_id);
-            RIFT_DEBUG(events_, std::string("HIDDEN: ") + card.name +
-                             " removed from facedown (control lost)");
+void GameEngine::removeForeignHiddenCards(BattlefieldId bf_id) {
+    auto& bf = getBattlefield(bf_id);
+    // Remove facedown cards that belong to a player who doesn't control
+    // this battlefield: "Remove all Hidden cards from all Battlefields
+    // that are not controlled by the same player and place them in their
+    // owner's Trash." (CR 323.6.a; CR 107.3.d). EVERY hidden card, with no
+    // split by card type — a hidden unit or gear goes to the trash like a
+    // hidden spell.
+    // (Pinned by PerfEngineHiddenHourglass.NotPlayed_TheFacedownCardGoesToItsOwnersTrash;
+    // a card that WAS played from facedown is a permanent on the board
+    // and is recalled instead, CR 149.3 / 323.6 — recallMisplacedObjects.)
+    std::vector<GameObjectId> to_remove;
+    for (auto card_id : bf.facedown) {
+        if (!state_.objectExists(card_id)) continue;
+        auto& card = state_.getObject(card_id);
+        if (!bf.controller.has_value() || *bf.controller != card.controller) {
+            to_remove.push_back(card_id);
         }
+    }
+    for (auto card_id : to_remove) {
+        auto it = std::find(bf.facedown.begin(), bf.facedown.end(), card_id);
+        if (it != bf.facedown.end()) bf.facedown.erase(it);
+
+        auto& card = state_.getObject(card_id);
+        card.is_hidden = false;
+        card.hidden_at = kInvalidId;
+        card.zone = ZoneType::Trash;
+        card.location = std::nullopt;
+        state_.player(card.owner).trash.push_back(card_id);
+        settleInTrash(state_, events_, card_id);
+        RIFT_DEBUG(events_, std::string("HIDDEN: ") + card.name +
+                         " removed from facedown (control lost)");
     }
 }
 

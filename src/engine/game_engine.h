@@ -670,6 +670,9 @@ private:
     bool checkWinCondition();
     void processLethalDamage();
     void updateBattlefieldControl();
+    /// CR 323.6.a / 468.5.c: hidden cards at `bf` whose controller does not
+    /// control it go to their owner's trash.
+    void removeForeignHiddenCards(BattlefieldId bf);
     void processContestedBattlefields();
 
     // ── Combat ──

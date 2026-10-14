@@ -67,6 +67,8 @@ void TriggerManager::subscribe() {
         [this](const EnteredBoardEvent& e) { onEnteredBoard(e); }));
     connections_.push_back(events_.on_combat_started.connect(
         [this](const CombatStartedEvent& e) { onCombatStarted(e); }));
+    connections_.push_back(events_.on_combat_result.connect(
+        [this](const CombatResultEvent& e) { onCombatResult(e); }));
     connections_.push_back(events_.on_combat_ended.connect(
         [this](const CombatEndedEvent& e) { onCombatEnded(e); }));
     connections_.push_back(events_.on_unit_died.connect(
@@ -1039,7 +1041,12 @@ void TriggerManager::onCombatEnded(const CombatEndedEvent& e) {
             fireTrigger(uid, state_.getObject(uid).controller, 0,
                         TriggerType::WhenACombatIWasInEnds);
     }
+}
 
+// CR 468.3: the result is determined; "When you win a combat" abilities
+// trigger now and resolve before control is established (468.4).
+void TriggerManager::onCombatResult(const CombatResultEvent& e) {
+    const TriggerEventScope event_scope(state_.chain);
     // No fire on indecisive combat (both sides emptied, or no recall outcome).
     if (!e.winner.has_value()) return;
     PlayerId winner = *e.winner;

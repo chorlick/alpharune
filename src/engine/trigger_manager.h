@@ -98,6 +98,7 @@ private:
 
     /// Fires WhenIWinCombat for each surviving unit at the BF controlled
     /// by the combat winner. No-op when there's no decisive winner.
+    void onCombatResult(const CombatResultEvent& e);
     void onCombatEnded(const CombatEndedEvent& e);
 
     /// Fires WhenIDie/Deathknell for the dying unit.

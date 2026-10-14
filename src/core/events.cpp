@@ -110,6 +110,12 @@ void EventBus::emit(const CombatStartedEvent& e) {
     if (holding_) { held_.push_back([this, e] { on_combat_started(e); }); return; }
     on_combat_started(e);
 }
+void EventBus::emit(const CombatResultEvent& e) {
+    ++activity_;
+    if (quiet_depth_ > 0) return;
+    if (holding_) { held_.push_back([this, e] { on_combat_result(e); }); return; }
+    on_combat_result(e);
+}
 void EventBus::emit(const CombatEndedEvent& e) {
     ++activity_;
     if (quiet_depth_ > 0) return;

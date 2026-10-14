@@ -102,3 +102,9 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 - [ ] **J2** (batch 3) CR 323.11 / 323.12 apply in every Neutral Open State Cleanup; only `advanceMainPhase` begins staged showdowns and combats, so one staged outside the Main Phase waits for it — CODE-ONLY
 - [ ] **J3** (batch 3) CR 468.3.d.1 decides "stage another combat" from who is present at the result; `combatResolutionStep` decides it from who is present after the 468.4 chain — CODE-ONLY
+
+## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
+
+- [ ] **K1** (batch 3) An effect play that pays a card's cost loses that play's paid flags: `EffectExecutor::playPayingCost` pays through `payAdditionalPlayCosts` (setting `kAdditionalCostPaid` / an `OptionalAdditionalCost::paid_flag`), then the shared play path runs `Card::forgetPlayPayments` and erases them, so "if you paid the additional cost" cards played by Void Burrower or Wild Claw read it as unpaid (Zaun Punk, Bard, Mercurial, Safety Inspector) — CODE-ONLY
+- [ ] **K2** (after the owner's answer to G4) If an engine game is a Match game (CR 488.5), `GameRunner` / `BatchRunner` need series support so games two and three exclude battlefields already used (488.5, 488.6) — waits on G4
+- [ ] **K3** (orchestrator) Throughput of master after batch 4b not measured (the run lane was busy): 1,000 games, 1 thread, fiora vs yi_rebuild, three alternating runs, master before and after 4b, on an idle machine — perf

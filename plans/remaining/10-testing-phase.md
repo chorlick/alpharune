@@ -115,3 +115,34 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **B7** (batch 4b) `kMaxDamageOptions` 64 / `kMaxSearchNodes` 20,000 cap the combat-damage assignments offered: on a crowded board legal assignments are withheld — CODE-ONLY
 - [ ] **B8** (batch 4b) `CardTestFixture::withEngine` keeps the first `turn_player` silently on a second call in one test: make it throw — tooling
 - [ ] **B9** (batch 2) Verify against their cited games whether batch 1 closed D60, D76, D23 (Cleanup with designations before the combat showdown); (batch 4a) D55 first half; (batch 3) D57 and single-target D32 — close with a pinning test each or keep open
+
+## Found by reading 19 ISMCTS games (2026-10-11, `plans/reports/test-games19.md`, detail in `docs/testing-findings-games19-2026-10.md` section 4) — seen on the binary BEFORE batch 1; each is first re-checked on the current tree
+
+- [ ] **G1** (batch 4b) 1v1: the player going first is made to skip the first draw. CR 487.7 / 488.7 give 1v1 only the second player's extra rune; the no-draw sentence is in 489.7-491.7 (multiplayer). The engine cites "CR 482.7" (old numbering); `BurnOutScoringTest.FirstPlayerFirstTurn_DrawPhaseSkipped` pins it — CERTAIN (all 19)
+- [ ] **G2** (batch 4b) Time Warp on the opponent's turn: the Additional Turn replaces the owner's regular turn instead of being inserted before it (CR 735, 737) — the spell does nothing — CERTAIN (g11)
+- [ ] **G3** (batch 2) The turn player always gets Focus first, not the player who applied Contested / the attacker (CR 345, 466.2.c.1.a) — CERTAIN combat, LIKELY non-combat (g07 g10 g14 g19)
+- [ ] **G4** (batch 4b) Setup: the battlefield is an agent decision; a Duel (CR 487.5) picks at random, a Match (488.5) chooses — which mode is an engine game? — QUESTION (to the project) (all)
+- [ ] **G5** (batch 1b) A unit with lethal damage is still on the board at the Focus decision after the attack / defend triggers resolved (Forgefire Cape); Charm then chose and moved it — CERTAIN (g01)
+- [ ] **G6** (batch 1b) A battlefield with no units keeps its controller through a Main Phase decision when the last unit's Deathknell was queued by the cleanup that killed it (CR 323.5) — CERTAIN (g13)
+- [ ] **G7** (batch 2) Sivir, Mercenary: the turn-scoped +2 [M] / [Ganking] is still applied through the next turn's Beginning Step — CERTAIN (g12)
+- [ ] **G8** (batch 2) Mechanized Menace "Your Mechs have [Shield]" is missing when a combat goes straight to damage (known root D42 / D60 / D76); it changed a conquer and the result of game 9 — CERTAIN (g09)
+- [ ] **G9** (batch 1b) Eight more cards put an ability on the chain with their printed condition false (known root D51): Curator of the Sands (14 empty items in one game), Lady of Luminosity - Starter, Gutter Palace, Patched Porobot, Poppy, Paragon, Pyke, Dockside Butcher, Blitzcrank, Impassive, Vanguard Captain ([Legion]) — CERTAIN (Vanguard Captain LIKELY) (9 games)
+- [ ] **G10** (batch 1b) A battlefield's start-of-Beginning-Phase ability is given to the turn player while the other player controls the battlefield (Frozen Fortress, Dusk Rose Lab; CR 190.6.a, 190.6.d) — LIKELY (g05 g17)
+- [ ] **G11** (batch 1b) Heart of the Tempest: no trigger for a play from the Champion Zone or a play by an effect from the trash — CERTAIN (g06)
+- [ ] **G12** (batch 1b) Heart of the Tempest triggers as the Flow spell goes on the chain, not when it has resolved (CR 420.4.a) — CERTAIN (g06)
+- [ ] **G13** (batch 1b) Tornado Warrior "Disempower it at end of turn" is a flag flipped in the Expiration Step, no ability in the Ending Step (Sanction by code) — LIKELY (g07)
+- [ ] **G26** (batch 1b) Ravenbloom Student played back by Temporal Breach triggers on that same Temporal Breach — QUESTION (g14)
+- [ ] **G14** (batch 3) A chosen target that left the board and came back is still acted on: Amateur Recital moved a unit Temporal Breach had banished and replayed (CR 359.3.e.4 in terms) — CERTAIN (g14)
+- [ ] **G15** (batch 3) Activated abilities with a target or mode pay their whole cost before the choice (Heart of the Tempest, Defender of Tomorrow, Matriarch of War, Bounty Hunter; CR 403-405) — CERTAIN (g06 g16 g18)
+- [ ] **G16** (batch 3) A play-time-target spell played by Fizz, Trickster is paid for before its target is chosen (Punch First) — CERTAIN (g12)
+- [ ] **G17** (batch 3) Emperor's Divide: the units to move are chosen after RESOLVE; the unit named at the play only stands for the battlefield — LIKELY (g10)
+- [ ] **G19** (batch 3) Defender of Tomorrow is activated, paid and put on the chain with nothing to choose (known root D67) — CERTAIN (g16)
+- [ ] **G20** (batch 3) Public Execution is offered, paid ([5] + 2 Power by Flow) and put on the chain with no legal pair (known root D8 / F7; the gate must test pairs) — CERTAIN (g16)
+- [ ] **G18** (batch 4b) Defender of Tomorrow: "Ready a gear" refuses a ready gear (its pick list is narrower than its text) — CERTAIN (g16)
+- [ ] **G21** (batch 4b) Kennen, Keeper of Balance played from facedown stuns a unit in the enemy base (known root D70; CR 811.1.d.3) — CERTAIN (g04)
+- [ ] **G22** (batch 4b) Hidden units (Tornado Warrior, Tideturner) are offered and played onto Rockfall Path — CERTAIN (g08)
+- [ ] **G23** (batch 4b) A Brush that replaced Vilemaw's Lair keeps "Units can't move from here to base" (slot flags survive the replacement; Rockfall Path / Forgotten Monument by code) — LIKELY (g02)
+- [ ] **G24** (batch 4b) Green Father's "may" is withheld when the battlefield is already a Brush — LIKELY (g02)
+- [ ] **G25** (batch 4b) Astral Heron: with the first card of the turn countered, no card of that turn triggers it — QUESTION (g08)
+- [ ] **G27** (batch 3) Sightings that widen known items (report section "Known items seen again"): Gold's "Kill this" paid at resolution (D38), [Add] as a chain item on five more cards (D30/D31), a Flow replay offered at Focus (D5, batch 2), Astral Heron's discount spent on the opponent's turn (D18), Defy takes the top item only (D21), Relentless Pursuit joins D3 / D41 — each named card gets its own test when its item is fixed
+- [ ] **G28** (after the batches) ISMCTS at 50 simulations plays near-uniformly (End Turn with ready runes, helpful effects on enemy units, option [0] of two-option prompts favoured, opponent's objects chosen at Targon's Peak): check whether the search tells own from opposing objects in a prompt and whether option order biases it — agents, observation

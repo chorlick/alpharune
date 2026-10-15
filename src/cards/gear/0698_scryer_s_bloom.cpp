@@ -170,7 +170,8 @@ private:
         d.domains = {Domain::Chaos};
         d.energy_cost = 1;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Predict);
+        // No Keyword::Predict: Predict is a game action (CR 437), not a
+        // keyword the card has (testing phase R12; plans/08 8.8).
         d.ability_text = R"RB(This enters exhausted.
 Kill this, [1], [E]: [Predict 2], then draw 1. Gain 1 XP. (To Predict 2, look at the top two cards of your Main Deck. Recycle any of them and put the rest back in any order.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/b10a544d24d3ae3e177d4791743bb2cfb742abcc-744x1039.png)RB";

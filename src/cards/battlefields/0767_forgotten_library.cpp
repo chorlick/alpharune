@@ -53,7 +53,8 @@ private:
         d.artist = R"RB(Chris Kintner)RB";
         d.card_type = CardType::Battlefield;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Predict);
+        // No Keyword::Predict: Predict is a game action (CR 437), not a
+        // keyword the card has (testing phase R12; plans/08 8.8).
         d.ability_text = R"RB(While you control this battlefield, when you play a spell, if you spent [4] or more, [Predict]. (Look at the top card of your Main Deck. You may recycle it.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/a7905fb94abe453f05a4108cf5424fd1ca50f6de-1039x744.png)RB";
         return d;

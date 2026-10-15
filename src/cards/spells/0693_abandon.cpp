@@ -109,7 +109,8 @@ private:
         d.domains = {Domain::Chaos};
         d.energy_cost = 2;
         d.rarity = Rarity::Uncommon;
-        d.keywords.set(Keyword::Predict);
+        // No Keyword::Predict: Predict is a game action (CR 437), not a
+        // keyword the card has (testing phase R12; plans/08 8.8).
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction] (Play any time, even before spells and abilities resolve.)
 Counter a spell. Return it to its owner's hand instead of putting it in their trash.

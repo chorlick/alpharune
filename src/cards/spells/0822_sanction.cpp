@@ -79,7 +79,8 @@ private:
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction] (Play any time, even before spells and abilities resolve.)
 Choose one —
-Empower a unit. Disempower it at end of turn.Disempower a unit that's [Empowered]. Empower it at end of turn.)RB";
+Empower a unit. Disempower it at end of turn.
+Disempower a unit that's [Empowered]. Empower it at end of turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/daef24792dddefd0971b34d01bd60bc3b11adcca-744x1039.png)RB";
         return d;
     }();

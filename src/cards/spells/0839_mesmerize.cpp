@@ -68,7 +68,8 @@ private:
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction] (Play any time, even before spells and abilities resolve.)
 Choose one —
-Return a friendly unit to its owner's hand.Give an enemy unit -2 [M] this turn.)RB";
+Return a friendly unit to its owner's hand.
+Give an enemy unit -2 [M] this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/854ceafc3f20c7e2d38c83170cb73232116f3d58-744x1039.png)RB";
         return d;
     }();

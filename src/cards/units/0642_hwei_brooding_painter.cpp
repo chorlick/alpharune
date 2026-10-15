@@ -141,7 +141,9 @@ private:
         d.might = 5;
         d.rarity = Rarity::Rare;
         d.ability_text = R"RB(When I move, draw 1, then discard 1. Then, do the following based on the discarded card's type:
-Spell — Draw 1.Gear — Ready up to 2 runes.Unit — Give me +3 [M] this turn.)RB";
+Spell — Draw 1.
+Gear — Ready up to 2 runes.
+Unit — Give me +3 [M] this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/ddbb13ba5617cc443b9a3a51485b1697da570121-744x1039.png)RB";
         return d;
     }();

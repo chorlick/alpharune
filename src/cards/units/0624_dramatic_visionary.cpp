@@ -38,7 +38,8 @@ private:
         d.energy_cost = 4;
         d.might = 4;
         d.keywords.set(Keyword::Deathknell);
-        d.keywords.set(Keyword::Predict);
+        // No Keyword::Predict: Predict is a game action (CR 437), not a
+        // keyword the card has (testing phase R12; plans/08 8.8).
         d.ability_text = R"RB([Deathknell][>] [Predict 2]. (When I die, look at the top two cards of your Main Deck. Recycle any of them and put the rest back in any order.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/3153c05a8c3fb4d8f945a95fad54ea25e087ad47-744x1039.png)RB";
         return d;

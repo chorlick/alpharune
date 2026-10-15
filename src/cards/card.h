@@ -799,6 +799,9 @@ public:
     enum : unsigned {
         kPlayToOpenBattlefield = 1,           // no controller
         kPlayToOccupiedEnemyBattlefield = 2,  // enemy-controlled, enemy units there
+                                              // (Maduli reads "occupied enemy
+                                              // battlefield" otherwise: judge
+                                              // question 17, testing phase R14)
         kPlayToAnyBattlefield = 4,
         kPlayToLoneEnemyBattlefield = 8,      // exactly one unit there, an enemy
     };

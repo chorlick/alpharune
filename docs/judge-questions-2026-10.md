@@ -305,3 +305,25 @@ Which rule wins when both apply?
 - For "recycle the two": the instruction could be read as "as many as you can". 359.3.e.5 ignores only an instruction whose target became illegal after finalization, so it does not decide this case. Nothing in the text says "up to".
 
 **What the engine does.** The strict reading of 403.4: with fewer than three cards, the ability is removed and nothing is recycled (`BatchM1Abilities.DrMundo_Pin_WithFewerThanThreeCardsTheAbilityIsRemoved`, `C4Test.DrMundoExpert_Pin_FewerThanThreeAreNotRecycled`). With exactly three, all three are recycled. `SweepCostsTest.Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOnes` lists Dr. Mundo with Teemo, Strategist.
+
+---
+
+## 16. A triggered ability's "kill X to do Y" when the death is replaced
+
+**Cards**
+
+- Bottled Constellation: "At the start of your Main Phase, you may kill 3 other friendly units and/or gear to score 1 point."
+- Dusk Rose Lab: "At the start of your Beginning Phase, you may kill a unit you control here to draw 1."
+- Overzealous Fan: "When I defend, you may kill me to move an attacking unit to its base."
+- For contrast, Zhonya's Hourglass: "If a friendly unit would die, kill this instead. Heal that unit, exhaust it, and recall it."
+
+**Situation.** I control Zhonya's Hourglass. Bottled Constellation's ability triggers, I say yes, and I choose three friendly units. As I pay, Zhonya's Hourglass replaces the death of one of them.
+
+**Question.** Has the cost been paid, so that I score the point? Or did the replaced kill not happen, leaving the cost unpaid, so that the ability does nothing?
+
+**Rules found**
+
+- For "paid": 357.2.a, "Costs that are replaced with other events by replacement effects are still considered paid", with Cruel Patron and Zhonya's Hourglass as its example. 400 says abilities are played with the same steps as cards, and 383.3.b makes "[do X] to [do Y]" the triggered ability's base cost (404.1.b.1, 405).
+- For "not paid": 370.1.a.1 (Zhonya's example): "A unit's death being replaced by Zhonya's Hourglass is the same as the kill action that caused that death not occurring." 405 does not repeat 357.2.a. The engine has read "kill X to do Y" this way since it introduced `Card::killAsCost` (Dusk Rose Lab, Overzealous Fan).
+
+**What the engine does.** For a triggered ability's "kill X to", it does not count a replaced death as paid: no point, no card drawn, no move (`Card::killAsCost`; `BatchM1Abilities.BottledConstellation_AReplacedDeathPaysNothingAndScoresNothing`). A spell's or permanent's additional cost follows 357.2.a and is paid (testing phase F6). The two readings differ only when a replacement applies to the kill.

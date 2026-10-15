@@ -240,7 +240,7 @@ All three files place every choice before their marker.
 | gear/0710 | Cursed Sarcophagus | banished unit: RES (banishment is not a public zone, CR 355.10.a.1); location and the unit's cost: RES (M5, CR 355.18) |
 | gear/0723 | Divining Shells | unit: FIN |
 | gear/0736 | Shard of Undoing | the opponent's unit: RES ("each opponent must kill", CR 355.10.e-f) |
-| gear/0854 | Bottled Constellation | leading "you may": **MOVED** (CR 383.3.a); the 3 units/gear killed: **MOVED** (a cost in the instruction, right after the leading may, is the ability's base cost, CR 383.3.b, 405) |
+| gear/0854 | Bottled Constellation | leading "you may": **MOVED** (CR 383.3.a); the 3 units/gear killed: **MOVED** (a cost in the instruction, right after the leading may, is the ability's base cost, CR 383.3.b, 405); a death replaced while paying: **Q** (judge question 16, pinned to `killAsCost` as for Dusk Rose Lab and Overzealous Fan) |
 | gear/0920 | Glowstone | "Choose a player": **MOVED** (a player is a target, CR 355.7; CR 403.2) |
 | legends/0256 | Unforgiven | friendly unit: FIN (intent target); the battlefield a unit in base moves to: **MOVED** (move destination, CR 355.4, 403.2) |
 | legends/0262 | Bounty Hunter | unit: FIN |
@@ -403,5 +403,5 @@ All three files place every choice before their marker.
 
 - 156 files.
 - 24 cards have at least one choice MOVED to finalization: 3 battlefield/gear/legend cards, 16 spells and 5 units.
-- 2 questions are left to the judges, numbered 14 and 15.
+- 3 questions are left to the judges, numbered 14, 15 and 16.
 - Every other choice is FIN or RES as listed.

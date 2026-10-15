@@ -23,7 +23,9 @@ public:
     // ability's base cost, chosen and paid as it is finalized (CR 383.3.b,
     // 404.1.b.1, 405). The three are not targets (CR 355.10.c.1). They die
     // together; a death that something replaces is not a kill, and then the
-    // cost is unpaid and no point is scored (Card::killAsCost).
+    // cost is unpaid and no point is scored (Card::killAsCost, the engine's
+    // reading for "kill X to" abilities; CR 357.2.a may differ: judge
+    // question 16).
     TriggerType triggerType() const override { return TriggerType::AtStartOfMain; }
     unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

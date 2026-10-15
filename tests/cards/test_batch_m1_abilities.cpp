@@ -135,6 +135,8 @@ TEST_F(BatchM1Abilities, BottledConstellation_TheMayAndTheKillsAreMadeAsItIsFina
     EXPECT_EQ(state.player(P1).score, 1);
 }
 
+// Judge question 16: the engine's reading of "kill X to" (Card::killAsCost, as
+// for Dusk Rose Lab and Overzealous Fan), pinned; CR 357.2.a may say otherwise.
 TEST_F(BatchM1Abilities, BottledConstellation_AReplacedDeathPaysNothingAndScoresNothing) {
     auto bc = addGear(P1, kBottledConstellation);
     addGear(P1, kZhonyasHourglass);   // "If a friendly unit would die, kill this instead."

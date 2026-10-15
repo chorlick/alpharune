@@ -5179,7 +5179,8 @@ std::vector<std::vector<GameObjectId>> spellTargetSets(
 // Reaction / Action timing: `intent_type` is PlayReaction in a Closed State and
 // PlayActionCard in a showdown. A unit still goes only where a unit may be
 // played (CR 813.3.a); gear goes to the base, and [Quick-Draw] gear (which has
-// [Reaction], CR 819.1.b) is attached as it resolves.
+// [Reaction], CR 819.1.b) is attached by the keyword's triggered ability once
+// it is played (CR 819.1.a, 819.1.d; keyword_abilities, QuickDrawAbility).
 void GameEngine::generateReactionPermanentActions(PlayerId player, IntentType intent_type,
                                                    std::vector<Intent>& actions) const {
     const auto& ps = state_.player(player);
@@ -5246,7 +5247,8 @@ std::vector<Intent> GameEngine::generateClosedStateActions(
     }
 
     // [Reaction] permanents: units that are themselves [Reaction] cards, and
-    // [Quick-Draw] / [Reaction] gear (attached as it lands, CR 819.1.d).
+    // [Quick-Draw] / [Reaction] gear (Quick-Draw attaches it through the
+    // keyword's triggered ability, CR 819.1.d).
     generateReactionPermanentActions(player, IntentType::PlayReaction, actions);
 
     // Ambush: play units with [Ambush] as Reactions to BFs where you have

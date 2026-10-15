@@ -111,17 +111,17 @@ public:
         // controller's base or to a battlefield they control (and may be
         // played to), their choice. Gear goes to base.
         const auto& bfs = ctx.state.battlefields;
-        auto unitPlayableAt = [&](const BattlefieldState& bf) {
-            return bf.controller.has_value() && *bf.controller == ctx.controller &&
-                   !bf.blocks_unit_play &&
-                   !ctx.state.player(ctx.controller).units_play_base_only;
+        // ... or where the unit's own permissions allow (CR 355.2, 420.3.b;
+        // effectPlayAllowedAt also leaves out where units can't be played).
+        auto unitPlayableAt = [&](GameObjectId unit, const BattlefieldState& bf) {
+            return effectPlayAllowedAt(ctx, ctx.controller, unit, bf);
         };
         std::optional<LocationId> where_to;
         if (phase == 2) {
             // Re-entered with the location (0 = base, 1 + i = battlefield slot i).
             banished = GameObjectId::fromRaw(ri.resume_data[0]);
             const int v = takenValue(ctx, 0);
-            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
+            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(banished, bfs[v - 1]))
                 where_to = LocationId{BattlefieldLocation{bfs[v - 1].id}};
         } else {
             auto choice = ctx.executor.takeChoice();
@@ -136,7 +136,7 @@ public:
                 ctx.executor.canPlayPayingCost(ctx.controller, banished)) {
                 std::vector<Intent> where;
                 for (size_t i = 0; i < bfs.size(); ++i)
-                    if (unitPlayableAt(bfs[i]))
+                    if (unitPlayableAt(banished, bfs[i]))
                         where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
                             "Void Burrower: play to battlefield " + std::to_string(i)));
                 if (!where.empty()) {

@@ -47,7 +47,7 @@ public:
         // controller's base or to a battlefield they control (and may be
         // played to) — chosen as the unit is played and finalized, at
         // resolution (CR 420.3.b.2).
-        const int where = pickEffectPlayLocation(*this, ctx, "The Harrowing: play it to");
+        const int where = pickEffectPlayLocation(*this, ctx, "The Harrowing: play it to", picked);
         if (where == -1) return;   // waiting for the agent
         // "ignoring its Energy cost. (You must still pay its Power cost.)"
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};

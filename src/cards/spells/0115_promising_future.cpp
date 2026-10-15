@@ -99,37 +99,32 @@ public:
             ctx.executor.playPayingCost(p, banished, where, power_only);
         };
 
-        // A battlefield `p` may play a unit to (as Wild Claw 876): one they
-        // control, not one where units can't be played, and none while they
-        // may only play units to base.
-        const auto& bfs = ctx.state.battlefields;
-        auto unitPlayableAt = [&](PlayerId p, const BattlefieldState& bf) {
-            return bf.controller.has_value() && *bf.controller == p &&
-                   !bf.blocks_unit_play && !ctx.state.player(p).units_play_base_only;
-        };
-        // CR 355.2.a: ask `p` where their banished unit goes. Only for a unit
-        // they can pay for, and only with a battlefield to offer. Returns
-        // whether a prompt went out. 0 = base, 1 + i = battlefield slot i.
+        // CR 355.2: ask `p` where their banished unit goes — their base, a
+        // battlefield they control, or where the unit's own permissions allow
+        // (playLocationsFor, which leaves out a battlefield units can't be
+        // played to). Only for a unit they can pay for, and only with a
+        // battlefield to offer. Returns whether a prompt went out. Values:
+        // 0 = base, 1 + i = battlefield slot i (locationCode).
         auto prompt_where = [&](PlayerId p, GameObjectId banished) -> bool {
             if (banished == kInvalidId || !ctx.state.objectExists(banished)) return false;
             if (!ctx.state.getObject(banished).isUnit()) return false;
             if (!ctx.executor.canPlayPayingCost(p, banished, power_only)) return false;
+            const auto places = playLocationsFor(ctx, p, banished);
+            if (places.count() <= 1) return false;
             std::vector<Intent> where;
-            for (size_t i = 0; i < bfs.size(); ++i)
-                if (unitPlayableAt(p, bfs[i]))
-                    where.push_back(valChoice(p, static_cast<int>(i) + 1,
-                        "Promising Future: play to battlefield " + std::to_string(i)));
-            if (where.empty()) return false;
-            where.insert(where.begin(), valChoice(p, 0, "Promising Future: play to base"));
+            for (int i = 0; i < places.count(); ++i)
+                where.push_back(valChoice(p, locationCode(places.locations[static_cast<size_t>(i)]),
+                    "Promising Future: play to " + places.labels[static_cast<size_t>(i)]));
             // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             ctx.executor.requestChoice(p, std::move(where),
                                        "Promising Future: where to play it");
             return true;
         };
-        auto taken_where = [&](PlayerId p) -> std::optional<LocationId> {
+        auto taken_where = [&](PlayerId p, GameObjectId banished) -> std::optional<LocationId> {
             const int v = takenValue(ctx, 0);
-            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(p, bfs[v - 1]))
-                return LocationId{BattlefieldLocation{bfs[v - 1].id}};
+            if (v > 0 && ctx.state.objectExists(banished))
+                for (const auto& l : playLocationsFor(ctx, p, banished).locations)
+                    if (locationCode(l) == v) return l;
             return std::nullopt;   // base
         };
 
@@ -143,13 +138,13 @@ public:
                 if (prompt_where(opp, opp_b)) { ri.resume_point = 3; return; }
                 play_banished(opp, opp_b, std::nullopt);
             } else if (ri.resume_point == 3) {
-                play_banished(opp, opp_b, taken_where(opp));
+                play_banished(opp, opp_b, taken_where(opp, opp_b));
             }
             if (ri.resume_point != 4) {
                 if (prompt_where(ctx.controller, ctrl_b)) { ri.resume_point = 4; return; }
                 play_banished(ctx.controller, ctrl_b, std::nullopt);
             } else {
-                play_banished(ctx.controller, ctrl_b, taken_where(ctx.controller));
+                play_banished(ctx.controller, ctrl_b, taken_where(ctx.controller, ctrl_b));
             }
             ri.resume_point = 5;   // done
             RIFT_TRACE(ctx.events, "PROMISING FUTURE: each player banished 1 of top 5, "

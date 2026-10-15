@@ -69,7 +69,7 @@ public:
             chosen = pickTarget(ctx, "Void Rush: card to banish and play", playable());
             if (chosen == kInvalidId) return;   // waiting
             if (ctx.state.getObject(chosen).isUnit()) {
-                const auto where = playLocations(ctx.state, ctx.controller);
+                const auto where = playLocationsFor(ctx, ctx.controller, chosen);
                 // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                 const int mode = pickMode(ctx, "Void Rush: where to play it",
                                           where.count(), where.labels);

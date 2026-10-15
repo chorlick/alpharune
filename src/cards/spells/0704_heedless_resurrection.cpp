@@ -109,10 +109,12 @@ public:
         }
         if (ri.resume_data[kRevivedSlot] <= 0) return;   // nothing to play
         const auto revived = GameObjectId::fromRaw(ri.resume_data[kRevivedSlot] - 1);
-        // Its controller's base or a battlefield they control (CR 355.2.a).
-        const auto where = playLocations(ctx.state, ctx.controller);
-        // playLocations leaves out a battlefield units can't be played to
-        // (Rockfall Path; a player who may only play units to base).
+        // Its controller's base or a battlefield they control (CR 355.2.a), or
+        // where the unit's own permissions allow (CR 355.2.b). playLocationsFor
+        // leaves out a battlefield units can't be played to (Rockfall Path; a
+        // player who may only play units to base).
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2).
+        const auto where = playLocationsFor(ctx, ctx.controller, revived);
         const int mode = pickMode(ctx, "Heedless Resurrection: where to play it",
                                   where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent

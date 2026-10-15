@@ -46,14 +46,16 @@ public:
         int conf = confirmOptional(ctx, "Immortal Phoenix: pay [1][R] to play from trash?",
                                    can_pay);
         if (conf < 1) return;     // waiting / declined / unaffordable
-        // To my base or a battlefield I control (CR 355.2.a).
-        const int where = pickEffectPlayLocation(*this, ctx, "Immortal Phoenix: play me to");
-        if (where == -1) return;  // waiting for the agent
         // Energy first: the rune exhausted for it can still be recycled for [R].
         if (costDueNow(ctx) && !(payEnergy(ctx, ctx.controller, 1) &&
                                  payOnePower(ctx, ctx.controller, Domain::Fury))) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (!in_trash()) return;              // left the trash in response
+        // At resolution: where I am played is a choice of my play, made as I am
+        // finalized (CR 355.2, 420.3.b.2; testing phase M5).
+        const int where = pickEffectPlayLocation(*this, ctx, "Immortal Phoenix: play me to",
+                                                 ctx.source);
+        if (where == -1) return;  // waiting for the agent
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
         RIFT_TRACE(ctx.events, "IMMORTAL PHOENIX: paid [1][R] -> played from trash");

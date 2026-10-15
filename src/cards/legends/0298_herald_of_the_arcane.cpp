@@ -22,14 +22,15 @@ public:
     // "Play a 1 [M] Recruit unit token." No location is printed (unlike
     // Viktor, Leader's "into your base"), and a token is played (CR 350.2):
     // its controller's base or a battlefield they control, their choice (CR
-    // 355.2.a), made as the ability is activated (CR 355).
-    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    // 355.2.a). That is a choice of the token's play, made as the token is
+    // finalized while this ability resolves (CR 420.3.b.2; testing phase M5,
+    // which moved it from the activation: D66 had it there). The ability
+    // itself chooses nothing.
     void onActivate(CardContext& ctx,
                     const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2).
         const int dest = pickTokenDest(*this, ctx, "Herald of the Arcane: play the Recruit to");
-        if (dest == -1) return;               // waiting for the agent
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
-        if (dest < 0) return;                 // nowhere to play it
+        if (dest < 0) return;                 // waiting for the agent / nowhere to play it
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                  /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
                                  destLocation(ctx.controller, dest), /*enter_ready=*/false,

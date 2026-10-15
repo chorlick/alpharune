@@ -126,10 +126,11 @@ public:
                 std::vector<std::string> labels{"Base"};
                 for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
                     labels.push_back("Battlefield #" + toString(bfs[i].id));
-                    if (ps.units_play_base_only || bfs[i].blocks_unit_play) continue;
-                    const bool mine = bfs[i].controller.has_value() &&
-                                      *bfs[i].controller == ctx.controller;
-                    if (mine || (here.has_value() && *here == bfs[i].id)) mask |= 1u << (i + 1);
+                    if (!battlefieldTakesUnitsFrom(ctx.state, ctx.controller, bfs[i])) continue;
+                    // Where it may be played anyway (its controller's, or the
+                    // card's own permissions: CR 355.2, 420.3.b), or "here".
+                    const bool allowed = effectPlayAllowedAt(ctx, ctx.controller, picked, bfs[i]);
+                    if (allowed || (here.has_value() && *here == bfs[i].id)) mask |= 1u << (i + 1);
                 }
                 int mode = 0;
                 if (mask != 1u) {

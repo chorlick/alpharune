@@ -16,12 +16,13 @@ class DragonForm : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
-    // "Choose a unit. Its base Might becomes 5 this turn."
-    // Modelled as a this-turn Might delta of (5 - base Might): every other
-    // modifier (buffs, gear, auras, other temporary Might) still stacks on
-    // top, exactly as it would on a base of 5, and it expires with the other
-    // "this turn" Might at the expiration step. GameObject::base_might itself
-    // is left untouched because nothing would restore it at end of turn.
+    // "Choose a unit. Its base Might becomes 5 this turn." A trait-altering
+    // effect (CR 143.2.a — this card is its example; 479.2): the base Might
+    // is 5, whatever it was, and arithmetic effects (buffs, gear, auras,
+    // "+N this turn") apply on top of it (479.4). A second Dragon Form leaves
+    // it at 5 (testing phase R2: it was a "+(5 - base)" delta, which stacked).
+    // GameObject::base_might_this_turn ends at the Expiration Step and when
+    // the unit leaves the board.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true};
     }
@@ -32,7 +33,8 @@ public:
         GameObjectId picked = pickTarget(ctx, "Dragon Form", legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& unit = ctx.state.getObject(picked);
-        unit.temp_might_bonus += 5 - unit.base_might;
+        if (!unit.location.has_value()) return;   // board state is written only in play
+        unit.base_might_this_turn = 5;
         unit.recomputeMight();
         RIFT_TRACE(ctx.events, "DRAGON FORM: " + unit.name + " base Might is 5 this turn -> " +
                             std::to_string(unit.current_might) + "M");

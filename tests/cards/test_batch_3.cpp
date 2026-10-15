@@ -99,6 +99,7 @@ constexpr CardDefId kSmite = 568;
 constexpr CardDefId kVoidRush = 505;
 constexpr CardDefId kAmateurRecital = 763;
 constexpr CardDefId kTemporalBreach = 853;
+constexpr CardDefId kTWinBringsEnemy = 1930;   // test-only: see Batch3Combat
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -1602,6 +1603,150 @@ TEST_F(Batch3Test, G14_Pin_AUnitThatOnlyMovedBetweenBoardZonesIsStillTheChosenOn
     o(unit).zone = ZoneType::Hand;
     o(unit).zone = ZoneType::Base;
     EXPECT_FALSE(state.stillTheChosenObject(item, unit)) << "to a hand and back: a new object";
+}
+
+// ─── J2: a showdown or combat staged in any phase begins in that phase ──────
+// (CR 323.11 / 323.12: Cleanup steps 9 and 10 in any Neutral Open State; the
+// order of the turn, CR 315-317, is kept around it.)
+class Batch3Phases : public Batch3Test {
+protected:
+    std::vector<std::string> log;
+    std::vector<boost::signals2::scoped_connection> conns;
+    void listen() {
+        conns.emplace_back(events.on_phase_changed.connect([this](const PhaseChangedEvent& e) {
+            log.push_back(std::string("phase:") + toString(e.new_phase));
+        }));
+        conns.emplace_back(events.on_combat_started.connect([this](const CombatStartedEvent&) {
+            log.push_back("combat");
+        }));
+        conns.emplace_back(events.on_showdown_started.connect([this](const ShowdownStartedEvent&) {
+            log.push_back("showdown");
+        }));
+        conns.emplace_back(events.on_score.connect([this](const ScoreEvent& e) {
+            log.push_back(e.method == ScoreMethod::Conquer ? "conquer" : "hold");
+        }));
+    }
+    std::string joined() const {
+        std::string out;
+        for (const auto& l : log) out += (out.empty() ? "" : " ") + l;
+        return out;
+    }
+    /// P1's 5 [M] unit and P2's 2 [M] unit at battlefield 0, which P2 holds.
+    void enemiesMeetAtP2sBattlefield() {
+        state.battlefields[0].controller = P2;
+        addUnit(P2, kInvalidId, 2, 0);
+        addUnit(P1, kInvalidId, 5, 0);
+    }
+};
+
+TEST_F(Batch3Phases, J2_ACombatStagedInTheBeginningStepBeginsThereBeforeScoring) {
+    enemiesMeetAtP2sBattlefield();
+    // Battlefield 1 is P1's, held in the Scoring Step (battlefield 0, scored
+    // by the conquer, is not scored again this turn).
+    state.battlefields[1].controller = P1;
+    addUnit(P1, kInvalidId, 2, 1);
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::AwakenPhase;
+    listen();
+    withEngine([&](GameEngine& e) {
+        e.testHook_beginningStep();
+        e.testHook_scoringStep();
+    });
+    EXPECT_EQ(joined(), "phase:BeginningStep combat showdown conquer phase:ScoringStep hold")
+        << "the combat begins in the Beginning Phase; the Scoring Step follows it (CR 315.2)";
+}
+
+TEST_F(Batch3Phases, J2_AShowdownStagedInTheDrawPhaseBeginsThere) {
+    addToDeck(P1, kDredgeUp);
+    addUnit(P1, kInvalidId, 2, 1);   // at an uncontrolled, empty battlefield
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::ChannelPhase;
+    listen();
+    withEngine([&](GameEngine& e) { e.testHook_drawPhase(); });
+    EXPECT_EQ(joined(), "phase:DrawPhase showdown conquer");
+}
+
+TEST_F(Batch3Phases, J2_ACombatStagedInTheEndingStepBeginsThereBeforeExpiration) {
+    enemiesMeetAtP2sBattlefield();
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::MainPhase;
+    listen();
+    withEngine([&](GameEngine& e) {
+        e.testHook_endingStep();
+        e.testHook_expirationStep();
+    });
+    EXPECT_EQ(joined(), "phase:EndingStep combat showdown conquer phase:ExpirationStep")
+        << "the Expiration Step follows the combat (CR 317)";
+}
+
+TEST_F(Batch3Phases, J2_Pin_TheMainPhaseStillBeginsAStagedCombatBeforeItsDecision) {
+    enemiesMeetAtP2sBattlefield();
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::MainPhase;
+    listen();
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
+    EXPECT_EQ(joined(), "combat showdown conquer") << "a combat and its showdown (CR 466.2.b)";
+}
+
+// ─── J3: "stage another combat" is decided at the result (CR 468.3.d.1) ─────
+// A test unit: "When I win a combat, move each enemy unit in its base here."
+class TWinBringsEnemy : public UnitCard {
+public:
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenIWinCombat; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const auto& me = ctx.state.getObject(ctx.source);
+        const auto bf = me.battlefieldId();
+        if (!bf) return;
+        std::vector<GameObjectId> enemies;
+        for (const auto& [id, obj] : ctx.state.objects.onBoard())
+            if (obj.isUnit() && obj.controller != ctx.controller && obj.isAtBase())
+                enemies.push_back(id);
+        for (auto id : enemies) ctx.executor.moveToBattlefield(id, *bf);
+    }
+private:
+    const CardDef def_ = [] {
+        CardDef d;
+        d.id = 1930;
+        d.name = "Test Win Brings Enemy";
+        d.card_type = CardType::Unit;
+        d.might = 5;
+        return d;
+    }();
+};
+
+class Batch3Combat : public Batch3Phases {
+protected:
+    void SetUp() override {
+        Batch3Phases::SetUp();
+        card_registry.registerCard(kTWinBringsEnemy, std::make_unique<TWinBringsEnemy>());
+        card_db.buildFromClasses(card_registry);
+    }
+};
+
+TEST_F(Batch3Combat, J3_Pin_AUnitThatArrivesAfterAWinLeadsToANewCombatNotAConquer) {
+    state.battlefields[0].controller = P2;
+    addUnit(P2, kInvalidId, 2, 0);
+    auto late = addUnit(P2, kInvalidId, 1);   // in P2's base
+    auto mine = addUnit(P1, kTWinBringsEnemy, 5, 0);
+    state.turn.turn_player = P1;
+    state.turn.phase = TurnPhase::MainPhase;
+    listen();
+    std::vector<std::optional<PlayerId>> winners;
+    conns.emplace_back(events.on_combat_ended.connect([&](const CombatEndedEvent& e) {
+        winners.push_back(e.winner);
+    }));
+    withEngine([&](GameEngine& e) { e.testHook_advanceMainPhase(); });
+    ASSERT_GE(winners.size(), 1u);
+    EXPECT_EQ(winners.front(), std::optional<PlayerId>{P1}) << "a result (CR 468.3.a)";
+    // P1 won with nobody else here; the unit "When I win" brought arrives in
+    // the 468.4 chain. Nobody is then "the player with units remaining" (468.5;
+    // judge question 13): no conquer for the first combat, and the Cleanup
+    // after it stages the next one, P1 attacking again (CR 323.10.a, 323.8),
+    // which P1 wins and conquers.
+    EXPECT_EQ(joined(), "combat showdown combat showdown conquer");
+    EXPECT_FALSE(onBoard(late)) << "it died in the second combat";
+    EXPECT_TRUE(onBoard(mine));
 }
 
 }  // namespace riftbound::test::batch_3

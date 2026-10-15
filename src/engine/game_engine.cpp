@@ -953,7 +953,7 @@ void GameEngine::awakenPhase() {
     }
     // CR 335: a phase is left only with no outstanding task and nothing
     // pending — "When I become ready" abilities resolve in this phase.
-    runChain();
+    settleStagedAndChain();
 }
 
 void GameEngine::beginningStep() {
@@ -973,8 +973,9 @@ void GameEngine::beginningStep() {
     // "At the start of your Beginning Phase" abilities resolve, each followed
     // by a Cleanup (CR 319), before the Scoring Step: a battlefield whose last
     // unit just died ([Temporary], a start-of-turn kill) is no longer
-    // controlled and scores no Hold.
-    runChain();
+    // controlled and scores no Hold. A showdown or combat a Cleanup stages
+    // here begins here too, before the Scoring Step (CR 323.11 / 323.12; J2).
+    settleStagedAndChain();
 }
 
 void GameEngine::scoringStep() {
@@ -1004,7 +1005,7 @@ void GameEngine::scoringStep() {
         }
     }
 
-    runChain();
+    settleStagedAndChain();
 }
 
 void GameEngine::channelPhase() {
@@ -1033,7 +1034,7 @@ void GameEngine::channelPhase() {
         count = std::min(count, state_.turn.channel_phase_cap);
 
     channelRunes(player, count);
-    runChain();   // CR 335: nothing is pending when the phase ends
+    settleStagedAndChain();   // CR 335: nothing is pending when the phase ends
 }
 
 void GameEngine::drawPhase() {
@@ -1066,7 +1067,7 @@ void GameEngine::drawPhase() {
     emptyRunePools();
     // CR 334.2 / 335: what the draw triggered was pending while the phase's
     // tasks were done; it resolves before the Main Phase begins.
-    runChain();
+    settleStagedAndChain();
 }
 
 // C-1 commit 5 — refactor mainPhase into a step-machine-shaped split.
@@ -1096,6 +1097,40 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
 
     // Everything that is pending is settled before the turn player is asked:
     // staged showdowns and combats run, and whatever they (or the action
+    // before) left on the chain resolves (settleStagedAndChain). The
+    // main-phase decision is never reached with an item on the chain or a
+    // Closed State.
+    if (!settleStagedAndChain(/*chain_first=*/false)) {
+        adv.kind = MainPhaseAdvance::Kind::Done;
+        return adv;
+    }
+
+    auto actions = generateLegalActions();
+    if (actions.empty()) {
+        adv.kind = MainPhaseAdvance::Kind::Done;
+        return adv;
+    }
+
+    adv.kind = MainPhaseAdvance::Kind::NeedDecision;
+    adv.legal = std::move(actions);
+    return adv;
+}
+
+// CR 323.11 / 323.12 (Cleanup steps 9 and 10) hold in every Cleanup in a
+// Neutral Open State, in whatever phase (testing phase J2): a showdown or a
+// combat staged in the Beginning Phase, the Draw Phase or the Ending Step
+// begins there, not in the next Main Phase. Every phase ends with this (CR
+// 335: nothing is pending when a phase ends; `chain_first`: the chain is
+// settled first), and the Main Phase runs it before each decision. Returns
+// false once the game is over.
+bool GameEngine::settleStagedAndChain(bool chain_first) {
+    if (state_.game_over) return false;
+    if (chain_first) {
+        runChain();
+        if (state_.game_over) return false;
+    }
+    // Everything that is pending is settled before the turn player is asked:
+    // staged showdowns and combats run, and whatever they (or the action
     // before) left on the chain resolves — a "When I conquer" from a showdown,
     // a death trigger from a combat. The main-phase decision is never reached
     // with an item on the chain or a Closed State. Running a combat can stage
@@ -1103,16 +1138,13 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
     constexpr int kMaxSettlePasses = 64;
     for (int pass = 0; ; ++pass) {
         if (pass >= kMaxSettlePasses)
-            throw std::logic_error("GameEngine::advanceMainPhase: staged showdowns, "
+            throw std::logic_error("GameEngine::settleStagedAndChain: staged showdowns, "
                                    "combats and the chain did not settle");
         bool progressed = false;
 
         // Check for staged showdowns/combats after cleanup
         processContestedBattlefields();
-        if (state_.game_over) {
-            adv.kind = MainPhaseAdvance::Kind::Done;
-            return adv;
-        }
+        if (state_.game_over) return false;
 
         // CR 323.11 / 323.12 (Cleanup steps 9 and 10): in a Neutral Open
         // State, one staged showdown begins — at a battlefield with no combat
@@ -1126,20 +1158,14 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
             progressed = true;
             if (!is_combat) {
                 runShowdown(next);
-                if (state_.game_over) {
-                    adv.kind = MainPhaseAdvance::Kind::Done;
-                    return adv;
-                }
+                if (state_.game_over) return false;
                 getBattlefield(next).showdown_staged = false;
                 // What the showdown's end queued (a conquer) resolves before
                 // anything else begins (CR 323.11 / 323.12, 344).
                 runChain();
             } else {
                 runCombat(next);
-                if (state_.game_over) {
-                    adv.kind = MainPhaseAdvance::Kind::Done;
-                    return adv;
-                }
+                if (state_.game_over) return false;
                 // Cleared unless the combat ended in "No Result" with both
                 // players still here, which keeps the battlefield Contested
                 // and stages the next combat (CR 468.3.d.1): a later pass of
@@ -1147,10 +1173,7 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
                 if (!getBattlefield(next).is_contested)
                     getBattlefield(next).combat_staged = false;
             }
-            if (state_.game_over) {
-                adv.kind = MainPhaseAdvance::Kind::Done;
-                return adv;
-            }
+            if (state_.game_over) return false;
         }
 
         if (chain_manager_->chainExists()) progressed = true;
@@ -1158,21 +1181,10 @@ GameEngine::MainPhaseAdvance GameEngine::advanceMainPhase(int& action_count) {
         // The Cleanup, and whatever is on the chain with a Cleanup after
         // every step, until a Cleanup leaves the chain empty.
         runChain();
-        if (state_.game_over) {
-            adv.kind = MainPhaseAdvance::Kind::Done;
-            return adv;
-        }
+        if (state_.game_over) return false;
     }
 
-    auto actions = generateLegalActions();
-    if (actions.empty()) {
-        adv.kind = MainPhaseAdvance::Kind::Done;
-        return adv;
-    }
-
-    adv.kind = MainPhaseAdvance::Kind::NeedDecision;
-    adv.legal = std::move(actions);
-    return adv;
+    return !state_.game_over;
 }
 
 BattlefieldId GameEngine::chooseNextStaged(bool& is_combat) {
@@ -1283,7 +1295,7 @@ void GameEngine::endingStep() {
     // here, a Cleanup after each, and so does everything they cause (a unit
     // Aurora plays that becomes Mighty, a death): nothing is pending when the
     // Expiration Step begins (CR 335).
-    runChain();
+    settleStagedAndChain();
 }
 
 void GameEngine::expireTemporaryKeywords(GameObject& obj, const CardDB& db) {
@@ -1330,7 +1342,7 @@ void GameEngine::expirationStep() {
                                    " passes of the Expiration Step (CR 317.2.f)");
         const ChainItemId before = state_.chain.next_id;
         doExpirationBody();
-        runChain();
+        settleStagedAndChain();
         if (state_.game_over || state_.chain.next_id == before) break;
     }
 }
@@ -6736,31 +6748,39 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         (recalled || sole_remaining == PlayerId::None)
             ? std::nullopt : std::optional<PlayerId>(sole_remaining);
 
-    // CR 468.3: the result. "When you win a combat" abilities trigger now and
-    // resolve before control is established (468.4).
-    events_.emit(CombatResultEvent{bf_id, combat_winner});
-    if (chain_manager_->chainExists() && !state_.game_over) runChain();
-    if (state_.game_over) return;
-
-    // CR 468.5: with no Showdown or Combat staged here, the player with units
-    // remaining establishes control. Who is here is read again: the chain
-    // above may have changed it.
-    att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
-    def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
-    if (!att_remaining.empty() && !def_remaining.empty()) {
-        // CR 468.3.d.1: "If No Result was reached, and both players have units
-        // remaining, stage a Showdown and a Combat at this battlefield." The
-        // battlefield stays Contested by the same player, so the next combat
-        // (with its showdown step) is staged for the same attacker; it begins
-        // after this one has ended (468.7), in the Cleanup that follows
-        // (CR 323.12, advanceMainPhase).
+    // CR 468.3.d.1: "If No Result was reached, and both players have units
+    // remaining, stage a Showdown and a Combat at this battlefield." Decided
+    // here, as the result is determined, from who is here now — not after the
+    // 468.4 chain, which may bring a unit here or take one away (testing
+    // phase J3). The battlefield stays Contested by the same player, so the
+    // next combat (with its showdown step) is staged for the same attacker;
+    // it begins after this one has ended (468.7), in the Cleanup that follows
+    // (CR 323.12, settleStagedAndChain), and that Cleanup judges who is here
+    // then (CR 323.7-323.10: a side that left makes it a showdown, or ends
+    // the Contested status).
+    const bool restaged = !att_remaining.empty() && !def_remaining.empty();
+    if (restaged) {
         auto& bf = getBattlefield(bf_id);
         bf.is_contested = true;
         bf.contested_by = attacker;
         bf.combat_staged = true;
         RIFT_TRACE(events_, "COMBAT: no result at BF#" + toString(bf_id) +
                          " with both players present -> another combat is staged");
-    } else {
+    }
+
+    // CR 468.3: the result. "When you win a combat" abilities trigger now and
+    // resolve before control is established (468.4).
+    events_.emit(CombatResultEvent{bf_id, combat_winner});
+    if (chain_manager_->chainExists() && !state_.game_over) runChain();
+    if (state_.game_over) return;
+
+    // CR 468.5: "If no Showdown or Combat is staged at this location, the
+    // player with Units remaining here Establishes Control". With one staged
+    // (468.3.d.1, above) this step does nothing. Otherwise who is here is
+    // read again: the chain above may have changed it.
+    if (!restaged) {
+        att_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, attacker);
+        def_remaining = state_.unitsAt(BattlefieldLocation{bf_id}, defender);
         // The battlefield is no longer Contested (468.5.a): nobody is
         // contesting it and no combat is staged for it.
         auto& bf = getBattlefield(bf_id);
@@ -6771,7 +6791,15 @@ void GameEngine::combatResolutionStep(BattlefieldId bf_id) {
         if (!att_remaining.empty()) sole_remaining = attacker;
         else if (!def_remaining.empty()) sole_remaining = defender;
 
-        if (sole_remaining != PlayerId::None) {
+        if (!att_remaining.empty() && !def_remaining.empty()) {
+            // Both sides here again (a unit arrived during the 468.4 chain):
+            // there is no one "player with Units remaining" to establish
+            // control, and nothing becomes uncontrolled. The Cleanup after the
+            // combat finds units at a battlefield their controller does not
+            // control and stages what follows (CR 323.10.a, 323.8).
+            RIFT_TRACE(events_, "COMBAT: both players are present at BF#" + toString(bf_id) +
+                             " after the result; nobody establishes control");
+        } else if (sole_remaining != PlayerId::None) {
             auto old_controller = bf.controller;
             bf.controller = sole_remaining;
             events_.emit(ControlChangedEvent{bf_id, old_controller, sole_remaining});

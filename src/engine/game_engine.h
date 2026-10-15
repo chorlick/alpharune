@@ -745,6 +745,11 @@ private:
     /// with none, combat) begins — the turn player's choice when there are
     /// several. kInvalidId when nothing is staged.
     BattlefieldId chooseNextStaged(bool& is_combat);
+    /// The chain settled, then staged showdowns and combats begun one at a
+    /// time with everything they leave settled, until nothing is pending (CR
+    /// 323.11 / 323.12, 335). Run at the end of every phase and before each
+    /// Main Phase decision. False once the game is over.
+    bool settleStagedAndChain(bool chain_first = true);
 
     // ── Combat ──
     void runShowdown(BattlefieldId bf);

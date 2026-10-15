@@ -2958,16 +2958,17 @@ std::vector<Intent> GameEngine::addReactionsFor(PlayerId player) const {
 
 // Whether `check` holds once `player` has activated every [Add] Reaction they
 // can (each re-listed after the last) — tried on a copy of the game, quietly,
-// and thrown away: the game is moved aside (its objects stay where references
-// up the call stack point) and moved back after (as prePlayProbe does).
+// and thrown away: the game is swapped aside (its objects stay where
+// references up the call stack point) and back after (parkGame, as
+// prePlayProbe does).
 bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check,
                            const std::function<void()>* first) {
     if (adds_probing_) return check(state_);
     struct Parked {
-        GameState& live;
-        GameState game;
-        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-        ~Parked() { live = std::move(game); }
+        GameEngine& engine;
+        GameState& game;
+        explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+        ~Parked() { engine.unparkGame(game); }
     };
     struct ForgetFacts {
         GameEngine& engine;
@@ -2982,7 +2983,7 @@ bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameS
     if (effect_executor_->hasPendingChoice()) prompt = effect_executor_->consumePendingChoice();
     bool ok = false;
     {
-        Parked parked(state_);
+        Parked parked(*this);
         state_ = parked.game;
         forgetCleanupFacts();
         struct QuietRun {
@@ -3452,27 +3453,40 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
     return final_run.done;
 }
 
+GameState& GameEngine::parkGame() {
+    if (park_slots_.size() <= park_depth_) park_slots_.push_back(std::make_unique<GameState>());
+    GameState& slot = *park_slots_[park_depth_++];
+    std::swap(state_, slot);
+    return slot;
+}
+
+void GameEngine::unparkGame(GameState& slot) {
+    std::swap(state_, slot);
+    --park_depth_;
+}
+
 bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
                               const PlayerState::TrashReplayGrant* grant) {
     if (state_.chain.resuming.has_value() || !state_.objectExists(card_id)) return false;
-    // The game is set aside whole — moved, not copied: its objects stay where
-    // every reference held up the call stack points — and the probe plays on
-    // a copy, which is thrown away when the game is moved back. One copy of
+    // The game is set aside whole — swapped into a parking slot, not copied:
+    // its objects stay where every reference held up the call stack points —
+    // and the probe plays on a copy, kept in the slot for the next probe's
+    // copy to reuse when the game is swapped back (parkGame). One copy of
     // the GameState per probe that finds its answer in one run (it was five:
     // a saved state, a pass-start state, one per run, and two restores), one
     // more for each further run (plans/09 item 9.HH4).
     struct Parked {
-        GameState& live;
-        GameState game;
-        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-        ~Parked() { live = std::move(game); }
+        GameEngine& engine;
+        GameState& game;
+        explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+        ~Parked() { engine.unparkGame(game); }
     };
     // (Declared first, so it runs after `parked` has put the game back.)
     struct ForgetFacts {
         GameEngine& engine;
         ~ForgetFacts() { engine.forgetCleanupFacts(); }
     } forget_facts{*this};
-    Parked parked(state_);
+    Parked parked(*this);
     ++pre_play_probes_;
     // As the play would begin: the card leaves its zone.
     ChainItem pre;
@@ -8784,18 +8798,18 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     // ... and only if the card itself can still be paid for afterwards: the
     // choice is made before any payment (CR 355.1.a), so it is judged on the
     // whole. Tried on a copy of the game, which is thrown away (as
-    // prePlayProbe does: the game is moved aside, not copied over).
+    // prePlayProbe does: the game is swapped aside, parkGame).
     {
         struct ForgetFacts {
             GameEngine& engine;
             ~ForgetFacts() { engine.forgetCleanupFacts(); }
         } forget_facts{*this};
         struct Parked {
-            GameState& live;
-            GameState game;
-            explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-            ~Parked() { live = std::move(game); }
-        } parked(state_);
+            GameEngine& engine;
+            GameState& game;
+            explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+            ~Parked() { engine.unparkGame(game); }
+        } parked(*this);
         struct Quiet {
             EventBus& bus;
             EventBus::Quiet q;

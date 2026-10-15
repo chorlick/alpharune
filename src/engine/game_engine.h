@@ -1040,6 +1040,20 @@ private:
     /// there a complete sequence of its choices that leaves it payable?
     bool prePlayProbe(PlayerId player, GameObjectId card_id,
                       const PlayerState::TrashReplayGrant* grant);
+    /// A probe (prePlayProbe, probeAdds, maybePayOptionalAdditionalCost) sets
+    /// the game aside whole and plays on a copy of it. parkGame swaps state_
+    /// with a slot of its own nesting depth and returns the slot, which then
+    /// holds the game (its objects where every reference up the call stack
+    /// points); state_ holds what the slot held, the copy the last probe of
+    /// that depth played on, and the caller copies the game over it — reusing
+    /// its map nodes and containers instead of allocating a whole state
+    /// (batch 7 P1). unparkGame swaps back and keeps the copy for the next
+    /// probe. A copy assigned this way is the copy a constructor makes: the
+    /// same objects in the same table order, the same bucket count.
+    GameState& parkGame();
+    void unparkGame(GameState& slot);
+    std::vector<std::unique_ptr<GameState>> park_slots_;
+    size_t park_depth_ = 0;
     /// Set once the turn loop of a game is running (runGame, the step machine,
     /// a resumed snapshot): the state is then the engine's own work and not a
     /// position a test built by hand. Read by the checked build's assertions.

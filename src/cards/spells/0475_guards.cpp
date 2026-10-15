@@ -53,9 +53,11 @@ public:
             tok = GameObjectId::fromRaw(ri->resume_data[kTokenSlot] - 1);
         } else {
             // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
+            // The places it could have gone: an additional copy (Zilean, Time
+            // Mage) has the same choice (testing phase R5).
             tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
                 "Sand Soldier", 2, {"Shurima"}, KeywordSet{},
-                where.locations[mode], /*enter_ready=*/false);
+                where.locations[mode], /*enter_ready=*/false, where.locations);
             if (ri.has_value()) {
                 while (ri->resume_data.size() <= kTokenSlot) ri->resume_data.push_back(0);
                 ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok.raw()) + 1;

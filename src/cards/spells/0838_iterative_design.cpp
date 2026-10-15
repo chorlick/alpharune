@@ -17,27 +17,16 @@ public:
     const CardDef& def() const override { return def_; }
     // "Play a 3 [M] Mech unit token." / "[Flow] [2][B]"
     // No location is printed, so the token is played like any unit: to your
-    // base or to a battlefield you control (mode 0 = base, 1 + i = battlefield i).
+    // base or to a battlefield you control that units may be played to
+    // (pickTokenDest; testing phase R5). The places are passed on, so an
+    // additional copy of the token (Zilean, Time Mage) has the same choice.
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        const auto& bfs = ctx.state.battlefields;
-        const int nbf = static_cast<int>(std::min<size_t>(bfs.size(), 31));
-        uint32_t mask = 1u;
-        std::vector<std::string> labels = {"Base"};
-        for (int i = 0; i < nbf; ++i) {
-            std::string name = "BF#" + std::to_string(static_cast<int>(bfs[i].id.raw()));
-            if (ctx.state.objectExists(bfs[i].card_object_id))
-                name = ctx.state.getObject(bfs[i].card_object_id).name;
-            labels.push_back(name);
-            if (bfs[i].controller.has_value() && *bfs[i].controller == ctx.controller)
-                mask |= (1u << (i + 1));
-        }
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
-        int mode = pickMode(ctx, "Iterative Design: where to play the Mech", nbf + 1, labels, mask);
-        if (mode < 0 || mode > nbf) return;   // -1 waiting for the agent
-        LocationId loc = BaseLocation{ctx.controller};
-        if (mode >= 1) loc = BattlefieldLocation{bfs[mode - 1].id};
+        const int dest = pickTokenDest(*this, ctx, "Iterative Design: where to play the Mech");
+        if (dest < 0) return;   // waiting for the agent / nowhere to play it
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Mech", /*might=*/3,
-                                 {"Mech"}, KeywordSet{}, loc, /*enter_ready=*/false);
+                                 {"Mech"}, KeywordSet{}, destLocation(ctx.controller, dest),
+                                 /*enter_ready=*/false, tokenPlayLocations(ctx));
     }
     FlowCost flowCost() const override { return flow(2, 1, Domain::Mind); }
 private:

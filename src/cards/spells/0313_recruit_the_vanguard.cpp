@@ -25,7 +25,7 @@ public:
         if (ctx.state.chain.resuming.has_value()) {
             auto& ri = *ctx.state.chain.resuming;
             if (ri.resume_point == kDone) return;
-            const auto dests = tokenPlayDests(ctx.state, ctx.controller);
+            const auto dests = tokenPlayDests(ctx);
             if (ri.resume_point == kAwait) {
                 int d = takenValue(ctx, 0);
                 if (std::find(dests.begin(), dests.end(), d) == dests.end()) d = 0;
@@ -47,11 +47,14 @@ public:
             places.assign(ri.resume_data.begin(), ri.resume_data.end());
         }
         places.resize(kTokens, 0);
+        // The places it could have gone: an additional copy of a Recruit
+        // (Zilean, Time Mage) has the same choice (testing phase R5).
+        const auto choices = tokenPlayLocations(ctx);
         for (int d : places) {
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                      1, {"Recruit"}, KeywordSet{},
                                      destLocation(ctx.controller, d),
-                                     /*enter_ready=*/false);
+                                     /*enter_ready=*/false, choices);
         }
         RIFT_TRACE(ctx.events, "RECRUIT THE VANGUARD: played four 1[M] Recruit tokens");
     }

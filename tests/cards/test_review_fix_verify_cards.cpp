@@ -2703,15 +2703,19 @@ TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedT
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1}));     // no enemy unit: only "where"
+    // Batch M1: "an enemy unit at a battlefield" is the spell's second target,
+    // needed to play it (CR 355.8) and chosen as it is played; the test gave
+    // none and had only the location prompt. It now names one first.
+    auto enemy = addUnit(P2, kInvalidId, 9, 1);
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(enemy.raw()), 1}));
     playAt(spell, {unit}, &agent);
-    ASSERT_EQ(agent.prompts.size(), 1u);
-    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
+    ASSERT_EQ(agent.prompts.size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
     // Options are numbered over what is offered (playLocations leaves the
     // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
-    EXPECT_TRUE(promptOffersValue(agent, 0, 1)) << "battlefield #1";
-    EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
-    EXPECT_EQ(agent.prompts[0].size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 1, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 1, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[1].size(), 2u);
     ASSERT_TRUE(onBoard(unit));
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
@@ -3153,7 +3157,10 @@ TEST_F(VerifyCardsTest, Pin_Batch08_ConvergentMutation108_AUnitThatLeftInRespons
         removeFromBoard(live, chosen);
     });
     EXPECT_FALSE(inHand(P1, spell)) << "the spell was played";
-    EXPECT_TRUE(agent.prompts.empty()) << "no target left: the other unit is never asked for";
+    // Batch M1: the other unit is the spell's second target, chosen as it is
+    // played (CR 355.5), before the response — one prompt then, none as it
+    // resolves (was: no prompt at all, asked only as it resolved).
+    EXPECT_EQ(agent.prompts.size(), 1u) << "the other unit, asked as the spell was played";
     EXPECT_EQ(o(chosen).temp_might_bonus, 0) << "a card in the trash gets no Might";
     EXPECT_EQ(o(chosen).current_might, 1);
     EXPECT_EQ(o(big).temp_might_bonus, 0);
@@ -7392,9 +7399,13 @@ TEST_F(VerifyCardsTest, Pin_AccelerationGate_OffersAnOpponentsExhaustedRuneUnitA
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(their_rune.raw()), 0}));
     playThroughEngine(gate, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
+    // Batch M1: chosen as the spell is played, when nothing says what will be
+    // exhausted as it resolves, and the text has no "exhausted" restriction
+    // (CR 355.9): a ready rune is offered too (was left out).
     EXPECT_EQ(promptObjects(agent, 0),
-              (std::vector<GameObjectId>{my_rune, their_rune, their_unit, their_gear}));
-    EXPECT_FALSE(agent.wasOffered(their_ready_rune));
+              (std::vector<GameObjectId>{my_rune, their_rune, their_ready_rune, their_unit,
+                                         their_gear}));
+    EXPECT_TRUE(agent.wasOffered(their_ready_rune));
     EXPECT_FALSE(o(their_rune).is_exhausted);
     EXPECT_TRUE(o(my_rune).is_exhausted);
     EXPECT_TRUE(o(their_unit).is_exhausted);

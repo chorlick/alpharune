@@ -618,7 +618,9 @@ TEST_F(EnginePathTest, SpellMayAfterTargetCanBeDeclinedThroughTheEngine) {
     });
     playThroughEngine(spell, &agent);
 
-    ASSERT_EQ(agent.prompts.size(), 2u);
+    // Batch M1: the friendly unit is a target chosen as the spell is played
+    // (CR 355.12), its own prompt; the "may" comes as it resolves (was 2).
+    ASSERT_EQ(agent.prompts.size(), 3u);
     EXPECT_TRUE(state.getObject(enemy).is_stunned);
     EXPECT_TRUE(state.getObject(friendly).isAtBase()) << "declined: nothing moves";
 }
@@ -720,7 +722,9 @@ TEST_F(EnginePathTest, ZenithBladeStunsOnce) {
     });
     playThroughEngine(spell, &agent);
 
-    ASSERT_EQ(agent.prompts.size(), 2u) << "the enemy unit, then the may";
+    // Batch M1: the friendly unit is a target chosen as the spell is played
+    // (CR 355.12), a prompt of its own (was 2: the enemy unit, then the may).
+    ASSERT_EQ(agent.prompts.size(), 3u) << "the enemy unit, the friendly unit, then the may";
     EXPECT_FALSE(state.getObject(gangplank).is_stunned) << "replaced";
     EXPECT_EQ(state.getObject(gangplank).temp_might_bonus, 3) << "the stun was attempted once";
     ASSERT_TRUE(state.getObject(friendly).battlefieldId().has_value());

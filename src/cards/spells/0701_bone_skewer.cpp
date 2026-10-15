@@ -21,6 +21,16 @@ public:
     //  all costs. If they do, then do this: [Stun] it."
     static constexpr size_t kRevealedSlot = 7;   // resume_data: the hand was revealed
 
+    // "Choose a battlefield" is a chosen object (CR 355.5, 355.7) in a sentence
+    // of its own — not the permission of a play (CR 355.10.b) — so it is
+    // chosen as the spell is played, in its finalize pass, before its cost.
+    // The unit from the revealed hand and its "may" are made as it resolves
+    // (CR 355.10.a: the hand is not a public zone; a spell's may, 355.18).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // a battlefield, not a unit
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         PlayerId opp = opponent(ctx.controller);
 
@@ -38,7 +48,9 @@ public:
             if (!hidden_at.has_value() || *hidden_at == bfs[i].id) mask |= (1u << i);
         }
         const int mode = pickMode(ctx, "Bone Skewer: choose a battlefield", n, labels, mask);
-        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield
+        if (mode == -1) return;               // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (mode < 0 || mode >= n) return;    // no battlefield
         const BattlefieldId dest_bf = bfs[mode].id;
 
         // "An opponent reveals their hand" — once, after the battlefield is
@@ -73,8 +85,9 @@ public:
                     out.push_back(cid);
             return out;
         };
-        // "You may choose a unit from it": whether, then which. Both before
-        // anything is played.
+        // "You may choose a unit from it": whether, then which, as it resolves
+        // (a spell's may, CR 355.18; the hand is hidden, CR 355.10.a). Both
+        // before anything is played.
         const int go = confirmOptional(ctx, "Bone Skewer: choose a unit from the revealed hand",
                                        [&]() { return !hand_units().empty(); });
         if (go <= 0) return;                 // waiting, declined, or no unit there

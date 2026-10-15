@@ -22,23 +22,38 @@ public:
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_friendly = true};
     }
+    // Both units are targets (CR 355.5): the friendly unit is named in the
+    // play intent, the enemy unit is chosen in the finalize pass, before the
+    // cost and before anyone can respond. A spell needs a valid choice for
+    // every target to be played (CR 355.8).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    static std::vector<GameObjectId> enemiesAtBattlefields(const GameState& state,
+                                                           PlayerId controller) {
+        return chooseableUnits(state, controller, [&](const GameObject& o) {
+            return o.controller != controller && o.isAtBattlefield();
+        });
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return Card::hasLegalTargets(state, controller) &&
+               !enemiesAtBattlefields(state, controller).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         const GameObjectId unit =
             (!targets.empty() && ctx.state.objectExists(targets[0])) ? targets[0] : kInvalidId;
-
-        // Both choices come before anything happens: this callback is
-        // re-entered from the top with each answer, so the banish-and-replay
-        // below must not run until the last one is in.
-        auto legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-            return o.controller != ctx.controller && o.isAtBattlefield();
-        });
-        GameObjectId picked = pickTarget(ctx, "Arcane Shift: deal 3 to enemy unit", legal);
-        if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
+        const auto picked_opt = selectTargetOrNone(*this, ctx, "Arcane Shift: deal 3 to enemy unit",
+                                                   enemiesAtBattlefields(ctx.state, ctx.controller),
+                                                   7, /*allow_none=*/false);
+        if (!picked_opt.has_value()) return;   // waiting for the agent
+        if (finalizingChoices(ctx)) return;    // choices end here (CR 355)
+        const GameObjectId picked = *picked_opt;   // kInvalidId: a mistarget
         // Where the unit comes back: its owner's base or a battlefield they
-        // control (CR 355.2.a). A token is not played back (CR 183.1).
+        // control (CR 355.2.a), chosen as it is played, at resolution (CR
+        // 355.10.b: a play location is not a target; item M5). A token is not
+        // played back (CR 183.1).
         std::optional<LocationId> back_to;
         const bool replay = unit != kInvalidId && !ctx.state.getObject(unit).isToken();
         if (replay) {

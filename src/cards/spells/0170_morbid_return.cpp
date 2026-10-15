@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "engine/deck_ops.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
@@ -15,24 +16,34 @@ namespace {
 class MorbidReturn : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Return a unit from your trash to your hand." The target lives in trash,
-    // not on the board, so defer selection to resolve-time pickTarget over the
-    // trash (the default board-only enumerator can't see it).
-    bool needsPlayTimeTarget() const override { return true; }
+    // "Return a unit from your trash to your hand." The trash is a public
+    // zone, so the unit is a target (CR 355.10.a, the rule's own example),
+    // chosen as the spell is played (CR 355.5) — in its finalize pass, before
+    // its cost. It is not playable with no unit there (CR 355.8).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // a card in a trash, not a unit on the board
+    }
+    static std::vector<GameObjectId> trashUnits(const GameState& state, PlayerId controller) {
+        std::vector<GameObjectId> out;
+        for (auto cid : state.player(controller).trash)
+            if (state.objectExists(cid) && state.getObject(cid).isUnit()) out.push_back(cid);
+        return out;
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !trashUnits(state, controller).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> trash_units;
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            if (ctx.state.getObject(cid).isUnit()) trash_units.push_back(cid);
-        }
-        if (trash_units.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "Morbid Return (unit from trash)",
-                                          trash_units);
+        // No unit: pickTarget stores "no target", so nothing is asked later.
+        const GameObjectId picked = pickTarget(ctx, "Morbid Return (unit from trash)",
+                                               trashUnits(ctx.state, ctx.controller));
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        // A unit no longer in the trash is a mistarget (CR 359.3.e.5).
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto it = std::find(ps.trash.begin(), ps.trash.end(), picked);
         if (it == ps.trash.end()) return;

@@ -2350,6 +2350,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
         {822, {"Empower a unit (disempower it at end of turn)",              // Sanction
                "Disempower an Empowered unit (empower it at end of turn)"}},
         {606, {"Counter a spell", "Play four Bird tokens"}},                 // Flurry of Feathers
+        {665, {"Recycle up to 3 from opponent's trash", "Draw 1"}},          // Disposal Order
     };
     std::map<CardDefId, std::set<std::string>> labels_seen;
     const GameState blank = state;
@@ -2496,7 +2497,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                 << card_db.get(id).name << " (" << id << "): mode \"" << label
                 << "\" was never offered on the test boards";
     }
-    // And those five are all the modal ones: the spells among them whose
+    // And those six are all the modal ones: the spells among them whose
     // text says "Choose one".
     for (CardDefId id : spells)
         EXPECT_EQ(card_db.get(id).ability_text.find("Choose one") != std::string::npos,

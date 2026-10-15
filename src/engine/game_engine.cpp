@@ -6088,12 +6088,14 @@ void GameEngine::generateActivateAbilityActions(PlayerId player,
 
         Card* card = card_registry_.get(obj.card_def_id);
         if (!card) continue;
-        // Per-card "Use only if …" gate (Emperor of the Sands etc.).
-        if (!card->canActivateAbility(state_, player)) continue;
         const auto& abilities = card->abilities();
         // Don't skip when the object carries no OWN abilities but has been
-        // granted some by an aura (Forge/Gardens/Heimerdinger).
+        // granted some by an aura (Forge/Gardens/Heimerdinger). (Asked before
+        // the gate below, which reads only the state: most objects in play —
+        // runes, most units — have nothing to activate.)
         if (abilities.empty() && obj.granted_abilities.empty()) continue;
+        // Per-card "Use only if …" gate (Emperor of the Sands etc.).
+        if (!card->canActivateAbility(state_, player)) continue;
 
         for (size_t ai = 0; ai < abilities.size(); ++ai) {
             const auto& ab = abilities[ai];

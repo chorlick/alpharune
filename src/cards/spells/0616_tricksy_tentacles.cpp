@@ -47,7 +47,7 @@ public:
             opts.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                 "Tricksy Tentacles: move an enemy unit (Might left: " +
-                std::to_string(ri.resume_data[0]) + ")");
+                std::to_string(ri.resume_data[0]) + ")", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return true;
         };
@@ -58,7 +58,7 @@ public:
             for (int d = 0; d < n; ++d)
                 opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Tricksy Tentacles: move them where?");
+                                       "Tricksy Tentacles: move them where?", PromptKind::Location);
             ri.resume_point = 2;
         };
         if (ri.resume_point == 0) {

@@ -306,7 +306,7 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
                     options.push_back(std::move(o));
                 }
                 const Intent chosen = ask(chooser, options,
-                    "which death is replaced first (CR 373)");
+                    "which death is replaced first (CR 373)", PromptKind::ReplacementOrder, std::source_location::current());
                 if (!chosen.chosen_objects.empty() &&
                     std::find(replaceable.begin(), replaceable.end(),
                               chosen.chosen_objects.front()) != replaceable.end())
@@ -758,7 +758,9 @@ resource::RuneChooser EffectExecutor::runeChooser() const {
             intents.push_back(std::move(i));
         }
         const Intent chosen = ask(player, intents, for_power ? "pick rune to recycle for power"
-                                                            : "pick rune to exhaust for energy");
+                                                            : "pick rune to exhaust for energy",
+                                  for_power ? PromptKind::RuneForPower : PromptKind::RuneForEnergy,
+                                  std::source_location::current());
         return chosen.chosen_objects.empty() ? kInvalidId : chosen.chosen_objects.front();
     };
     return c;
@@ -847,7 +849,8 @@ bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
                     (state_.objectExists(src) ? state_.getObject(src).name.get()
                                               : std::string("?"));
             }
-            pick = ask(player, adds, "activate an [Add] ability to pay");
+            pick = ask(player, adds, "activate an [Add] ability to pay", PromptKind::AddForPayment,
+                       std::source_location::current());
         }
         activate_now_(pick);
     }
@@ -989,6 +992,7 @@ static bool hostileEffectReplaced(GameState& state, EventBus& events, EffectExec
     Card* card = registry->get(obj.card_def_id);
     if (!card) return false;
     CardContext rctx{state, events, exec, obj.controller, target};
+    const EffectExecutor::ActingFor acting(exec, target);
     return card->replaceHostileEffect(rctx, target, kind);
 }
 
@@ -1339,6 +1343,7 @@ void EffectExecutor::unattachGear(GameObjectId gear) {
     if (card_registry_ && g.card_def_id != kInvalidId) {
         if (Card* gc = card_registry_->get(g.card_def_id)) {
             CardContext uctx{state_, events_, *this, g.controller, gear};
+            const ActingFor acting(*this, gear);
             gc->onUnattached(uctx, unit_id);
         }
     }
@@ -1505,6 +1510,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
             case Kind::Pending: {
                 Card* card = cardFor(c.pending.card);
                 CardContext rctx{state_, events_, *this, c.pending.controller, c.pending.source};
+                const ActingFor acting(*this, c.pending.source);
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
                 RIFT_DEBUG(events_, "REPLACEMENT (self): " + state_.getObject(unit_id).name +
                                  " does not die");
@@ -1514,6 +1520,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 if (!state_.objectExists(c.card_object)) return false;
                 Card* card = cardFor(state_.getObject(c.card_object).card_def_id);
                 CardContext rctx{state_, events_, *this, controller, c.card_object};
+                const ActingFor acting(*this, c.card_object);
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
                 RIFT_DEBUG(events_, "REPLACEMENT: " + state_.getObject(c.card_object).name +
                                  " prevents " + state_.getObject(unit_id).name + " from dying");
@@ -1540,7 +1547,8 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 options.push_back(std::move(o));
             }
             const int chosen = ask(controller, options,
-                state_.getObject(unit_id).name + " would die — which replacement applies first (CR 372)")
+                state_.getObject(unit_id).name + " would die — which replacement applies first (CR 372)",
+                PromptKind::ReplacementOrder, std::source_location::current(), unit_id)
                 .chosen_value.value_or(0);
             if (chosen >= 0 && chosen < static_cast<int>(candidates.size()))
                 pick = static_cast<size_t>(chosen);
@@ -1723,7 +1731,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
                 choice.chosen_objects = {card_id};
                 choices.push_back(choice);
             }
-            auto chosen = ask(player, choices, "discard a card");
+            auto chosen = ask(player, choices, "discard a card", PromptKind::Discard, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 to_discard = chosen.chosen_objects[0];
             }
@@ -2006,7 +2014,32 @@ void EffectExecutor::channelRunes(PlayerId player, int count, bool enter_exhaust
 // Add abilities (CR 429) — floating energy / power / universal power
 // ═══════════════════════════════════════════════════════════════════════════════
 
-bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
+Prompt EffectExecutor::promptHere(PlayerId decider, PromptKind kind, std::string question,
+                                  std::source_location where) const {
+    Prompt p;
+    p.kind = kind;
+    p.decider = decider;
+    p.question = std::move(question);
+    p.where = where;
+    const ChainItem* item = state_.chain.resuming.has_value() ? &*state_.chain.resuming : nullptr;
+    if (acting_ != kInvalidId) {
+        p.source = acting_;
+        if (item && item->source != acting_) item = nullptr;
+    }
+    if (item) {
+        if (p.source == kInvalidId) p.source = item->source;
+        p.chain_item = item->id;
+        p.is_spell = item->is_spell;
+        p.ability_index = item->is_activated_ability ? item->ability_index : -1;
+        p.trigger = item->fired_trigger;
+        p.keyword_ability = item->keyword_ability.has_value();
+        p.at_finalization = item->finalizing;
+    }
+    return p;
+}
+
+bool EffectExecutor::confirmNow(PlayerId player, const std::string& label, PromptKind kind,
+                                std::source_location where) {
     if (!agent_query_) return false;
     Intent no;
     no.type = IntentType::MakeChoice;
@@ -2017,11 +2050,12 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     no.declines = true;
     yes.chosen_value = 1;
     yes.choice_label = "Yes — " + label;
-    return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
+    return ask(player, {no, yes}, label, kind, where).chosen_value.value_or(0) == 1;
 }
 
 int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
-                                   const std::string& what) {
+                                   const std::string& what, PromptKind kind,
+                                   std::source_location where) {
     if (labels.empty() || !agent_query_) return 0;
     std::vector<Intent> options;
     options.reserve(labels.size());
@@ -2033,13 +2067,14 @@ int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::strin
         i.choice_label = labels[k];
         options.push_back(std::move(i));
     }
-    const int v = ask(player, options, what).chosen_value.value_or(0);
+    const int v = ask(player, options, what, kind, where).chosen_value.value_or(0);
     return v >= 0 && v < static_cast<int>(labels.size()) ? v : 0;
 }
 
 int EffectExecutor::chooseAmongNow(PlayerId player,
                                    const std::vector<std::pair<int, std::string>>& options,
-                                   const std::string& what) {
+                                   const std::string& what, PromptKind kind,
+                                   std::source_location where) {
     if (options.empty()) return 0;
     if (!agent_query_ || options.size() == 1) return options.front().first;
     std::vector<Intent> intents;
@@ -2051,7 +2086,7 @@ int EffectExecutor::chooseAmongNow(PlayerId player,
         i.choice_label = label;
         intents.push_back(std::move(i));
     }
-    const int v = ask(player, intents, what).chosen_value.value_or(options.front().first);
+    const int v = ask(player, intents, what, kind, where).chosen_value.value_or(options.front().first);
     for (const auto& o : options) if (o.first == v) return v;
     return options.front().first;
 }
@@ -2064,6 +2099,7 @@ bool EffectExecutor::seenOnTopOfDeck(PlayerId owner, GameObjectId card) {
     if (std::find(seeing_.begin(), seeing_.end(), card) != seeing_.end()) return true;
     seeing_.push_back(card);
     CardContext ctx{state_, events_, *this, owner, card};
+    const ActingFor acting(*this, card);
     c->seenOnTopOfDeck(ctx);
     seeing_.erase(std::remove(seeing_.begin(), seeing_.end(), card), seeing_.end());
     return !state_.leftWhileSeen(card);
@@ -2074,11 +2110,14 @@ void EffectExecutor::makeAsYouPlayChoices(PlayerId player, GameObjectId card) {
     Card* c = cardFor(state_.getObject(card).card_def_id);
     if (!c) return;
     CardContext ctx{state_, events_, *this, player, card};
+    const ActingFor acting(*this, card);
     c->asYouPlayChoices(ctx);
 }
 
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
-                                              const std::vector<GameObjectId>& objects) {
+                                              const std::vector<GameObjectId>& objects,
+                                              const std::string& what, PromptKind kind,
+                                              std::source_location where) {
     if (objects.empty()) return kInvalidId;
     if (!agent_query_) return objects.front();
     std::vector<Intent> options;
@@ -2090,7 +2129,7 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
         i.chosen_objects = {id};
         options.push_back(std::move(i));
     }
-    const Intent chosen = ask(player, options, "choose one");
+    const Intent chosen = ask(player, options, what, kind, where);
     if (!chosen.chosen_objects.empty() &&
         std::find(objects.begin(), objects.end(), chosen.chosen_objects.front()) != objects.end())
         return chosen.chosen_objects.front();
@@ -2099,7 +2138,8 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
 
 LocationId EffectExecutor::chooseLocationNow(PlayerId player,
                                              const std::vector<LocationId>& locations,
-                                             const std::string& label) {
+                                             const std::string& label,
+                                             std::source_location where) {
     assert(!locations.empty());
     if (!agent_query_ || locations.size() == 1) return locations.front();
     std::vector<Intent> options;
@@ -2115,7 +2155,7 @@ LocationId EffectExecutor::chooseLocationNow(PlayerId player,
             : " battlefield #" + toString(std::get<BattlefieldLocation>(loc).id));
         options.push_back(std::move(o));
     }
-    const int pick = ask(player, options, label).chosen_value.value_or(0);
+    const int pick = ask(player, options, label, PromptKind::Location, where).chosen_value.value_or(0);
     if (pick < 0 || pick >= static_cast<int>(locations.size())) return locations.front();
     return locations[static_cast<size_t>(pick)];
 }
@@ -2551,7 +2591,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         keep.declines = true;   // "You may recycle it": leaving it is the "no"
         recyc.choice_label = "Void Hatchling: recycle the top rune of your Rune Deck";
         const auto chosen = ask(player, {keep, recyc},
-            "Void Hatchling: look at the top rune of your Rune Deck");
+            "Void Hatchling: look at the top rune of your Rune Deck", PromptKind::LookTop, std::source_location::current());
         if (chosen.chosen_value.value_or(0) == 1) {
             ps.rune_deck.pop_back();
             recycleCards(player, {top});
@@ -2576,7 +2616,8 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
     keep.declines = true;   // "You may recycle it": leaving it is the "no"
     recyc.choice_label = "Void Hatchling: recycle the top card of your Main Deck";
-    auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck");
+    auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck",
+                      PromptKind::LookTop, std::source_location::current());
     if (chosen.chosen_value.value_or(0) == 1) {
         deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
         recycleCards(player, {top});
@@ -2695,7 +2736,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
             keep_choice.choice_label = "Keep it";
             choices.push_back(keep_choice);
 
-            auto chosen = ask(player, choices, "Predict: recycle the top card or keep it");
+            auto chosen = ask(player, choices, "Predict: recycle the top card or keep it",
+                              PromptKind::LookTop, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
@@ -2720,7 +2762,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
                 c.choice_label = "Predict: put on top";
                 choices.push_back(std::move(c));
             }
-            auto chosen = ask(player, choices, "Predict: which card goes on top");
+            auto chosen = ask(player, choices, "Predict: which card goes on top",
+                              PromptKind::DeckOrder, std::source_location::current());
             GameObjectId top = kept.front();
             if (!chosen.chosen_objects.empty() &&
                 std::find(kept.begin(), kept.end(), chosen.chosen_objects.front()) != kept.end())
@@ -2801,7 +2844,8 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
             skip_it.choice_label = "Leave it";
             choices.push_back(skip_it);
 
-            auto chosen = ask(player, choices, "reveal: take a card or leave it");
+            auto chosen = ask(player, choices, "reveal: take a card or leave it",
+                              PromptKind::LookTop, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 deck::putInHand(state_, card_id, knowledge::everyone(), deck::Place::Held, player);
                 chosen_cards.push_back(card_id);
@@ -3140,6 +3184,7 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     if (card_registry_ && obj.card_def_id != kInvalidId) {
         if (Card* card_obj = card_registry_->get(obj.card_def_id)) {
             CardContext ctx{state_, events_, *this, player, card};
+            const ActingFor acting(*this, card);
             card_obj->onPlay(ctx);
         }
     }

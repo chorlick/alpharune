@@ -97,7 +97,7 @@ public:
         ctx.executor.requestChoice(unit_controller,
             {declineChoice(unit_controller, "No — Dancing Grenade: play it again for [A]"),
              valChoice(unit_controller, 1, "Yes — Dancing Grenade: play it again for [A]")},
-            "may: Dancing Grenade: play it again for [A]");
+            "may: Dancing Grenade: play it again for [A]", PromptKind::May);
     }
 private:
     const CardDef def_ = [] {

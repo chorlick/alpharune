@@ -64,7 +64,7 @@ public:
             std::vector<Intent> options;
             for (auto id : units) options.push_back(objChoice(players[who], id));
             ctx.executor.requestChoice(players[who], std::move(options),
-                                       "Cull the Weak: kill one of your units");
+                                       "Cull the Weak: kill one of your units", PromptKind::ChooseObject);
             ri.resume_point = who == 0 ? kAwaitCaster : kAwaitOpponent;
             return;
         }

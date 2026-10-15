@@ -61,7 +61,7 @@ public:
             for (auto id : units) options.push_back(objChoice(ctx.controller, id));
             options.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "Kinkou Monk: buff another friendly unit (up to two)");
+                                       "Kinkou Monk: buff another friendly unit (up to two)", PromptKind::ChooseObject);
             ri.resume_data[kStage] = stage;
             return true;
         };

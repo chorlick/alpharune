@@ -108,7 +108,7 @@ public:
                 choices.push_back(std::move(c));
             }
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                       "Wild Claw: banish and play a unit or gear");
+                                       "Wild Claw: banish and play a unit or gear", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }
@@ -152,7 +152,7 @@ public:
             if (!where.empty()) {
                 where.insert(where.begin(), intChoice(ctx.controller, 0, "Wild Claw: play to base"));
                 ctx.executor.requestChoice(ctx.controller, std::move(where),
-                                           "Wild Claw: where to play it");
+                                           "Wild Claw: where to play it", PromptKind::Location);
                 ri.resume_point = 2;
                 return;
             }

@@ -51,7 +51,7 @@ public:
                 opts.push_back(objChoice(ctx.controller, GameObjectId::fromRaw(v)));
             opts.push_back(valChoice(ctx.controller, 0, "Draw none"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Lightning Rush: draw one of the top 3 cards");
+                                       "Lightning Rush: draw one of the top 3 cards", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

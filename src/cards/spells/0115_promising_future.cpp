@@ -48,7 +48,7 @@ public:
             }
             if (choices.empty()) return false;
             ctx.executor.requestChoice(p, std::move(choices),
-                                        "Promising Future: banish one of your top 5");
+                                        "Promising Future: banish one of your top 5", PromptKind::ChooseObject);
             return true;
         };
 
@@ -121,7 +121,7 @@ public:
             if (where.empty()) return false;
             where.insert(where.begin(), valChoice(p, 0, "Promising Future: play to base"));
             ctx.executor.requestChoice(p, std::move(where),
-                                       "Promising Future: where to play it");
+                                       "Promising Future: where to play it", PromptKind::Location);
             return true;
         };
         auto taken_where = [&](PlayerId p) -> std::optional<LocationId> {

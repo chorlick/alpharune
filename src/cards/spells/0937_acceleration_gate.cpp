@@ -50,7 +50,7 @@ public:
             // and with nothing exhausted the spell still resolves.
             opts.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Acceleration Gate: ready a unit, gear or rune");
+                                       "Acceleration Gate: ready a unit, gear or rune", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return true;
         };

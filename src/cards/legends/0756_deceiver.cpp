@@ -65,7 +65,7 @@ public:
             std::vector<Intent> choices;
             for (auto card_id : ps.hand) choices.push_back(objChoice(ctx.controller, card_id));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                       "discard 1 (Deceiver)");
+                                       "discard 1 (Deceiver)", PromptKind::Discard);
             slot(kPhase) = kAwaitDiscard;
             return;
         }

@@ -128,7 +128,7 @@ public:
                                  valChoice(ctx.controller, 0, "The Zero Drive: play to base"));
                     ri->resume_data[0] = static_cast<int32_t>(next);
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
-                        "The Zero Drive: where to play " + ctx.state.getObject(uid).name);
+                        "The Zero Drive: where to play " + ctx.state.getObject(uid).name, PromptKind::Location);
                     ri->resume_point = kAwaitWhere;
                     return;
                 }

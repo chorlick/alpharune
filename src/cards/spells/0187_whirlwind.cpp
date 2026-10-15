@@ -39,7 +39,7 @@ public:
             choices.push_back(decline);
             for (auto uid : units_for(p)) choices.push_back(objChoice(p, uid));
             ctx.executor.requestChoice(p, std::move(choices),
-                                        "Whirlwind: you may return a unit to its owner's hand");
+                                        "Whirlwind: you may return a unit to its owner's hand", PromptKind::ChooseObject);
         };
         auto apply = [&](PlayerId p) {
             const GameObjectId unit = takenObject(ctx);

@@ -67,7 +67,7 @@ public:
             std::vector<Intent> opts;
             for (int d : options) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?");
+                "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?", PromptKind::Location);
             ri.resume_point = kAsking;
             return;
         }

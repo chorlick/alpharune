@@ -59,7 +59,7 @@ public:
             done.choice_label = "Corrupted Dragon: stop";
             out.push_back(std::move(done));
             ctx.executor.requestChoice(ctx.controller, std::move(out),
-                "Corrupted Dragon: move an enemy unit (5 [M] or less) to its base, or stop");
+                "Corrupted Dragon: move an enemy unit (5 [M] or less) to its base, or stop", PromptKind::ChooseObject);
             return true;
         };
         switch (ri.resume_point) {

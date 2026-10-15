@@ -60,7 +60,7 @@ public:
                 std::vector<Intent> options;
                 for (auto id : theirs) options.push_back(objChoice(opp, id));
                 ctx.executor.requestChoice(opp, std::move(options),
-                                           "Shard of Undoing: kill one of your units");
+                                           "Shard of Undoing: kill one of your units", PromptKind::ChooseObject);
                 ri->resume_point = kAsking;
                 return;
             }

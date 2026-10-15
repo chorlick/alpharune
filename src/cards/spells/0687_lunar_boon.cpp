@@ -41,7 +41,7 @@ public:
                 }
             }
             label += "]";
-            ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
+            ctx.executor.requestChoice(ctx.controller, std::move(choices), label, PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }

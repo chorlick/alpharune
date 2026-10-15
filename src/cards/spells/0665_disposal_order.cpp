@@ -104,7 +104,7 @@ public:
         opts.push_back(valChoice(ctx.controller, 0, "Done"));
         ctx.executor.requestChoice(ctx.controller, std::move(opts),
             "Disposal Order: choose a card from the opponent's trash (" +
-            std::to_string(ri.resume_data[kCountSlot] + 1) + " of up to 3)");
+            std::to_string(ri.resume_data[kCountSlot] + 1) + " of up to 3)", PromptKind::ChooseObject);
         ri.resume_point = kAwaitCard;
     }
 private:

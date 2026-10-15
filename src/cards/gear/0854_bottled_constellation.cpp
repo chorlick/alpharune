@@ -72,7 +72,7 @@ public:
             for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                 "Bottled Constellation: kill which? (" +
-                std::to_string(ri.resume_data.size() + 1) + " of 3)");
+                std::to_string(ri.resume_data.size() + 1) + " of 3)", PromptKind::ChooseObject);
             ri.resume_point = 20;
         };
         if (ri.resume_point == 2) {   // just confirmed

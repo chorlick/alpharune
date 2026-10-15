@@ -39,7 +39,7 @@ public:
             // and with no unit in a trash the spell still resolves.
             opts.push_back(valChoice(ctx.controller, 0, "Done"));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Shadows of the Past: return a unit from a trash");
+                                       "Shadows of the Past: return a unit from a trash", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return true;
         };

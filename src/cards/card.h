@@ -13,11 +13,13 @@
 #include "core/types.h"
 #include "core/card_db.h"
 #include "effects/effect_types.h"
+#include "core/prompt.h"
 
 #include <bitset>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <source_location>
 #include <utility>
 #include <vector>
 
@@ -312,7 +314,8 @@ public:
     ///    0 = effect skipped (agent declined, or precondition invalid)
     ///    1 = effect confirmed and re-validated — caller proceeds
     int confirmOptional(CardContext& ctx, const std::string& label,
-                        const std::function<bool()>& still_legal);
+                        const std::function<bool()>& still_legal,
+                        std::source_location where = std::source_location::current());
 
     // ── Choices at finalization (CR 355, 383.3) ──
     // Targets, modes, "you may" and "[cost] to [effect]" payments of a spell
@@ -439,7 +442,7 @@ public:
     ///
     /// Leaves resume_point at 1 (waiting) / 2 (answered); uses resume_data[0].
     int pickXAmount(CardContext& ctx, const std::string& label,
-                    int min, int max);
+                    int min, int max, std::source_location where = std::source_location::current());
 
     /// Modal-spell mode selection helper.
     ///
@@ -469,7 +472,9 @@ public:
     /// Trace tags: MODE_PROMPT, MODE_PICKED, MODE_NOT_OFFERED.
     int pickMode(CardContext& ctx, const std::string& label, int num_modes,
                  const std::vector<std::string>& mode_labels = {},
-                 uint32_t legal_modes = 0xFFFFFFFFu);
+                 uint32_t legal_modes = 0xFFFFFFFFu,
+                 std::source_location where = std::source_location::current(),
+                 PromptKind kind = PromptKind::Mode);
     /// Record `mode` as this callback's pickMode answer without asking: for a
     /// helper that finds there is nothing to choose now but must not have the
     /// question asked later, when there might be (pickEffectPlayLocation at
@@ -515,7 +520,8 @@ public:
     ///
     /// Trace tags: TGT_PROMPT, TGT_PICKED, TGT_FORCED, TGT_NOT_OFFERED.
     GameObjectId pickTarget(CardContext& ctx, const std::string& label,
-                             const std::vector<GameObjectId>& legal_targets);
+                             const std::vector<GameObjectId>& legal_targets,
+                             std::source_location where = std::source_location::current());
 
     /// Paired-target picker for dual-target spells (Challenge,
     /// Star-Crossed, Deathgrip, Singularity, …). Publishes TWO
@@ -549,7 +555,8 @@ public:
     std::pair<GameObjectId, GameObjectId> pickTargetPair(
         CardContext& ctx, const std::string& label,
         const std::vector<GameObjectId>& legal_a,
-        const std::function<std::vector<GameObjectId>(GameObjectId picked_a)>& legal_b_fn);
+        const std::function<std::vector<GameObjectId>(GameObjectId picked_a)>& legal_b_fn,
+        std::source_location where = std::source_location::current());
 
     /// resume_data slot holding the pick* helpers' per-helper progress flags
     /// (waiting / answered). Because each helper tracks its own progress here
@@ -578,7 +585,8 @@ public:
     /// chain: ChainManager::removeItem (EffectExecutor::removeChainItem) is
     /// the one way a card takes it off.
     std::optional<ChainItemId> pickChainItem(CardContext& ctx, const std::string& label,
-                                             const std::vector<ChainItemId>& candidates);
+                                             const std::vector<ChainItemId>& candidates,
+                                             std::source_location where = std::source_location::current());
 
     // ── A cost owed after the choices (CR 403.2 -> 405.1) ──
     /// "You may pay [N] to <choose a unit>": the item's choices come before

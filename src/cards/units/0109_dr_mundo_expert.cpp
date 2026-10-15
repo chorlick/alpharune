@@ -85,7 +85,7 @@ public:
             for (auto cid : rest) opts.push_back(objChoice(ctx.controller, cid));
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                 "Dr. Mundo: recycle which card from your trash (" +
-                std::to_string(3 - ri.resume_data.size()) + " left)");
+                std::to_string(3 - ri.resume_data.size()) + " left)", PromptKind::ChooseObject);
             ri.resume_point = kAwaitPick;
             return;
         }

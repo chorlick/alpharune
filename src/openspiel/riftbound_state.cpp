@@ -350,6 +350,14 @@ std::string RiftboundState::ObservationString(::open_spiel::Player player) const
     return std::string(buf);
 }
 
+::riftbound::PromptDescription RiftboundState::describeDecision(
+    ::open_spiel::Player player) const {
+    const ::riftbound::PlayerId rb_player =
+        player == 0 ? ::riftbound::PlayerId::Player1 : ::riftbound::PlayerId::Player2;
+    return ::riftbound::describePrompt(engineState(), decisionPrompt(), legalIntents(), rb_player,
+                                       rb_game_.cardDb());
+}
+
 void RiftboundState::ObservationTensor(::open_spiel::Player player,
                                         absl::Span<float> values) const {
     // extractStateFeatures already implements information-set masking:

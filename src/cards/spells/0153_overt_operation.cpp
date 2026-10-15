@@ -76,7 +76,7 @@ public:
                 {declineChoice(ctx.controller, "Keep its buff"),
                  valChoice(ctx.controller, 1, "Spend its buff to ready it")},
                 "Overt Operation: spend " + ctx.state.getObject(id).name +
-                "'s buff to ready it?");
+                "'s buff to ready it?", PromptKind::May);
             ri.resume_point = kAwait;
             return;
         }

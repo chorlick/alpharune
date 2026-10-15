@@ -42,7 +42,7 @@ public:
             auto gear = own_gear(opp);
             if (gear.empty()) return false;
             ctx.executor.requestChoice(opp, build_choices(opp, gear),
-                                        "Acceptable Losses: kill one of your gear");
+                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
             ri.resume_point = 2;
             return true;
         };
@@ -52,7 +52,7 @@ public:
             if (gear.empty()) { prompt_opponent(); return; }
             ctx.executor.requestChoice(ctx.controller,
                                         build_choices(ctx.controller, gear),
-                                        "Acceptable Losses: kill one of your gear");
+                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

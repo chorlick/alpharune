@@ -43,7 +43,7 @@ public:
                 choices.push_back(c);
             }
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                       "discard 1 (Ezreal, Prodigy)");
+                                       "discard 1 (Ezreal, Prodigy)", PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }

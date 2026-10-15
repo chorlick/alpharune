@@ -77,7 +77,7 @@ public:
                 for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
                 ctx.executor.requestChoice(ctx.controller, std::move(options),
                     "Icathian Rain: deal 2 to a unit (" +
-                    std::to_string(ri.resume_data.size() + 1) + " of 6)");
+                    std::to_string(ri.resume_data.size() + 1) + " of 6)", PromptKind::ChooseObject);
                 ri.resume_point = kAwait;
                 return;
             }

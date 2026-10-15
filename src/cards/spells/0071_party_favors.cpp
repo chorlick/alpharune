@@ -28,7 +28,7 @@ public:
             // its own action-vocab slot.
             ctx.executor.requestChoice(opp,
                 {valChoice(opp, 0, "Cards"), valChoice(opp, 1, "Runes")},
-                "Party Favors: choose Cards or Runes");
+                "Party Favors: choose Cards or Runes", PromptKind::Mode);
             ri.resume_point = 1;
             return;
         }

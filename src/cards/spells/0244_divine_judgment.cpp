@@ -78,7 +78,7 @@ public:
                     options.push_back(std::move(keep_two));
                 }
             ctx.executor.requestChoice(p, std::move(options),
-                std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep");
+                std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep", PromptKind::ChooseObject);
             ri.resume_point = kAwait;
             return;
         }

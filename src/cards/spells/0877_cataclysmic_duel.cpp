@@ -38,7 +38,7 @@ public:
             std::vector<Intent> opts;
             for (auto u : units) opts.push_back(objChoice(p, u));
             ctx.executor.requestChoice(p, std::move(opts),
-                                       "Cataclysmic Duel: choose a unit you control to keep");
+                                       "Cataclysmic Duel: choose a unit you control to keep", PromptKind::ChooseObject);
             ri.resume_point = next;
             return true;
         };

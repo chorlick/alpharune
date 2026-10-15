@@ -61,7 +61,7 @@ public:
                 return;
             }
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "recycle 1 non-unit from opponent's hand (Sabotage)");
+                                        "recycle 1 non-unit from opponent's hand (Sabotage)", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

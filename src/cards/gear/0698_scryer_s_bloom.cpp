@@ -46,7 +46,7 @@ public:
             keep.choice_label = "Keep it";
             choices.push_back(keep);                                    // keep it
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "predict 2: recycle or keep (Scryer's Bloom)");
+                                        "predict 2: recycle or keep (Scryer's Bloom)", PromptKind::LookTop);
         };
         auto take_recycle = [&](int i) {
             auto choice = ctx.executor.takeChoice();
@@ -92,7 +92,7 @@ public:
                 std::vector<Intent> choices{objChoice(ctx.controller, card_at(0)),
                                             objChoice(ctx.controller, card_at(1))};
                 ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                            "predict 2: which card goes on top? (Scryer's Bloom)");
+                                            "predict 2: which card goes on top? (Scryer's Bloom)", PromptKind::DeckOrder);
                 ri.resume_point = kAskOrder;
                 return;
             }

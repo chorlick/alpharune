@@ -10,7 +10,10 @@
 ///   - for each player, its info-set id (openspiel::infoSetIdFor, which is
 ///     RiftboundState::InfoSetId and ObservationString) and its observation
 ///     (ml::extractStateFeatures, RiftboundState::ObservationTensor);
-///   - for each player, the log lines it may read (LogEvent::visibleTo).
+///   - for each player, the log lines it may read (LogEvent::visibleTo);
+///   - for each player, what it is shown of the decision's question
+///     (describePrompt, testing phase T1: the decider's words and options,
+///     the other player's "who decides what").
 ///
 /// Three ways of making two positions a player cannot tell apart, each at
 /// every decision of real games (deck lists, [Hidden] decks among them, and
@@ -33,6 +36,7 @@
 #include "core/events.h"
 #include "engine/game_engine.h"
 #include "engine/knowledge_tracker.h"
+#include "engine/prompt_description.h"
 #include "ml/feature_extractor.h"
 #include "openspiel/action_vocab.h"
 #include "rules/deck_validator.h"
@@ -74,6 +78,7 @@ struct Shown {
     std::vector<std::string> labels;               // decider: per id
     uint64_t info_set = 0;
     std::vector<float> observation;
+    PromptDescription prompt;                      // what `who` is shown of the question
 
     bool operator==(const Shown&) const = default;
 };
@@ -89,8 +94,9 @@ std::vector<size_t> byActionId(const GameState& s, const std::vector<Intent>& le
 }
 
 Shown shownTo(const GameState& s, const std::vector<Intent>& legal, PlayerId decider,
-              PlayerId who, const CardDB& db) {
+              PlayerId who, const CardDB& db, const Prompt& prompt) {
     Shown out;
+    if (decider != PlayerId::None) out.prompt = describePrompt(s, prompt, legal, who, db);
     if (who == decider) {
         const std::vector<int> ids = openspiel::actionIds(legal, s);
         for (size_t i : byActionId(s, legal)) {
@@ -144,6 +150,16 @@ std::string firstDifference(const Shown& a, const Shown& b) {
         return "observation length differs";
     }
     if (a.info_set != b.info_set) return "info-set id differs";
+    if (!(a.prompt == b.prompt)) {
+        if (a.prompt.text != b.prompt.text)
+            return "the decision's description differs: '" + a.prompt.text + "' vs '" +
+                   b.prompt.text + "'";
+        for (size_t i = 0; i < std::min(a.prompt.options.size(), b.prompt.options.size()); ++i)
+            if (!(a.prompt.options[i] == b.prompt.options[i]))
+                return "the description of option #" + std::to_string(i) + " differs: '" +
+                       a.prompt.options[i].text + "' vs '" + b.prompt.options[i].text + "'";
+        return "the decision's description differs (" + a.prompt.text + ")";
+    }
     return "";
 }
 
@@ -165,26 +181,14 @@ size_t chooseByActionId(const GameState& s, const std::vector<Intent>& legal,
 }
 
 /// A log line as compared: object ids printed in it are names, not
-/// information ("id=N" made "id=?"), and a prompt line's list of options
-/// ("TGT_PROMPT: ... [a/b/c]") is in the engine's order of its options, which
-/// is the order of StepResult::legal and may follow object ids (the order a
-/// player is shown is the action-id order): the names are compared as a set.
+/// information ("id=N" made "id=?"). A prompt line's list of options
+/// ("TGT_PROMPT: ... [a/b/c]") is compared as written: it is in an order of
+/// what the reader sees (batch 5b N2, fixed in batch 5d; before, it was in
+/// the order of the options, which may follow object ids, and the names were
+/// compared as a set).
 std::string normalised(const std::string& line) {
     static const std::regex id_number("id=[0-9]+");
-    std::string out = std::regex_replace(line, id_number, "id=?");
-    if (out.find("PROMPT") == std::string::npos) return out;
-    // The list is the last bracket before " (agent ...": a prompt's own
-    // text may hold brackets ("+2 [M]", "[Assault 2]").
-    const auto close = out.rfind("] (");
-    const auto open = close == std::string::npos ? close : out.rfind('[', close);
-    if (open == std::string::npos) return out;
-    std::vector<std::string> names;
-    std::stringstream items(out.substr(open + 1, close - open - 1));
-    for (std::string n; std::getline(items, n, '/');) names.push_back(n);
-    std::sort(names.begin(), names.end());
-    std::string joined;
-    for (const auto& n : names) joined += (joined.empty() ? "" : "/") + n;
-    return out.substr(0, open + 1) + joined + out.substr(close);
+    return std::regex_replace(line, id_number, "id=?");
 }
 
 /// Log lines `who` may read, collected between decisions.
@@ -422,8 +426,8 @@ void checkVariants(const GameState& state, const StepResult& step, const CardDB&
     for (const auto& [id, obj] : state.objects)
         if (variant.getObject(id).card_def_id != obj.card_def_id) differs = true;
     if (!differs) t.problem(where + ": the variant is the same position");
-    const Shown a = shownTo(state, step.legal, decider, decider, db);
-    const Shown b = shownTo(variant, step.legal, decider, decider, db);
+    const Shown a = shownTo(state, step.legal, decider, decider, db, step.prompt);
+    const Shown b = shownTo(variant, step.legal, decider, decider, db, step.prompt);
     if (!(a == b)) t.problem(where + ": " + firstDifference(a, b));
 }
 
@@ -601,8 +605,8 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                 break;
             }
             for (PlayerId who : {PlayerId::Player1, PlayerId::Player2}) {
-                const Shown va = shownTo(a.state(), sa.legal, sa.perspective, who, *db_);
-                const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, who, *db_);
+                const Shown va = shownTo(a.state(), sa.legal, sa.perspective, who, *db_, sa.prompt);
+                const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, who, *db_, sb.prompt);
                 if (!(va == vb)) {
                     if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
                         for (const GameEngine* e : {&a, &b}) {
@@ -748,8 +752,10 @@ TEST_F(HiddenOrderLeak, AnOpponentWhoNeverActsCannotBeToldFromAnother) {
                 break;
             }
             ++decisions;
-            const Shown va = shownTo(a.state(), sa.legal, sa.perspective, PlayerId::Player1, *db_);
-            const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, PlayerId::Player1, *db_);
+            const Shown va = shownTo(a.state(), sa.legal, sa.perspective, PlayerId::Player1, *db_,
+                                     sa.prompt);
+            const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, PlayerId::Player1, *db_,
+                                     sb.prompt);
             if (!(va == vb)) {
                 problem(where + " decision " + std::to_string(n) + ": " + firstDifference(va, vb));
                 break;

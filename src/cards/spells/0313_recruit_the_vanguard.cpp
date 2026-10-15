@@ -38,7 +38,7 @@ public:
                 for (int d : dests) options.push_back(valChoice(ctx.controller, d, destLabel(d)));
                 ctx.executor.requestChoice(ctx.controller, std::move(options),
                     "Recruit the Vanguard: where to play Recruit " +
-                    std::to_string(ri.resume_data.size() + 1) + " of 4");
+                    std::to_string(ri.resume_data.size() + 1) + " of 4", PromptKind::Location);
                 ri.resume_point = kAwait;
                 return;
             }

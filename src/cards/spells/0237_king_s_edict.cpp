@@ -34,7 +34,7 @@ public:
             std::vector<Intent> options;
             for (auto id : units) options.push_back(objChoice(opp, id));
             ctx.executor.requestChoice(opp, std::move(options),
-                                       "King's Edict: choose one of your units to be killed");
+                                       "King's Edict: choose one of your units to be killed", PromptKind::ChooseObject);
             ri.resume_point = kAwait;
             return;
         }

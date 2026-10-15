@@ -94,7 +94,7 @@ public:
                     where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
                     ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
-                                               "Reinforce: where to play it");
+                                               "Reinforce: where to play it", PromptKind::Location);
                     ri.resume_point = kAwaitWhere;
                     return;
                 }
@@ -105,7 +105,7 @@ public:
             options.push_back(valChoice(ctx.controller, 0, "Banish none"));
             for (auto u : units) options.push_back(objChoice(ctx.controller, u));
             ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "Reinforce: banish a unit to play (cost reduced by 5)");
+                                       "Reinforce: banish a unit to play (cost reduced by 5)", PromptKind::ChooseObject);
             ri.resume_point = kAwait;
             return;
         }

@@ -45,11 +45,13 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 ## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
 
 - [ ] **K2** (after the owner's answer to G4) If an engine game is a Match game (CR 488.5), `GameRunner` / `BatchRunner` need series support so games two and three exclude battlefields already used (488.5, 488.6) — waits on G4
+  - Owner, 2026-10-15: Duel by default for now; series support is needed only when Match series are wanted — stays open, not scheduled.
 
 ## Found by batch 5 / T3 (2026-10-14, `plans/reports/batch-5-t3.md` section 7)
 
 - [ ] **L1** (agents, before ISMCTS teaches) Honest ISMCTS barely gains from its budget: head to head 100 v 50 51%, 200 v 100 55%, 400 v 200 47%, 400 v 50 61% (400 to 600 games each), and the clairvoyant variant at 100 simulations is no better than the honest one (49%, 50%). The score-difference leaf value is flat for most of a turn, so UCT spreads visits; a better leaf evaluation (or rollouts to the end of the turn) is what more simulations would need. Overlaps G28 — agents
 - [ ] **L3** (owner, with G4) The setup battlefield choice is not searched by ISMCTS: the second player's search would see the first player's pick, held in a local of `setupBattlefields`, which a world cannot redraw; answered at random (CR 487.5). If engine games become Match games (CR 488.5) the pick must be made hidden-information-safe (state, not a local) before a search can make it — agents
+  - With Duel as the default there is no searched setup decision; stays open for Match mode only, not scheduled.
 
 ## Found by batch 5b (2026-10-15, `plans/reports/batch-5b.md` section 7; N2, N3 are T1's)
 
@@ -68,6 +70,7 @@ All closed by batch 6 (R1-R14), with M5: `plans/completed/10-testing-phase.md` (
 ## Found by batch 5c-perf (2026-10-15, `plans/reports/batch-5c-perf.md` section 5)
 
 - [ ] **P1** (owner decision on scope) Throughput is still 14% short of the pre-batch-1 rate per decision (187k against 218k decisions/s). What is left, by size: the Cleanup after every chain step (27%; 94% change nothing, but skipping a pass needs write tracking of the ~100 fields aura hooks read — a project); signals2 dispatch (17%, about 6% the library's own machinery; reworking the bus was ruled out earlier by the owner); allocation (13%: `Intent` holds 7 vectors — small-vector storage would cut most per-decision allocations); a `GameState` copy per pre-play probe and optional cost (2.7%, and the main cost of search, where every node copies); `refreshFlowGrants` reading every trash card each pass (2.9%); `canAffordWith` walking base runes per card per generation (3%) — perf
+  - **Owner, 2026-10-15: "lets keep the gap for now."** No structural throughput work (write tracking, event bus). Revisit only if profiling during real training shows engine time matters. Closed as an owner decision once batch 7-perf lands.
 
 
 ## Found by batch 5d (2026-10-15, `plans/reports/batch-5d.md` section 8)
@@ -78,3 +81,7 @@ All closed by batch 6 (R1-R14), with M5: `plans/completed/10-testing-phase.md` (
 ## Found by batch 6 (2026-10-15, `plans/reports/batch-6.md` section 9)
 
 - [ ] **S1** Thermo Beam ("Kill all gear") kills the gear one after another, with no `DeathBatch`: they do not die together (CR 370.1.a.2), so a gear's "when a gear dies" ability can see another die in the same kill (CR 383.2.c.2), and their death abilities are not one simultaneous batch (383.3.d). Batch 6's R4 put Acceptable Losses' two gear in one batch; Thermo Beam is the other card that kills several gear in one effect — CODE-ONLY
+
+## Owner decisions, 2026-10-15
+
+- [ ] **V1-G4** (batch 8) Battlefield setup mode. Owner on G4: "Duel for right now (the trainer will not choose random however)". A game-mode setting: **Duel (default)** — each player's battlefield drawn at random from their three (CR 487.5), from the engine's RNG, no setup decision; **Match** — each player chooses (CR 488.5, today's behaviour), selectable from the CLI, `GameRunner` / `RiftboundGame` parameters and the OpenSpiel game parameters, so the trainer's agent can choose. The pin `Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield` becomes a Match-mode test; add a Duel-mode test (random, seeded, no decision, the draw hidden from no one since battlefields are revealed). Smoke and fixed-seed games will move (two decisions fewer per game): explain. CLAUDE.md and `docs/trainer-notes-2026-10.md` updated.

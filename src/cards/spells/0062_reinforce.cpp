@@ -27,15 +27,7 @@ public:
         auto& ri = *ctx.state.chain.resuming;
         if (ri.resume_point == kDone) return;
         auto& ps = ctx.state.player(ctx.controller);
-        const auto& bfs = ctx.state.battlefields;
         const EffectExecutor::EffectPlayCost reduced{.energy_reduction = 5};
-        // A battlefield the controller may play a unit to (as Wild Claw 876):
-        // one they control, not one where units can't be played, and none
-        // while they may only play units to base.
-        auto unitPlayableAt = [&](const BattlefieldState& bf) {
-            return bf.controller.has_value() && *bf.controller == ctx.controller &&
-                   !bf.blocks_unit_play && !ps.units_play_base_only;
-        };
 
         // Re-entered with the location: take the chosen unit back off the end.
         GameObjectId chosen = kInvalidId;
@@ -45,8 +37,9 @@ public:
             chosen = GameObjectId::fromRaw(ri.resume_data.back());
             ri.resume_data.pop_back();
             const int v = takenValue(ctx, 0);
-            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
-                where_to = LocationId{BattlefieldLocation{bfs[v - 1].id}};
+            // (Where the unit may be played: playLocationsFor, as offered.)
+            for (const auto& l : playLocationsFor(ctx, ctx.controller, chosen).locations)
+                if (v > 0 && locationCode(l) == v) where_to = l;
         }
 
         // First entry: look at up to 5 from the top.
@@ -79,19 +72,20 @@ public:
             chosen = takenObject(ctx);
             if (std::find(units.begin(), units.end(), chosen) == units.end())
                 chosen = kInvalidId;   // "Banish none"
-            // CR 355.2.a: no location is printed, so the unit goes to its
-            // controller's base or to a battlefield they control, their
-            // choice. Asked before anything leaves the deck, and only for a
-            // unit that can be paid for (unpaid, it is not played).
+            // CR 355.2: no location is printed, so the unit goes to its
+            // controller's base, a battlefield they control or where its own
+            // permissions allow (playLocationsFor), their choice. Asked
+            // before anything leaves the deck, and only for a unit that can
+            // be paid for (unpaid, it is not played).
             if (chosen != kInvalidId &&
                 ctx.executor.canPlayPayingCost(ctx.controller, chosen, reduced)) {
-                std::vector<Intent> where;
-                for (size_t i = 0; i < bfs.size(); ++i)
-                    if (unitPlayableAt(bfs[i]))
-                        where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
-                                                  "Reinforce: play to battlefield " + std::to_string(i)));
-                if (!where.empty()) {
-                    where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
+                const auto places = playLocationsFor(ctx, ctx.controller, chosen);
+                if (places.count() > 1) {
+                    std::vector<Intent> where;
+                    for (int i = 0; i < places.count(); ++i)
+                        where.push_back(valChoice(ctx.controller,
+                            locationCode(places.locations[static_cast<size_t>(i)]),
+                            "Reinforce: play to " + places.labels[static_cast<size_t>(i)]));
                     ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
                     // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
@@ -113,8 +107,9 @@ public:
         }
         ri.resume_point = kDone;
 
-        // Recycle the remaining cards (everything except the chosen one),
-        // taking all of them out of the deck first.
+        // All of them leave the deck; the chosen one is banished and played,
+        // then the remaining cards are recycled — in the order printed
+        // (testing phase R6).
         std::vector<GameObjectId> rest;
         for (auto v : ri.resume_data) {
             const auto cid = GameObjectId::fromRaw(v);
@@ -122,7 +117,6 @@ public:
             deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
             if (cid != chosen) rest.push_back(cid);
         }
-        if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
 
         if (chosen != kInvalidId) {
             // Banished, then played for its cost less [5]. Paying is optional
@@ -135,6 +129,7 @@ public:
         } else {
             RIFT_TRACE(ctx.events, "REINFORCE: no unit chosen; recycled top 5");
         }
+        if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
     }
 private:
     enum : int { kAwait = 21, kDone = 22, kAwaitWhere = 23 };

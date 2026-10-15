@@ -56,13 +56,6 @@ public:
         }
         return out;
     }
-    // A battlefield the controller may play a unit to: one they control, not
-    // one where units can't be played (Rockfall Path), and none while they
-    // may only play units to base (Mageseeker Warden).
-    static bool unitPlayableAt(const CardContext& ctx, const BattlefieldState& bf) {
-        return bf.controller.has_value() && *bf.controller == ctx.controller &&
-               !bf.blocks_unit_play && !ctx.state.player(ctx.controller).units_play_base_only;
-    }
     static Intent intChoice(PlayerId p, int value, const std::string& label) {
         Intent i;
         i.type = IntentType::MakeChoice;
@@ -78,7 +71,6 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;  // needs the chain's resume slot
         auto& ri = *ctx.state.chain.resuming;
-        const auto& bfs = ctx.state.battlefields;
 
         if (ri.resume_point == 0) {
             auto top = topFive(ctx.state, ctx.controller);
@@ -114,6 +106,16 @@ public:
             return;
         }
 
+        // resume_data = {the chosen card, the rest...}: the rest wait, out of
+        // the deck, until the chosen card has been played ("... and play it,
+        // reducing its Energy cost by [5]. Recycle the rest."; testing phase R6).
+        auto recycleRest = [&]() {
+            std::vector<GameObjectId> rest;
+            for (size_t i = 1; i < ri.resume_data.size(); ++i)
+                rest.push_back(GameObjectId::fromRaw(ri.resume_data[i]));
+            ri.resume_data.resize(std::min<size_t>(ri.resume_data.size(), 1));
+            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+        };
         if (ri.resume_point == 1) {
             auto choice = ctx.executor.takeChoice();
             auto top = topFive(ctx.state, ctx.controller);
@@ -122,54 +124,56 @@ public:
             auto cands = playable(ctx, top);
             if (std::find(cands.begin(), cands.end(), chosen) == cands.end()) chosen = kInvalidId;
 
-            std::vector<GameObjectId> rest;
+            ri.resume_data = {static_cast<int32_t>(chosen.raw())};
             for (auto cid : top) {
                 deck::take(ctx.state, cid, deck::Place::Held, knowledge::only(ctx.controller), /*slot_public=*/false);
-                if (cid != chosen) rest.push_back(cid);
+                if (cid != chosen) ri.resume_data.push_back(static_cast<int32_t>(cid.raw()));
             }
-            ri.resume_data = {static_cast<int32_t>(chosen.raw())};
-            if (chosen != kInvalidId) {
-                // It stays listed in banishment until it is actually played:
-                // playPayingCost takes it out on success, and a payment that
-                // fails leaves it banished rather than in no zone at all.
-                ctx.executor.banishObject(chosen);
-            }
-            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
             if (chosen == kInvalidId) {
+                recycleRest();
                 RIFT_TRACE(ctx.events, "WILD CLAW: played nothing; recycled the top cards");
                 ri.resume_point = 5;
                 return;
             }
+            // It stays listed in banishment until it is actually played:
+            // playPayingCost takes it out on success, and a payment that
+            // fails leaves it banished rather than in no zone at all.
+            ctx.executor.banishObject(chosen);
 
-            // A unit goes to your base or a battlefield you control (CR
-            // 355.2.a) that units may be played to; gear to base.
-            std::vector<Intent> where;
+            // A unit goes to your base, a battlefield you control or where
+            // its own permissions allow (CR 355.2), never where units can't
+            // be played (playLocationsFor); gear to base.
             if (ctx.state.getObject(chosen).isUnit()) {
-                for (size_t i = 0; i < bfs.size(); ++i)
-                    if (unitPlayableAt(ctx, bfs[i]))
-                        where.push_back(intChoice(ctx.controller, static_cast<int>(i) + 1,
-                                                  "Wild Claw: play to battlefield " + std::to_string(i)));
-            }
-            if (!where.empty()) {
-                where.insert(where.begin(), intChoice(ctx.controller, 0, "Wild Claw: play to base"));
-                // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
-                ctx.executor.requestChoice(ctx.controller, std::move(where),
-                                           "Wild Claw: where to play it");
-                ri.resume_point = 2;
-                return;
+                const auto where = playLocationsFor(ctx, ctx.controller, chosen);
+                if (where.count() > 1) {
+                    std::vector<Intent> opts;
+                    for (int i = 0; i < where.count(); ++i)
+                        opts.push_back(intChoice(ctx.controller,
+                                                 locationCode(where.locations[static_cast<size_t>(i)]),
+                                                 "Wild Claw: play to " +
+                                                 where.labels[static_cast<size_t>(i)]));
+                    // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
+                    ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                                               "Wild Claw: where to play it");
+                    ri.resume_point = 2;
+                    return;
+                }
             }
             ctx.executor.playPayingCost(ctx.controller, chosen, std::nullopt, kReduced);
+            recycleRest();
             ri.resume_point = 3;
         }
 
         if (ri.resume_point == 2) {
             auto choice = ctx.executor.takeChoice();
             const GameObjectId chosen = GameObjectId::fromRaw(ri.resume_data[0]);
-            LocationId loc = BaseLocation{ctx.controller};
+            const auto where = playLocationsFor(ctx, ctx.controller, chosen);
             const int v = (choice && choice->chosen_value.has_value()) ? *choice->chosen_value : 0;
-            if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(ctx, bfs[v - 1]))
-                loc = BattlefieldLocation{bfs[v - 1].id};
+            std::optional<LocationId> loc;
+            for (const auto& l : where.locations)
+                if (locationCode(l) == v) loc = l;
             ctx.executor.playPayingCost(ctx.controller, chosen, loc, kReduced);
+            recycleRest();
             ri.resume_point = 3;
         }
 

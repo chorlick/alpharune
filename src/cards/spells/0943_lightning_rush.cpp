@@ -59,14 +59,24 @@ public:
         if (ri.resume_point != 1) return;
         ri.resume_point = 2;
         GameObjectId picked = takenObject(ctx);
-        bool draw = false;
+        // All of them leave the deck; the chosen one is drawn, THEN the rest
+        // go to the trash, in the order printed (testing phase R6). The card
+        // is already held, so it is drawn with drawHeldCard (a draw: "when you
+        // draw" sees it), not put back on top and drawn again.
+        std::vector<GameObjectId> rest;
+        GameObjectId drawn = kInvalidId;
         for (auto v : ri.resume_data) {
             auto id = GameObjectId::fromRaw(v);
             auto it = std::find(ps.main_deck.begin(), ps.main_deck.end(), id);
             if (it == ps.main_deck.end()) continue;   // no longer in the deck
-            deck::take(ctx.state, id, id == picked ? deck::Place::Held : deck::Place::Public, knowledge::only(ctx.controller),
-                       /*slot_public=*/false);
-            if (id == picked) { draw = true; continue; }
+            deck::take(ctx.state, id, id == picked ? deck::Place::Held : deck::Place::Public,
+                       knowledge::only(ctx.controller), /*slot_public=*/false);
+            if (id == picked) drawn = id;
+            else rest.push_back(id);
+        }
+        if (drawn != kInvalidId)
+            ctx.executor.drawHeldCard(ctx.controller, drawn, /*seen_by_all=*/false);
+        for (auto id : rest) {
             // "Put the rest into your trash." (From the Main Deck, so not a Burn
             // and not redirected by "would go to your trash from anywhere other
             // than your Main Deck".)
@@ -75,12 +85,6 @@ public:
             card.location = std::nullopt;
             ps.trash.push_back(id);
             RIFT_TRACE(ctx.events, "LIGHTNING RUSH: " + card.name + " -> trash");
-        }
-        if (draw) {
-            // Back on top, then drawn through the normal draw path so draw
-            // counters and "when you draw" triggers see it.
-            deck::putOnTop(ctx.state, ctx.controller, picked, deck::Place::Held, knowledge::only(ctx.controller));
-            ctx.executor.drawCards(ctx.controller, 1);
         }
     }
     // "[Flow] [2][A]"

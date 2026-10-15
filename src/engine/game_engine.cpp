@@ -3629,6 +3629,13 @@ void GameEngine::executePlayCard(const Intent& intent) {
 // See the header. Shared by a play from hand (executePlaySpell) and an
 // effect play that pays (EffectExecutor::playPayingCost, via the play-cost
 // hook): either way the choices come before the cost (CR 355 -> 356).
+namespace {
+// Defined with generateSpellActions below.
+std::vector<std::vector<GameObjectId>> spellTargetSets(
+    const Card* card, const GameState& state, PlayerId player,
+    const TargetRequirements& req, const std::vector<GameObjectId>& legal);
+}  // namespace
+
 bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                                           bool via_trash_grant, bool by_effect,
                                           std::vector<GameObjectId>& play_targets,
@@ -3694,6 +3701,49 @@ bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                 RIFT_TRACE(events_, "TARGET (play): " + card.name + " -> " +
                                  state_.getObject(t).name);
             }
+        }
+        // Played by an effect, a spell whose play intent names two or more
+        // targets (and that asks none of them itself: no pair helper, no
+        // finalize pass) has no intent to name them: the whole set is asked
+        // here, as the hand play offers it (spellTargetSets: an "up to N" set
+        // may be empty, CR 355.13), among the sets it can be paid for with
+        // (testing phase M3: Singularity, Deathgrip, Smoke and Mirrors,
+        // Piercing Light played by Fizz, Void Rush, ...).
+        const bool sets_from_intent =
+            by_effect && sc && !sc->needsPlayTimeTarget() && !sc->needsPlayTimeTargetPair() &&
+            req.count > 1 && !(sc->choicesAtFinalization() & Card::kFinalizeResolve);
+        if (sets_from_intent && play_targets.empty()) {
+            const PlayerState::TrashReplayGrant* grant =
+                via_trash_grant ? trashGrantFor(player, card_id) : nullptr;
+            std::vector<std::vector<GameObjectId>> sets;
+            for (auto& set : spellTargetSets(sc, state_, player, req,
+                                             sc->enumerateLegalTargets(state_, player)))
+                if (!set.empty() && (grant ? canPayTrashGrant(player, card_id, *grant, set)
+                                           : canAffordChoosing(player, card_id, set)))
+                    sets.push_back(std::move(set));
+            if (sets.empty() && !req.optional) return false;   // CR 355.8
+            std::vector<Intent> options;
+            for (const auto& set : sets) {
+                Intent i;
+                i.type = IntentType::MakeChoice;
+                i.player = player;
+                i.chosen_objects = set;
+                options.push_back(std::move(i));
+            }
+            if (req.optional) {
+                Intent none;
+                none.type = IntentType::MakeChoice;
+                none.player = player;
+                none.chosen_value = 0;
+                none.choice_label = "No target";
+                options.push_back(std::move(none));
+            }
+            // Asked even with one set, as every play-time target is.
+            const Intent chosen = decideNow(player, options, PromptKind::Target, card_id,
+                                            "choose the targets for " + card.name);
+            play_targets = chosen.chosen_objects;
+            RIFT_TRACE(events_, "TARGETS (play): " + card.name + " -> " +
+                                 std::to_string(play_targets.size()) + " target(s)");
         }
     }
 

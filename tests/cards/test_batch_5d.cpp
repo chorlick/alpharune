@@ -311,4 +311,94 @@ TEST_F(Batch5dTest, T4_TheChainIsShownWithItsLinks) {
     EXPECT_EQ(items[1].controller, P2);
 }
 
+// ─── M2: the largest X counts [Add] abilities ───────────────────────────────
+constexpr CardDefId kBulletTime = 263;
+
+// Bullet Time: "pay any amount of [A]". One rune in base and a Gold token
+// ([E], kill this: [Add] [A]): the payment may use the Gold (CR 357.1.a,
+// EffectExecutor::addForPayment), so X = 2 is offered. Before batch 5d the
+// largest X offered was what the pool and runes alone could pay.
+TEST_F(Batch5dTest, M2_PayAnyAmountOffersTheXTheAddAbilitiesCanReach) {
+    addUnit(P2, kInvalidId, 3, 0);
+    addRune(P1, Domain::Order);
+    addGear(P1, kGold564);
+    auto card = addToHand(P1, kBulletTime);
+    ps(P1).rune_pool.energy += 1;   // its [1]
+    int largest = -1, payable = -1;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        const bool x_prompt = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+            return i.choice_label.rfind("Bullet Time: X power", 0) == 0;
+        });
+        if (x_prompt) {
+            for (const auto& i : legal) largest = std::max(largest, i.chosen_value.value_or(-1));
+            payable = resource::payablePower(state, P1, Domain::Count);
+            return legal.back();
+        }
+        return legal.front();
+    });
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_GE(largest, 0) << "X was asked";
+    EXPECT_EQ(payable, 1) << "one rune";
+    EXPECT_EQ(largest, 2) << "the rune and the Gold";
+}
+
+// ─── M3: an effect play asks a multi-target spell's targets ─────────────────
+constexpr CardDefId kDeathgrip = 484;   // "Kill a friendly unit. If you do, give +[M] ... to another"
+
+// Fizz plays Deathgrip from the trash. Its play intent would name two
+// targets (the unit to kill, the unit to pump); played by an effect, the set
+// is asked as the play is made (GameEngine::chooseSpellBeforeItsCost). Before
+// batch 5d it got no targets and only drew.
+TEST_F(Batch5dTest, M3_AnEffectPlayOfATwoTargetSpellAsksItsTargets) {
+    auto a = addUnit(P1, kInvalidId, 2, 0);
+    auto b = addUnit(P1, kInvalidId, 3, 0);
+    addToDeck(P1, kDredgeUp);
+    auto grip = addToTrash(P1, kDeathgrip);
+    auto fizz = addToHand(P1, kFizzTrickster);
+    fund(P1, 3, 1);   // Fizz
+    bool asked = false;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.chosen_objects == std::vector<GameObjectId>{a, b}) { asked = true; return i; }
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == grip) return i;
+        for (const auto& i : legal) if (i.chosen_value == 1) return i;   // Fizz's "may": yes
+        return legal.front();
+    });
+    playThroughEngine(fizz, &agent, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_TRUE(asked) << "the two targets are asked as one set";
+    EXPECT_FALSE(o(a).location.has_value()) << "the first target was killed";
+    EXPECT_EQ(o(b).current_might, 5) << "the second got its Might";
+}
+
+// ─── M4: who chooses where Thrill of the Hunt's unit is played ──────────────
+constexpr CardDefId kThrillOfTheHunt = 745;
+
+// "Banish a friendly unit, then its owner plays it to any battlefield." With
+// a unit its controller took from the other player, the OWNER plays it, and
+// the player who plays a unit chooses its location (CR 355.2): the
+// battlefield is asked of the owner. Before batch 5d the spell's controller
+// chose it.
+TEST_F(Batch5dTest, M4_ThrillOfTheHuntAsksTheOwnerWhichBattlefield) {
+    auto spell = addToHand(P1, kThrillOfTheHunt);
+    auto unit = addUnit(P1, kInvalidId, 2, 0);
+    o(unit).owner = P2;   // P1 controls P2's unit
+    for (auto& bf : state.battlefields) bf.controller = std::nullopt;
+    EnginePathAgent caster([&](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == unit) return i;
+        return legal.front();
+    });
+    EnginePathAgent owner([&](const std::vector<Intent>& legal) { return legal.back(); });
+    playThroughEngine(spell, &caster, std::nullopt, &owner);
+    ASSERT_EQ(owner.prompts.size(), 1u) << "the owner chooses the battlefield";
+    for (const auto& prompt : caster.prompts)
+        for (const auto& i : prompt)
+            EXPECT_TRUE(i.choice_label.find("Thrill: which battlefield") == std::string::npos)
+                << "the caster is not asked where";
+    ASSERT_TRUE(o(unit).battlefieldId().has_value());
+    EXPECT_EQ(o(unit).controller, P2) << "played by its owner";
+    EXPECT_EQ(*o(unit).battlefieldId(), state.battlefields.back().id) << "where the owner chose";
+}
+
 }  // namespace riftbound::test::batch_5d

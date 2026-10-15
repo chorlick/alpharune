@@ -826,6 +826,18 @@ bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
     }, nullptr);
 }
 
+int EffectExecutor::maxPayableAnyPower(PlayerId player, int cap, SpendFor f) {
+    int x = std::min(payableAnyPower(player, f), cap);
+    while (x < cap && canPayWithAdds(player, 0, x + 1, resource::kAnyDomain, f)) ++x;
+    return std::max(0, x);
+}
+
+int EffectExecutor::maxPayableEnergy(PlayerId player, int cap, SpendFor f) {
+    int x = std::min(resource::payableEnergy(state_, player, f), cap);
+    while (x < cap && canPayWithAdds(player, x + 1, 0, resource::kAnyDomain, f)) ++x;
+    return std::max(0, x);
+}
+
 std::optional<EffectExecutor::OwedCost> EffectExecutor::owedCost(PlayerId player) const {
     if (owed_.has_value() && owed_->player == player &&
         (owed_->energy > 0 || owed_->power > 0)) return owed_;

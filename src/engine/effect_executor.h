@@ -519,6 +519,12 @@ public:
     bool canPayAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other) {
         return canPayWithAdds(player, 0, amount, resource::kAnyDomain, f);
     }
+    /// The most Power of any Domain (Energy) `player` could pay now, at most
+    /// `cap`, [Add] abilities counted: "pay any amount" offers an X the
+    /// payment can reach with them (CR 357.1.a; testing phase M2). Probes
+    /// only above what the pool and runes cover.
+    int maxPayableAnyPower(PlayerId player, int cap, SpendFor f = SpendFor::Other);
+    int maxPayableEnergy(PlayerId player, int cap, SpendFor f = SpendFor::Other);
     /// Before a payment of [energy] + `power` (`mask`) that the pool and
     /// runes cannot cover: `player` activates [Add] Reactions, naming which,
     /// until it can be covered or none is left (CR 430.3). Called by the

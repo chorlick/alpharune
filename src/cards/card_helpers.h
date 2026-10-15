@@ -1736,6 +1736,42 @@ inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId cho
     return std::nullopt;
 }
 
+/// pickMode for a choice that belongs to `chooser`, who need not be
+/// ctx.controller: one of `labels` (value = its index), asked at resolution.
+/// For "its owner plays it to any battlefield" (the player who plays a unit
+/// chooses where it goes, CR 355.2; testing phase M4). Same slots and
+/// re-entry contract as selectObjectAs: nullopt while `chooser` is being
+/// asked, -1 when there is nothing to choose. A single option is asked too,
+/// as pickMode asks it (the decision is recorded).
+inline std::optional<int> pickValueAs(CardContext& ctx, PlayerId chooser, const std::string& label,
+                                      const std::vector<std::string>& labels,
+                                      PromptKind kind = PromptKind::Value, size_t slot = 7,
+                                      std::source_location where = std::source_location::current()) {
+    const int n = static_cast<int>(labels.size());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return n == 0 ? -1 : 0;   // direct invocation: nobody to ask
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto answer = [&ri, slot](int v) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = v;
+        return v;
+    };
+    if (ri.resume_data[slot] == 2) return ri.resume_data[slot + 1];
+    if (ri.resume_data[slot] == 1) {
+        const int v = takenValue(ctx, 0);
+        return answer(v >= 0 && v < n ? v : 0);
+    }
+    if (n == 0) return answer(-1);
+    std::vector<Intent> choices;
+    for (int i = 0; i < n; ++i) choices.push_back(valChoice(chooser, i, labels[static_cast<size_t>(i)]));
+    RIFT_TRACE(ctx.events, "VALUE_PROMPT (" + std::string(toString(chooser)) + "): " + label +
+                        " [" + std::to_string(n) + " options]");
+    ctx.executor.requestChoice(chooser, std::move(choices), label, kind, where);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
+}
+
 } // namespace riftbound
 
 // The Equip base classes (SimpleEquipGear / UniversalEquipGear) are built on

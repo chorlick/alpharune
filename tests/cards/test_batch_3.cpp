@@ -97,6 +97,8 @@ constexpr CardDefId kPunchFirst = 419;
 constexpr CardDefId kSmokeScreen = 93;
 constexpr CardDefId kSmite = 568;
 constexpr CardDefId kVoidRush = 505;
+constexpr CardDefId kAmateurRecital = 763;
+constexpr CardDefId kTemporalBreach = 853;
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -1551,6 +1553,55 @@ TEST_F(Batch3Test, D57_VoidRushDoesNotOfferSmiteWithNoUnitAtABattlefield) {
     playThroughEngine(rush, &agent, std::nullopt, nullptr, /*fund=*/false);
     EXPECT_FALSE(agent.wasOffered(smite)) << "no legal target, so no play (CR 355.8)";
     EXPECT_TRUE(inHand(P1, smite)) << "drawn, as a card not banished";
+}
+
+// ─── G14: a chosen object that left the board and came back is a new object ──
+// (CR 359.3.e.2, 359.3.e.4, 124.1.) Amateur Recital's hold ability chooses P1's
+// unit as it is finalized; in response, Temporal Breach (played from facedown)
+// banishes that unit and its owner plays it to the same battlefield. The unit
+// on the board is not the one chosen: Recital's move is a mistarget.
+TEST_F(Batch3Test, G14_AmateurRecitalDoesNotMoveAUnitTemporalBreachBanishedAndReplayed) {
+    auto recital = state.createObject();
+    {
+        auto& b = o(recital);
+        const auto& def = card_db.get(kAmateurRecital);
+        b.card_def_id = kAmateurRecital;
+        b.card_type = CardType::Battlefield;
+        b.name = def.name;
+        b.owner = b.controller = P1;
+        b.zone = ZoneType::BattlefieldZone;
+        state.battlefields[0].card_object_id = recital;
+        state.battlefields[0].controller = P1;
+    }
+    auto unit = addUnit(P1, kInvalidId, 3, 0);
+    auto breach = addToHand(P1, kTemporalBreach);
+    ps(P1).hand.erase(std::remove(ps(P1).hand.begin(), ps(P1).hand.end(), breach), ps(P1).hand.end());
+    o(breach).zone = ZoneType::FacedownZone;
+    o(breach).is_hidden = true;
+    o(breach).hidden_at = state.battlefields[0].id;
+    o(breach).hidden_on_turn = state.turn.turn_number - 1;
+    state.battlefields[0].facedown.push_back(breach);
+    const uint32_t life_before = o(unit).zone.incarnation();
+
+    PlaysCard agent(breach, EnginePathAgent::choosing(unit, EnginePathAgent::May::Yes));
+    fireTriggerThroughEngine(recital, TriggerType::WhenYouHoldHere, &agent);
+    ASSERT_TRUE(agent.played) << "Temporal Breach was played in response";
+    ASSERT_TRUE(onBoard(unit)) << "played again by its owner";
+    EXPECT_NE(o(unit).zone.incarnation(), life_before) << "a new object (CR 124.1)";
+    EXPECT_TRUE(o(unit).isAtBattlefield())
+        << "Recital's choice is no longer legal: it does not move the new object (CR 359.3.e.4)";
+}
+
+TEST_F(Batch3Test, G14_Pin_AUnitThatOnlyMovedBetweenBoardZonesIsStillTheChosenOne) {
+    auto unit = addUnit(P1, kInvalidId, 3, 0);
+    ChainItem item;
+    state.stampChosen(item, unit);
+    o(unit).zone = ZoneType::Base;
+    o(unit).location = BaseLocation{P1};
+    EXPECT_TRUE(state.stillTheChosenObject(item, unit)) << "a move is not a change of object";
+    o(unit).zone = ZoneType::Hand;
+    o(unit).zone = ZoneType::Base;
+    EXPECT_FALSE(state.stillTheChosenObject(item, unit)) << "to a hand and back: a new object";
 }
 
 }  // namespace riftbound::test::batch_3

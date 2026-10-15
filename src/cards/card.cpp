@@ -821,8 +821,10 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
         if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 1)) {
             ri.finalize_checked |= 1;
             const auto t = GameObjectId::fromRaw(ri.resume_data[2]);
+            // (Still the object chosen: CR 359.3.e.4, testing phase G14.)
             if (t != kInvalidId &&
-                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
+                (std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end() ||
+                 !ctx.state.stillTheChosenObject(ri, t))) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 ri.resume_data[2] = static_cast<int32_t>(kInvalidId.raw());
             }
@@ -839,7 +841,8 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             ri.resume_data[5] = 0;
             GameObjectId t = ri.targets.front();
             const bool still_legal =
-                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end();
+                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end() &&
+                ctx.state.stillTheChosenObject(ri, t);   // CR 359.3.e.4 (G14)
             if (!still_legal) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 t = kInvalidId;
@@ -1000,13 +1003,15 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             const auto b = GameObjectId::fromRaw(ri.resume_data[4]);
             if (b != kInvalidId) {
                 const auto lb = legal_b_in_fn(a);
-                if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
+                if (std::find(lb.begin(), lb.end(), b) == lb.end() ||
+                    !ctx.state.stillTheChosenObject(ri, b)) {   // CR 359.3.e.4 (G14)
                     RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the second target is no longer legal");
                     ri.resume_data[4] = static_cast<int32_t>(kInvalidId.raw());
                 }
             }
             if (a != kInvalidId &&
-                std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
+                (std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end() ||
+                 !ctx.state.stillTheChosenObject(ri, a))) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the first target is no longer legal");
                 ri.resume_data[3] = static_cast<int32_t>(kInvalidId.raw());
             }

@@ -1723,6 +1723,7 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     if (!it) return;
     it->targets = {t};
     it->chosen_objects.push_back(t);
+    state_.stampChosen(*it, t);   // CR 359.3.e.4 (G14)
     while (it->resume_data.size() < 6) it->resume_data.push_back(0);
     it->resume_data[5] = 1;   // "target was chosen at finalization" (read by Card::pickTarget)
     // A facedown card or one in a hand is named only for who may know it (D11).
@@ -3990,7 +3991,11 @@ void GameEngine::resolveSpell(const ChainItem& item) {
             filtered.reserve(item.targets.size());
             int dropped = 0;
             for (auto t : item.targets) {
-                if (std::find(legal.begin(), legal.end(), t) != legal.end()) {
+                // Legal now, and still the object that was chosen: one that
+                // left the board (or a hand, a trash ...) and came back is a
+                // new object (CR 359.3.e.2, 359.3.e.4; testing phase G14).
+                if (std::find(legal.begin(), legal.end(), t) != legal.end() &&
+                    state_.stillTheChosenObject(item, t)) {
                     filtered.push_back(t);
                 } else {
                     ++dropped;

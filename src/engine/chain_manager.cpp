@@ -64,6 +64,9 @@ ChainItemId ChainManager::addSpell(GameObjectId spell_obj, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
+    // Each as it is now: one that changes zones to or from a non-board zone
+    // before this item resolves is a new object (CR 359.3.e.4; G14).
+    for (auto t : targets) state_.stampChosen(item, t);
     payDeflectForChoices(item);
     item.is_spell = true;
 
@@ -140,6 +143,9 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
+    // Each as it is now: one that changes zones to or from a non-board zone
+    // before this item resolves is a new object (CR 359.3.e.4; G14).
+    for (auto t : targets) state_.stampChosen(item, t);
     payDeflectForChoices(item);
     item.is_ability = true;
     item.is_activated_ability = is_activated;

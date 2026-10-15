@@ -147,6 +147,12 @@ RandomDeckBuilder::RandomDeckBuilder(const CardDB& db) : db_(db) {
     }
 }
 
+const RandomDeckBuilder::LegendCards* RandomDeckBuilder::legendCards(CardDefId legend) const {
+    for (const auto& pool : legends_)
+        if (pool.legend == legend) return &pool;
+    return nullptr;
+}
+
 void RandomDeckBuilder::setWeights(const std::vector<double>& weight) {
     weighted_ = !weight.empty();
     auto sums = [&](const std::vector<CardDefId>& ids, Weighted& w) {

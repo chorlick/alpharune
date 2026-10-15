@@ -46,6 +46,7 @@
 #include "core/game_state.h"
 #include "engine/game_engine.h"
 
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <random>
@@ -117,6 +118,18 @@ public:
         ::riftbound::StepResult        snap_step,
         ::riftbound::GameResult        snap_result,
         uint64_t                       rng_seed);
+
+    /// Determinized search (agents/determinizer.h): rewrite what the deciding
+    /// player cannot see in this position and give the engine a new RNG stream
+    /// (GameEngine::editHiddenInformation). Builds the engine first if this
+    /// state is a snapshot clone. Afterwards the state is no longer the
+    /// product of its own history, so it cannot be rebuilt by a replay: a
+    /// clone of it (or of a position it advances to) taken at a decision that
+    /// is not resumable from a snapshot throws std::logic_error when advanced,
+    /// and syncToHistory refuses it. Clones taken at resumable decisions work.
+    void editHiddenInformation(
+        const std::function<void(::riftbound::GameState&)>& rewrite,
+        uint64_t rng_seed);
 
     /// Inspect the underlying engine's GameResult after the game is terminal.
     /// Defined only when IsTerminal() — values are zero/None before then.
@@ -240,6 +253,9 @@ private:
         /// GameEngine::isResumableDecision(state, step.legal): an engine can
         /// be resumed straight from this snapshot.
         bool resumable = false;
+        /// Taken from a state whose hidden information was rewritten
+        /// (editHiddenInformation): it cannot be reached by a replay.
+        bool edited = false;
 
         /// A resumable ancestor of this (non-resumable) position that is
         /// nearer than the `base_` its holders were handed. The first clone
@@ -328,6 +344,10 @@ private:
     mutable std::shared_ptr<const Snapshot> live_snapshot_;
 
     mutable size_t replayed_to_build_ = 0;   // see decisionsReplayedToBuild()
+
+    /// editHiddenInformation was applied to this position or an ancestor:
+    /// no replay from the start or from an unedited snapshot reproduces it.
+    mutable bool edited_ = false;
 
     /// Concrete seed used by the engine. Resolved once in the constructor —
     /// if the Game's seed param is 0 ("nondeterministic"), we still pick

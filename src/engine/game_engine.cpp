@@ -9280,6 +9280,27 @@ GameEngine::ParkedRef GameEngine::parkedRefOf(GameObjectId id) const {
     return r;
 }
 
+void GameEngine::editHiddenInformation(const std::function<void(GameState&)>& rewrite,
+                                       uint64_t rng_seed) {
+    rewrite(mutableState());   // an edit of the pending decision (noteEditWhileParked)
+    rng_.seed(rng_seed);
+    if (!parked_legal_) return;
+    // The offered options are the decider's; what the decider cannot see must
+    // not change them. Checked where the options can be rebuilt.
+    if (auto fresh = recomputePendingLegalActions()) {
+        bool same = fresh->size() == parked_legal_->size();
+        for (size_t i = 0; same && i < fresh->size(); ++i)
+            same = offeredIn(*parked_legal_, (*fresh)[i]);
+        if (!same) {
+            throw std::logic_error(
+                "GameEngine::editHiddenInformation: rewriting hidden information "
+                "changed the options of the pending decision (" +
+                std::to_string(parked_legal_->size()) + " offered, " +
+                std::to_string(fresh->size()) + " after the edit).");
+        }
+    }
+}
+
 void GameEngine::noteEditWhileParked() {
     edited_while_parked_ = true;
     parked_refs_.clear();

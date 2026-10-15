@@ -99,6 +99,7 @@ RiftboundState::RiftboundState(std::shared_ptr<const ::open_spiel::Game> game,
       lazy_(std::move(snapshot)),
       base_(std::move(base)),
       engine_seed_(engine_seed) {
+    edited_ = lazy_->edited;
     // No event bus, no engine. The snapshot holds the answers; ensureLive()
     // builds the engine on the first mutating call.
 }
@@ -122,6 +123,7 @@ void RiftboundState::replayTokens(::riftbound::GameEngine& engine,
             snap->step      = step;
             snap->rng       = engine.rngState();
             snap->resumable = true;
+            snap->edited    = edited_;
             newest_base = std::move(snap);
         }
         const int legal_index =
@@ -163,6 +165,15 @@ void RiftboundState::ensureLive() const {
         // already found a nearer one for this snapshot.
         const std::shared_ptr<const Snapshot> base =
             laterBase(base_, snap.nearerBase());
+        if (snap.edited && !(base && base->edited)) {
+            // Its hidden information was rewritten after the last snapshot it
+            // could be resumed from: replaying the history would rebuild the
+            // unedited game and call it this one.
+            throw std::logic_error(
+                "RiftboundState: a clone of a state whose hidden information was "
+                "rewritten (editHiddenInformation) was taken at a decision that "
+                "cannot be resumed from a snapshot; it cannot be rebuilt.");
+        }
         size_t from = 0;
         if (base) {
             engine->resumeFromSnapshot(::riftbound::GameState(base->state),
@@ -390,6 +401,7 @@ RiftboundState::snapshotLive() const {
     snap->state  = engine_->state();
     snap->result = engine_->stepResult();
     snap->rng    = engine_->rngState();
+    snap->edited = edited_;
     if (!engine_->isStepDone()) {
         snap->step = engine_->currentStep();
         snap->resumable = ::riftbound::GameEngine::isResumableDecision(
@@ -465,8 +477,24 @@ void RiftboundState::DoApplyAction(::open_spiel::Action action) {
     applyLegalIndex(legal_index);
 }
 
+void RiftboundState::editHiddenInformation(
+    const std::function<void(::riftbound::GameState&)>& rewrite, uint64_t rng_seed) {
+    ensureLive();
+    engine_->rethrowIfStepFailed();
+    if (engine_->isStepDone()) {
+        throw std::logic_error(
+            "RiftboundState: editHiddenInformation on a finished game.");
+    }
+    live_snapshot_.reset();
+    engine_->editHiddenInformation(rewrite, rng_seed);
+    edited_ = true;
+    // Every snapshot taken so far is of the unedited game.
+    base_.reset();
+}
+
 bool RiftboundState::syncToHistory(const ::riftbound::GameState& live_state,
                                     const ::riftbound::StepResult& live_step) {
+    if (edited_) return false;   // not the product of its history any more
     ensureLive();
     const auto& tokens = live_state.action_history;
     const auto& mine = engine_->state().action_history;

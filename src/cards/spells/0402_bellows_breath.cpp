@@ -94,7 +94,7 @@ public:
                         options.push_back(valChoice(ctx.controller, 0, "No more units"));
                         for (auto id : units) options.push_back(objChoice(ctx.controller, id));
                         ctx.executor.requestChoice(ctx.controller, std::move(options),
-                            "Bellows Breath: deal 1 to up to three units at the same location");
+                            "Bellows Breath: deal 1 to up to three units at the same location", PromptKind::ChooseObject);
                         data[kPhase] = kAsking;
                         return;
                     }

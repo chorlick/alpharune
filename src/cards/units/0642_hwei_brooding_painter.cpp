@@ -40,7 +40,7 @@ public:
             if (ps.hand.empty()) return;  // nothing to discard, no branch
             // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, build_choices(),
-                                        "Hwei: discard 1");
+                                        "Hwei: discard 1", PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }

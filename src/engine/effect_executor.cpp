@@ -4,6 +4,7 @@
 
 #include "cards/card.h"
 #include "cards/card_registry.h"
+#include "openspiel/action_vocab.h"
 #include "engine/deck_ops.h"
 #include "engine/trash_replacement.h"
 #include "cards/card_helpers.h"
@@ -245,6 +246,10 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     mark.first_item = state_.chain.next_id;
     mark.oc_state = state_.turn.oc_state;
     mark.chain_was_empty = state_.chain.items.empty();
+    if (units.size() > 1) {
+        mark.several = true;
+        for (int p = 0; p < 2; ++p) mark.trash_size[p] = state_.players[p].trash.size();
+    }
     // The units of a batch die at the same time: what their deaths trigger is
     // one batch of simultaneous triggers (CR 383.3.d). Closed in endDeathBatch.
     if (state_.chain.trigger_batch_holds++ == 0)
@@ -306,7 +311,7 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
                     options.push_back(std::move(o));
                 }
                 const Intent chosen = ask(chooser, options,
-                    "which death is replaced first (CR 373)");
+                    "which death is replaced first (CR 373)", PromptKind::ReplacementOrder, std::source_location::current());
                 if (!chosen.chosen_objects.empty() &&
                     std::find(replaceable.begin(), replaceable.end(),
                               chosen.chosen_objects.front()) != replaceable.end())
@@ -349,14 +354,28 @@ bool EffectExecutor::deathReplacementsSettled(GameObjectId unit) const {
     return state_.objectExists(unit) && replacementsSettledByBatch(state_.getObject(unit));
 }
 
-bool EffectExecutor::anyDamageIsLethalFor(PlayerId damager) const {
-    for (const auto& [id, obj] : state_.objects.onBoard()) {
+bool anyDamageIsLethalFor(const GameState& state, const CardRegistry* registry, PlayerId damager) {
+    if (!registry) return false;
+    for (const auto& [id, obj] : state.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
-        const Card* card = cardFor(obj.card_def_id);
+        const Card* card = registry->get(obj.card_def_id);
         if (card && card->anyDamageIsLethal()) return true;
     }
     return false;
+}
+
+bool damageKillsIn(const GameState& state, const CardRegistry* registry, const GameObject& unit) {
+    if (!unit.isUnit() || !unit.location.has_value() || unit.damage_marked <= 0) return false;
+    if (unit.hasLethalDamage()) return true;
+    if (unit.controller == PlayerId::None) return false;
+    const PlayerId damager = opponent(unit.controller);
+    if (std::min(unit.damage_marked_by[playerIndex(damager)], unit.damage_marked) <= 0) return false;
+    return anyDamageIsLethalFor(state, registry, damager);
+}
+
+bool EffectExecutor::anyDamageIsLethalFor(PlayerId damager) const {
+    return ::riftbound::anyDamageIsLethalFor(state_, card_registry_, damager);
 }
 
 bool EffectExecutor::damageKills(const GameObject& obj, LethalRule& rule,
@@ -460,6 +479,26 @@ void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
     if (items.size() != before && items.empty() && mark.chain_was_empty &&
         !state_.chain.resuming.has_value())
         state_.turn.oc_state = mark.oc_state;
+    // The members that went to a trash, in an order of what the players see
+    // of them there (N1). In a trash a card is its card: copies of one card
+    // cannot be told apart, so the card decides.
+    if (mark.several) {
+        for (int p = 0; p < 2; ++p) {
+            auto& trash = state_.players[p].trash;
+            std::vector<size_t> at;
+            std::vector<GameObjectId> members;
+            for (size_t i = std::min(mark.trash_size[p], trash.size()); i < trash.size(); ++i)
+                if (std::find(units.begin(), units.end(), trash[i]) != units.end()) {
+                    at.push_back(i);
+                    members.push_back(trash[i]);
+                }
+            if (members.size() < 2) continue;
+            std::stable_sort(members.begin(), members.end(), [&](GameObjectId a, GameObjectId b) {
+                return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+            });
+            for (size_t k = 0; k < at.size(); ++k) trash[at[k]] = members[k];
+        }
+    }
 }
 
 void EffectExecutor::snapshotLastKnown(GameObjectId id, bool dying) {
@@ -758,7 +797,9 @@ resource::RuneChooser EffectExecutor::runeChooser() const {
             intents.push_back(std::move(i));
         }
         const Intent chosen = ask(player, intents, for_power ? "pick rune to recycle for power"
-                                                            : "pick rune to exhaust for energy");
+                                                            : "pick rune to exhaust for energy",
+                                  for_power ? PromptKind::RuneForPower : PromptKind::RuneForEnergy,
+                                  std::source_location::current());
         return chosen.chosen_objects.empty() ? kInvalidId : chosen.chosen_objects.front();
     };
     return c;
@@ -781,6 +822,18 @@ bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
     return add_probe_(player, [&](const GameState& s) {
         return payableNow(s, player, energy, power, mask, f, extra_any);
     }, nullptr);
+}
+
+int EffectExecutor::maxPayableAnyPower(PlayerId player, int cap, SpendFor f) {
+    int x = std::min(payableAnyPower(player, f), cap);
+    while (x < cap && canPayWithAdds(player, 0, x + 1, resource::kAnyDomain, f)) ++x;
+    return std::max(0, x);
+}
+
+int EffectExecutor::maxPayableEnergy(PlayerId player, int cap, SpendFor f) {
+    int x = std::min(resource::payableEnergy(state_, player, f), cap);
+    while (x < cap && canPayWithAdds(player, x + 1, 0, resource::kAnyDomain, f)) ++x;
+    return std::max(0, x);
 }
 
 std::optional<EffectExecutor::OwedCost> EffectExecutor::owedCost(PlayerId player) const {
@@ -847,7 +900,8 @@ bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
                     (state_.objectExists(src) ? state_.getObject(src).name.get()
                                               : std::string("?"));
             }
-            pick = ask(player, adds, "activate an [Add] ability to pay");
+            pick = ask(player, adds, "activate an [Add] ability to pay", PromptKind::AddForPayment,
+                       std::source_location::current());
         }
         activate_now_(pick);
     }
@@ -989,6 +1043,7 @@ static bool hostileEffectReplaced(GameState& state, EventBus& events, EffectExec
     Card* card = registry->get(obj.card_def_id);
     if (!card) return false;
     CardContext rctx{state, events, exec, obj.controller, target};
+    const EffectExecutor::ActingFor acting(exec, target);
     return card->replaceHostileEffect(rctx, target, kind);
 }
 
@@ -1339,6 +1394,7 @@ void EffectExecutor::unattachGear(GameObjectId gear) {
     if (card_registry_ && g.card_def_id != kInvalidId) {
         if (Card* gc = card_registry_->get(g.card_def_id)) {
             CardContext uctx{state_, events_, *this, g.controller, gear};
+            const ActingFor acting(*this, gear);
             gc->onUnattached(uctx, unit_id);
         }
     }
@@ -1505,6 +1561,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
             case Kind::Pending: {
                 Card* card = cardFor(c.pending.card);
                 CardContext rctx{state_, events_, *this, c.pending.controller, c.pending.source};
+                const ActingFor acting(*this, c.pending.source);
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
                 RIFT_DEBUG(events_, "REPLACEMENT (self): " + state_.getObject(unit_id).name +
                                  " does not die");
@@ -1514,6 +1571,7 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 if (!state_.objectExists(c.card_object)) return false;
                 Card* card = cardFor(state_.getObject(c.card_object).card_def_id);
                 CardContext rctx{state_, events_, *this, controller, c.card_object};
+                const ActingFor acting(*this, c.card_object);
                 if (!card || !card->applyReplacement(rctx, unit_id)) return false;
                 RIFT_DEBUG(events_, "REPLACEMENT: " + state_.getObject(c.card_object).name +
                                  " prevents " + state_.getObject(unit_id).name + " from dying");
@@ -1540,7 +1598,8 @@ bool EffectExecutor::applyDeathReplacements(GameObjectId unit_id) {
                 options.push_back(std::move(o));
             }
             const int chosen = ask(controller, options,
-                state_.getObject(unit_id).name + " would die — which replacement applies first (CR 372)")
+                state_.getObject(unit_id).name + " would die — which replacement applies first (CR 372)",
+                PromptKind::ReplacementOrder, std::source_location::current(), unit_id)
                 .chosen_value.value_or(0);
             if (chosen >= 0 && chosen < static_cast<int>(candidates.size()))
                 pick = static_cast<size_t>(chosen);
@@ -1723,7 +1782,7 @@ void EffectExecutor::discardCards(PlayerId player, int count) {
                 choice.chosen_objects = {card_id};
                 choices.push_back(choice);
             }
-            auto chosen = ask(player, choices, "discard a card");
+            auto chosen = ask(player, choices, "discard a card", PromptKind::Discard, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 to_discard = chosen.chosen_objects[0];
             }
@@ -1850,6 +1909,15 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
             shuffleable.push_back(cid);
         }
     }
+    // The random order (CR 417.5) is drawn from an order of the cards, not of
+    // the list the caller built (which may follow object ids): the deck that
+    // results is a function of which cards go down (batch 5d N1). Runes go
+    // down in their owner's order (CR 417.5.a): by card.
+    auto byCard = [&](GameObjectId a, GameObjectId b) {
+        return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+    };
+    if (shuffleable.size() > 1) std::stable_sort(shuffleable.begin(), shuffleable.end(), byCard);
+    if (rune_ordered.size() > 1) std::stable_sort(rune_ordered.begin(), rune_ordered.end(), byCard);
     if (rng_) {
         std::shuffle(shuffleable.begin(), shuffleable.end(), *rng_);
     }
@@ -1870,10 +1938,14 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     }
     for (auto cid : rune_ordered) {
         auto& obj = state_.getObject(cid);
+        // From the board a rune is public; from the top of its Rune Deck only
+        // who knew it there can tell (T4).
+        const bool from_board = obj.zone != ZoneType::RuneDeck;
         obj.zone = ZoneType::RuneDeck;
         obj.location = std::nullopt;
         state_.player(obj.owner).rune_deck.insert(
             state_.player(obj.owner).rune_deck.begin(), cid);
+        knowledge::runeToBottom(state_, cid, from_board ? knowledge::everyone() : knowledge::nobody());
     }
     for (const auto& l : left_board)
         events_.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
@@ -2006,7 +2078,32 @@ void EffectExecutor::channelRunes(PlayerId player, int count, bool enter_exhaust
 // Add abilities (CR 429) — floating energy / power / universal power
 // ═══════════════════════════════════════════════════════════════════════════════
 
-bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
+Prompt EffectExecutor::promptHere(PlayerId decider, PromptKind kind, std::string question,
+                                  std::source_location where) const {
+    Prompt p;
+    p.kind = kind;
+    p.decider = decider;
+    p.question = std::move(question);
+    p.where = where;
+    const ChainItem* item = state_.chain.resuming.has_value() ? &*state_.chain.resuming : nullptr;
+    if (acting_ != kInvalidId) {
+        p.source = acting_;
+        if (item && item->source != acting_) item = nullptr;
+    }
+    if (item) {
+        if (p.source == kInvalidId) p.source = item->source;
+        p.chain_item = item->id;
+        p.is_spell = item->is_spell;
+        p.ability_index = item->is_activated_ability ? item->ability_index : -1;
+        p.trigger = item->fired_trigger;
+        p.keyword_ability = item->keyword_ability.has_value();
+        p.at_finalization = item->finalizing;
+    }
+    return p;
+}
+
+bool EffectExecutor::confirmNow(PlayerId player, const std::string& label, PromptKind kind,
+                                std::source_location where) {
     if (!agent_query_) return false;
     Intent no;
     no.type = IntentType::MakeChoice;
@@ -2017,11 +2114,12 @@ bool EffectExecutor::confirmNow(PlayerId player, const std::string& label) {
     no.declines = true;
     yes.chosen_value = 1;
     yes.choice_label = "Yes — " + label;
-    return ask(player, {no, yes}, label).chosen_value.value_or(0) == 1;
+    return ask(player, {no, yes}, label, kind, where).chosen_value.value_or(0) == 1;
 }
 
 int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
-                                   const std::string& what) {
+                                   const std::string& what, PromptKind kind,
+                                   std::source_location where) {
     if (labels.empty() || !agent_query_) return 0;
     std::vector<Intent> options;
     options.reserve(labels.size());
@@ -2033,13 +2131,14 @@ int EffectExecutor::chooseValueNow(PlayerId player, const std::vector<std::strin
         i.choice_label = labels[k];
         options.push_back(std::move(i));
     }
-    const int v = ask(player, options, what).chosen_value.value_or(0);
+    const int v = ask(player, options, what, kind, where).chosen_value.value_or(0);
     return v >= 0 && v < static_cast<int>(labels.size()) ? v : 0;
 }
 
 int EffectExecutor::chooseAmongNow(PlayerId player,
                                    const std::vector<std::pair<int, std::string>>& options,
-                                   const std::string& what) {
+                                   const std::string& what, PromptKind kind,
+                                   std::source_location where) {
     if (options.empty()) return 0;
     if (!agent_query_ || options.size() == 1) return options.front().first;
     std::vector<Intent> intents;
@@ -2051,7 +2150,7 @@ int EffectExecutor::chooseAmongNow(PlayerId player,
         i.choice_label = label;
         intents.push_back(std::move(i));
     }
-    const int v = ask(player, intents, what).chosen_value.value_or(options.front().first);
+    const int v = ask(player, intents, what, kind, where).chosen_value.value_or(options.front().first);
     for (const auto& o : options) if (o.first == v) return v;
     return options.front().first;
 }
@@ -2064,6 +2163,7 @@ bool EffectExecutor::seenOnTopOfDeck(PlayerId owner, GameObjectId card) {
     if (std::find(seeing_.begin(), seeing_.end(), card) != seeing_.end()) return true;
     seeing_.push_back(card);
     CardContext ctx{state_, events_, *this, owner, card};
+    const ActingFor acting(*this, card);
     c->seenOnTopOfDeck(ctx);
     seeing_.erase(std::remove(seeing_.begin(), seeing_.end(), card), seeing_.end());
     return !state_.leftWhileSeen(card);
@@ -2074,11 +2174,14 @@ void EffectExecutor::makeAsYouPlayChoices(PlayerId player, GameObjectId card) {
     Card* c = cardFor(state_.getObject(card).card_def_id);
     if (!c) return;
     CardContext ctx{state_, events_, *this, player, card};
+    const ActingFor acting(*this, card);
     c->asYouPlayChoices(ctx);
 }
 
 GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
-                                              const std::vector<GameObjectId>& objects) {
+                                              const std::vector<GameObjectId>& objects,
+                                              const std::string& what, PromptKind kind,
+                                              std::source_location where) {
     if (objects.empty()) return kInvalidId;
     if (!agent_query_) return objects.front();
     std::vector<Intent> options;
@@ -2090,7 +2193,7 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
         i.chosen_objects = {id};
         options.push_back(std::move(i));
     }
-    const Intent chosen = ask(player, options, "choose one");
+    const Intent chosen = ask(player, options, what, kind, where);
     if (!chosen.chosen_objects.empty() &&
         std::find(objects.begin(), objects.end(), chosen.chosen_objects.front()) != objects.end())
         return chosen.chosen_objects.front();
@@ -2099,7 +2202,8 @@ GameObjectId EffectExecutor::chooseObjectNow(PlayerId player,
 
 LocationId EffectExecutor::chooseLocationNow(PlayerId player,
                                              const std::vector<LocationId>& locations,
-                                             const std::string& label) {
+                                             const std::string& label,
+                                             std::source_location where) {
     assert(!locations.empty());
     if (!agent_query_ || locations.size() == 1) return locations.front();
     std::vector<Intent> options;
@@ -2115,7 +2219,7 @@ LocationId EffectExecutor::chooseLocationNow(PlayerId player,
             : " battlefield #" + toString(std::get<BattlefieldLocation>(loc).id));
         options.push_back(std::move(o));
     }
-    const int pick = ask(player, options, label).chosen_value.value_or(0);
+    const int pick = ask(player, options, label, PromptKind::Location, where).chosen_value.value_or(0);
     if (pick < 0 || pick >= static_cast<int>(locations.size())) return locations.front();
     return locations[static_cast<size_t>(pick)];
 }
@@ -2543,6 +2647,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         if (!ps.has_reveal_peek || ps.rune_deck.empty() || !agent_query_) return;
         const GameObjectId top = ps.rune_deck.back();
         if (!state_.objectExists(top)) return;
+        knowledge::shown(state_, top, knowledge::only(player));   // the looker knows it (T4)
         RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
                          toString(top) + ") on top of the Rune Deck [Void Hatchling]");
         Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
@@ -2551,7 +2656,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         keep.declines = true;   // "You may recycle it": leaving it is the "no"
         recyc.choice_label = "Void Hatchling: recycle the top rune of your Rune Deck";
         const auto chosen = ask(player, {keep, recyc},
-            "Void Hatchling: look at the top rune of your Rune Deck");
+            "Void Hatchling: look at the top rune of your Rune Deck", PromptKind::LookTop, std::source_location::current());
         if (chosen.chosen_value.value_or(0) == 1) {
             ps.rune_deck.pop_back();
             recycleCards(player, {top});
@@ -2576,7 +2681,8 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
     keep.choice_label = "Void Hatchling: leave the top card of your Main Deck";
     keep.declines = true;   // "You may recycle it": leaving it is the "no"
     recyc.choice_label = "Void Hatchling: recycle the top card of your Main Deck";
-    auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck");
+    auto chosen = ask(player, {keep, recyc}, "Void Hatchling: look at the top card of your Main Deck",
+                      PromptKind::LookTop, std::source_location::current());
     if (chosen.chosen_value.value_or(0) == 1) {
         deck::takeTop(state_, player, deck::Place::Held, knowledge::only(player));
         recycleCards(player, {top});
@@ -2695,7 +2801,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
             keep_choice.choice_label = "Keep it";
             choices.push_back(keep_choice);
 
-            auto chosen = ask(player, choices, "Predict: recycle the top card or keep it");
+            auto chosen = ask(player, choices, "Predict: recycle the top card or keep it",
+                              PromptKind::LookTop, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 // Recycle: put on bottom
                 deck::putOnBottom(state_, player, card_id, deck::Place::Held, looker);
@@ -2720,7 +2827,8 @@ void EffectExecutor::predict(PlayerId player, int count) {
                 c.choice_label = "Predict: put on top";
                 choices.push_back(std::move(c));
             }
-            auto chosen = ask(player, choices, "Predict: which card goes on top");
+            auto chosen = ask(player, choices, "Predict: which card goes on top",
+                              PromptKind::DeckOrder, std::source_location::current());
             GameObjectId top = kept.front();
             if (!chosen.chosen_objects.empty() &&
                 std::find(kept.begin(), kept.end(), chosen.chosen_objects.front()) != kept.end())
@@ -2801,7 +2909,8 @@ std::vector<GameObjectId> EffectExecutor::revealAndChoose(PlayerId player, int c
             skip_it.choice_label = "Leave it";
             choices.push_back(skip_it);
 
-            auto chosen = ask(player, choices, "reveal: take a card or leave it");
+            auto chosen = ask(player, choices, "reveal: take a card or leave it",
+                              PromptKind::LookTop, std::source_location::current());
             if (!chosen.chosen_objects.empty()) {
                 deck::putInHand(state_, card_id, knowledge::everyone(), deck::Place::Held, player);
                 chosen_cards.push_back(card_id);
@@ -2954,6 +3063,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
         r.location = std::nullopt;
         r.zone = ZoneType::RuneDeck;
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
+        knowledge::runeToBottom(state, rid, knowledge::everyone());   // a public rune (T4)
         ps.power_spent_this_turn++;
         events.emit(LeftBoardEvent{rid, player, CardType::Rune, base,
                                    ZoneType::RuneDeck, false});
@@ -3140,6 +3250,7 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     if (card_registry_ && obj.card_def_id != kInvalidId) {
         if (Card* card_obj = card_registry_->get(obj.card_def_id)) {
             CardContext ctx{state_, events_, *this, player, card};
+            const ActingFor acting(*this, card);
             card_obj->onPlay(ctx);
         }
     }

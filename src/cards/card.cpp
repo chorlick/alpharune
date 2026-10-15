@@ -275,7 +275,8 @@ bool Card::killAsCost(CardContext& ctx, GameObjectId object) const {
 }
 
 int Card::confirmOptional(CardContext& ctx, const std::string& label,
-                           const std::function<bool()>& still_legal) {
+                           const std::function<bool()>& still_legal,
+                           std::source_location where) {
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value()) {
         // Card invoked outside the chain (test/direct invocation). The
@@ -358,7 +359,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
                              ", deferred to agent)");
         ctx.executor.requestChoice(ctx.controller,
                                     {no_choice, yes_choice},
-                                    "may: " + label);
+                                    "may: " + label, PromptKind::May, where);
         ri.resume_point = 1;
         return -1;  // caller returns, chain manager re-enters after agent
     }
@@ -421,7 +422,7 @@ int Card::confirmOptional(CardContext& ctx, const std::string& label,
 }
 
 int Card::pickXAmount(CardContext& ctx, const std::string& label,
-                       int min, int max) {
+                       int min, int max, std::source_location where) {
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value()) {
         // Direct invocation (no chain) — default to max for test/legacy
@@ -470,7 +471,7 @@ int Card::pickXAmount(CardContext& ctx, const std::string& label,
                              std::to_string(options.size()) +
                              " options) [agent decides]");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                    "X: " + label);
+                                    "X: " + label, PromptKind::XAmount, where);
         setChoiceState(ri, 0, kXAwait);
         ri.resume_point = 1;
         return -1;
@@ -501,7 +502,7 @@ void Card::settleMode(CardContext& ctx, int mode) {
 
 int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                     const std::vector<std::string>& mode_labels,
-                    uint32_t legal_modes) {
+                    uint32_t legal_modes, std::source_location where, PromptKind kind) {
     auto& ri_opt = ctx.state.chain.resuming;
 
     // Build the legal-mode index list once. The bitmask filters out
@@ -576,7 +577,7 @@ int Card::pickMode(CardContext& ctx, const std::string& label, int num_modes,
                              "] (agent decides among " +
                              std::to_string(legal.size()) + " modes)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                    "mode: " + label);
+                                    "mode: " + label, kind, where);
         setChoiceState(ri, 0, kModeAwait);
         ri.resume_point = 4;
         return -1;
@@ -634,6 +635,16 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
         }
         if (deflect <= payable) out.push_back(t);
     }
+    return out;
+}
+
+// The names of a prompt's options as its trace line lists them: sorted, so the
+// line follows what the reader sees and not the order the options were built
+// in, which may follow object ids (batch 5b N2).
+std::string joinSorted(std::vector<std::string> names) {
+    std::sort(names.begin(), names.end());
+    std::string out;
+    for (const auto& n : names) out += (out.empty() ? "" : "/") + n;
     return out;
 }
 
@@ -701,7 +712,8 @@ std::vector<GameObjectId> Card::choosablePaying(const CardContext& ctx,
 }
 
 std::optional<ChainItemId> Card::pickChainItem(CardContext& ctx, const std::string& label,
-                                               const std::vector<ChainItemId>& candidates) {
+                                               const std::vector<ChainItemId>& candidates,
+                                               std::source_location where) {
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value())
         return candidates.empty() ? kInvalidId : candidates.front();
@@ -747,7 +759,7 @@ std::optional<ChainItemId> Card::pickChainItem(CardContext& ctx, const std::stri
             return kInvalidId;
         }
         std::vector<Intent> options;
-        std::string names;
+        std::vector<std::string> listed;
         for (auto id : candidates) {
             Intent i;
             i.type = IntentType::MakeChoice;
@@ -756,11 +768,14 @@ std::optional<ChainItemId> Card::pickChainItem(CardContext& ctx, const std::stri
             if (src != kInvalidId) i.chosen_objects = {src};
             i.chosen_value = static_cast<int>(id.raw());
             options.push_back(std::move(i));
-            if (ctx.events.logging()) names += (names.empty() ? "" : "/") + nameOf(id);
+            if (ctx.events.logging()) listed.push_back(nameOf(id));
         }
+        // Listed in an order of what the reader sees, not the options' (batch 5b N2).
+        const std::string names = joinSorted(std::move(listed));
         RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + names + "] (agent decides among " +
                             std::to_string(candidates.size()) + " spells / abilities)");
-        ctx.executor.requestChoice(ctx.controller, std::move(options), "target: " + label);
+        ctx.executor.requestChoice(ctx.controller, std::move(options), "target: " + label,
+                                   PromptKind::ChainItem, where);
         setChoiceState(ri, 0, kItemAwait);
         return std::nullopt;
     }
@@ -788,7 +803,8 @@ void Card::commitChosenObject(CardContext& ctx, GameObjectId chosen) const {
 }
 
 GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
-                                const std::vector<GameObjectId>& legal_targets_in) {
+                                const std::vector<GameObjectId>& legal_targets_in,
+                                std::source_location where) {
     auto& ri_opt = ctx.state.chain.resuming;
     // Once a choice is locked in the list is not consulted again, so
     // filtering here can't un-offer an already-paid-for target.
@@ -876,7 +892,7 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
         options.reserve(legal_targets.size());
         // Built for the TGT_PROMPT line only: not when nobody reads the log.
         const bool logging = ctx.events.logging();
-        std::string label_summary;
+        std::vector<std::string> listed;
         for (auto t : legal_targets) {
             Intent i;
             i.type = IntentType::MakeChoice;
@@ -884,18 +900,18 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             i.chosen_objects = { t };
             options.push_back(std::move(i));
             if (!logging) continue;
-            if (!label_summary.empty()) label_summary += "/";
-            label_summary += ctx.state.objectExists(t)
-                ? ctx.state.getObject(t).name
-                : std::string("?");
+            listed.push_back(ctx.state.objectExists(t) ? ctx.state.getObject(t).name.get()
+                                                       : std::string("?"));
         }
+        // Names in an order of what the reader sees, not the options' (batch 5b N2).
+        const std::string label_summary = joinSorted(std::move(listed));
         RIFT_TRACE_FOR(ctx.events, promptAudience(ctx, legal_targets),
                              "TGT_PROMPT: " + label + " [" + label_summary +
                              "] (agent decides among " +
                              std::to_string(legal_targets.size()) +
                              " targets)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                    "target: " + label);
+                                    "target: " + label, PromptKind::Target, where);
         setChoiceState(ri, 0, kTgtAwait);
         ri.resume_point = 7;
         return kInvalidId;
@@ -921,7 +937,8 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
 std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     CardContext& ctx, const std::string& label,
     const std::vector<GameObjectId>& legal_a_in,
-    const std::function<std::vector<GameObjectId>(GameObjectId)>& legal_b_in_fn) {
+    const std::function<std::vector<GameObjectId>(GameObjectId)>& legal_b_in_fn,
+    std::source_location where) {
 
     auto& ri_opt = ctx.state.chain.resuming;
     // Deflect (CR 809): see affordableWithDeflect / commitChoice above.
@@ -980,12 +997,12 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         return std::pair<GameObjectId, GameObjectId>{a, b};
     };
     auto publish = [&](const std::vector<GameObjectId>& legal, const char* tag,
-                       const char* which, const std::string& request) {
+                       const char* which, const std::string& request, PromptKind kind) {
         std::vector<Intent> options;
         options.reserve(legal.size());
         // Built for the prompt's trace line only: not when nobody reads the log.
         const bool logging = ctx.events.logging();
-        std::string summary;
+        std::vector<std::string> listed;
         for (auto t : legal) {
             Intent i;
             i.type = IntentType::MakeChoice;
@@ -993,13 +1010,14 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             i.chosen_objects = { t };
             options.push_back(std::move(i));
             if (!logging) continue;
-            if (!summary.empty()) summary += "/";
-            summary += ctx.state.objectExists(t)
-                ? ctx.state.getObject(t).name : std::string("?");
+            listed.push_back(ctx.state.objectExists(t) ? ctx.state.getObject(t).name.get()
+                                                       : std::string("?"));
         }
+        // Names in an order of what the reader sees, not the options' (batch 5b N2).
+        const std::string summary = joinSorted(std::move(listed));
         RIFT_TRACE_FOR(ctx.events, promptAudience(ctx, legal),
                                std::string(tag) + label + " [" + summary + "] " + which);
-        ctx.executor.requestChoice(ctx.controller, std::move(options), request + label);
+        ctx.executor.requestChoice(ctx.controller, std::move(options), request + label, kind, where);
     };
 
     if (st & kPairDone) {
@@ -1038,7 +1056,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         }
         // Always publish a choice, even with a single legal first
         // target — the agent records the decision (engine-wide rule).
-        publish(legal_a, "TGT_PAIR_PROMPT_A: ", "(agent picks 1st of 2)", "target A: ");
+        publish(legal_a, "TGT_PAIR_PROMPT_A: ", "(agent picks 1st of 2)", "target A: ",
+                PromptKind::TargetFirst);
         setChoiceState(ri, 0, kPairAwaitA);
         ri.resume_point = 10;
         return {kInvalidId, kInvalidId};
@@ -1067,7 +1086,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         }
         // Always publish a choice, even with a single legal second
         // target — the agent records the decision (engine-wide rule).
-        publish(legal_b, "TGT_PAIR_PROMPT_B: ", "(agent picks 2nd of 2)", "target B: ");
+        publish(legal_b, "TGT_PAIR_PROMPT_B: ", "(agent picks 2nd of 2)", "target B: ",
+                PromptKind::TargetSecond);
         setChoiceState(ri, kPairAwaitA, kPairAwaitB);
         ri.resume_point = 12;
         // Still suspended: the pair is not usable until both halves are in,

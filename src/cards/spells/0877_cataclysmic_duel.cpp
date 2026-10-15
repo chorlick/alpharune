@@ -39,7 +39,7 @@ public:
             for (auto u : units) opts.push_back(objChoice(p, u));
             // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(p, std::move(opts),
-                                       "Cataclysmic Duel: choose a unit you control to keep");
+                                       "Cataclysmic Duel: choose a unit you control to keep", PromptKind::ChooseObject);
             ri.resume_point = next;
             return true;
         };

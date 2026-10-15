@@ -45,9 +45,12 @@ public:
             // Three picks, one prompt each (slots 7, 9, 11). A lone option is
             // taken without asking.
             for (size_t k = 0; k < 3; ++k) {
-                const auto pick = selectObject(ctx,
-                    "Bottled Constellation: kill which? (" + std::to_string(k + 1) + " of 3)",
-                    fodder(victims), 7 + 2 * k);
+                // (The label is built apart: GCC 13 -Warray-bounds misreads the
+                // temporary's move in the call, a false positive.)
+                std::string label = "Bottled Constellation: kill which? (";
+                label += std::to_string(k + 1);
+                label += " of 3)";
+                const auto pick = selectObject(ctx, label, fodder(victims), 7 + 2 * k);
                 if (!pick.has_value()) return;   // waiting for the agent
                 if (*pick != kInvalidId) victims.push_back(*pick);
             }

@@ -98,6 +98,18 @@ public:
     /// sorted by card id, never in their true order.
     virtual std::vector<CardKnowledge> knownDeckTop(PlayerId owner) const = 0;
     virtual std::vector<CardKnowledge> knownDeckBottom(PlayerId owner) const = 0;
+
+    /// The same for `owner`'s Rune Deck (testing phase T4): runes the observer
+    /// knows to be on its top / bottom, nearest the end first, stopping at the
+    /// first slot it does not know. A recycled rune is known to both players
+    /// at the bottom (CR 417.1.b, 417.5.a), a rune looked at on top to the
+    /// player who looked.
+    virtual std::vector<CardKnowledge> knownRuneDeckTop(PlayerId owner) const = 0;
+    virtual std::vector<CardKnowledge> knownRuneDeckBottom(PlayerId owner) const = 0;
+    /// The observer's own Rune Deck as (card, copies) for the runes whose slot
+    /// it does not know: the runes it brought minus those elsewhere and those
+    /// at a known slot. Sorted by card id; never in deck order.
+    virtual std::vector<std::pair<CardDefId, int>> ownRuneDeckComposition() const = 0;
 };
 
 } // namespace riftbound

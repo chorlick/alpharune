@@ -47,7 +47,7 @@ public:
             choices.push_back(keep);                                    // keep it
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "predict 2: recycle or keep (Scryer's Bloom)");
+                                        "predict 2: recycle or keep (Scryer's Bloom)", PromptKind::LookTop);
         };
         auto take_recycle = [&](int i) {
             auto choice = ctx.executor.takeChoice();
@@ -94,7 +94,7 @@ public:
                                             objChoice(ctx.controller, card_at(1))};
                 // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
                 ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                            "predict 2: which card goes on top? (Scryer's Bloom)");
+                                            "predict 2: which card goes on top? (Scryer's Bloom)", PromptKind::DeckOrder);
                 ri.resume_point = kAskOrder;
                 return;
             }

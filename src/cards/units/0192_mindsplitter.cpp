@@ -56,7 +56,7 @@ public:
             }
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "choose opponent's card to discard (Mindsplitter)");
+                                        "choose opponent's card to discard (Mindsplitter)", PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }

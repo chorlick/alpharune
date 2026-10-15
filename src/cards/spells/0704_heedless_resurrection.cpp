@@ -102,7 +102,7 @@ public:
                 std::vector<Intent> opts;
                 for (auto cid : cands) opts.push_back(objChoice(ctx.controller, cid));
                 ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                    "Heedless Resurrection: play a unit from your trash");
+                    "Heedless Resurrection: play a unit from your trash", PromptKind::ChooseObject);
                 ri.resume_point = kAwaitRevive;
                 return;
             }

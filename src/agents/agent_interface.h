@@ -9,6 +9,7 @@
 
 #include "core/game_state.h"
 #include "core/intent.h"
+#include "core/prompt.h"
 
 #include <vector>
 
@@ -37,6 +38,17 @@ public:
         const GameState& state,
         const std::vector<Intent>& legal_actions
     ) = 0;
+
+    /// The engine's entry point: the decision with what it asks (testing
+    /// phase T1, core/prompt.h; `describePrompt` in
+    /// engine/prompt_description.h gives what the decider may be shown of
+    /// it). The default ignores the prompt and calls selectAction; an agent
+    /// that reads prompts overrides this one.
+    virtual Intent decide(const GameState& state, const std::vector<Intent>& legal_actions,
+                          const Prompt& prompt) {
+        (void)prompt;
+        return selectAction(state, legal_actions);
+    }
 };
 
 } // namespace riftbound

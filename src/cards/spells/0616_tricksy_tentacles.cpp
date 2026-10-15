@@ -102,7 +102,7 @@ public:
                 opts.push_back(valChoice(ctx.controller, 0, "Done"));
                 ctx.executor.requestChoice(ctx.controller, std::move(opts),
                     "Tricksy Tentacles: move an enemy unit (Might left: " +
-                    std::to_string(kTotalMight - mightOf(picked())) + ")");
+                    std::to_string(kTotalMight - mightOf(picked())) + ")", PromptKind::ChooseObject);
                 ri.resume_point = kAwaitUnit;
                 return;
             }
@@ -116,7 +116,7 @@ public:
                 std::vector<Intent> opts;
                 for (int d : dests) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
                 ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                           "Tricksy Tentacles: move them where?");
+                                           "Tricksy Tentacles: move them where?", PromptKind::Location);
                 ri.resume_point = kAwaitDest;
                 return;
             }

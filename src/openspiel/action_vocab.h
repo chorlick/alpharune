@@ -243,6 +243,14 @@ std::vector<int64_t> visibleDescription(const Intent& intent, const GameState& s
 std::vector<int64_t> visibleObjectDescription(const GameState& state, GameObjectId object,
                                               PlayerId viewer);
 
+/// Put `objects` in an order of what `viewer` sees of them
+/// (`visibleObjectDescription`), ids only between objects it sees as the
+/// same: for things the rules do at once that the engine has to do one after
+/// another (units dying together go to the trash in this order), so that the
+/// game does not follow the object table's order (batch 5d N1).
+void sortObjectsAsSeen(const GameState& state, std::vector<GameObjectId>& objects,
+                       PlayerId viewer);
+
 /// The twin order (batch 5b item T2): by `visibleDescription`, then by the
 /// public order of the objects named (the order cards entered a hand, a
 /// trash, a banishment), then by `compareIntents` — which decides only

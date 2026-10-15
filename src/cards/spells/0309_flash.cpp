@@ -72,7 +72,7 @@ public:
                     options.push_back(valChoice(ctx.controller, 0, "No more units"));
                     for (auto id : units) options.push_back(objChoice(ctx.controller, id));
                     ctx.executor.requestChoice(ctx.controller, std::move(options),
-                        "Flash: move up to 2 friendly units to base");
+                        "Flash: move up to 2 friendly units to base", PromptKind::ChooseObject);
                     ri.resume_point = kAwait;
                     return;
                 }

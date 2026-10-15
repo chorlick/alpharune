@@ -59,6 +59,12 @@ struct StepResult {
     StepKind kind = StepKind::Done;
     PlayerId perspective = PlayerId::None;  // who must decide
     std::vector<Intent> legal;              // populated when kind==NeedDecision
+    /// What the decision asks (testing phase T1, core/prompt.h). Holds object
+    /// ids: what a player may be shown of it is `describePrompt`
+    /// (engine/prompt_description.h). The order of `legal` is the
+    /// generator's; a consumer orders options by action id
+    /// (openspiel::actionIds), never by index (batch 5b N3).
+    Prompt prompt;
 };
 
 class GameEngine {
@@ -185,6 +191,12 @@ public:
 
     /// Access the current game state (for external inspection).
     const GameState& state() const { return state_; }
+
+    /// What the decision an agent is being asked right now asks (testing
+    /// phase T1): the prompt of `currentStep()` in step mode, and of the
+    /// `AgentInterface::decide` call under way in runGame. Kind Unspecified
+    /// when no decision is pending.
+    const Prompt& pendingPrompt() const { return parked_prompt_; }
 
     /// Mutable access, for tests that build a position by hand and for the
     /// play server's god mode. Not for the OpenSpiel wrapper, BatchRunner or
@@ -417,8 +429,11 @@ private:
     /// of them (std::invalid_argument otherwise) and record it in
     /// action_history. Every decision goes through here. `kind`: which
     /// state-derived decision this is, if any (recomputePendingLegalActions).
-    Intent askAgent(PlayerId player, const std::vector<Intent>& legal,
+    Intent askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                     PendingQuery kind = PendingQuery::None);
+    /// What the decision being asked right now asks (askAgent); kind
+    /// Unspecified while no agent is being asked.
+    Prompt parked_prompt_;
 
     // Step machine state (Phase 11 C-1, fiber refactor 6w).
     // No more std::thread — the engine runs in a userspace fiber
@@ -929,6 +944,8 @@ private:
     /// abilities first (the attacker's in a combat-start batch, CR 466.2.d.1),
     /// each player choosing the order of their own when it can differ.
     void orderPendingTriggers();
+    std::vector<ChainItemId> canonicalBatchOrder(const std::vector<ChainItemId>& ids);
+    std::string triggerOrderLabel(const ChainItem& ci) const;
     /// CR 355.1.a / 805: the choice to pay [Accelerate] is made before the
     /// unit's cost is paid, and the cost is paid with it. Returns the cost
     /// adjustment to pay with (the Accelerate cost added when chosen) and
@@ -941,7 +958,7 @@ private:
     /// cost [1] or [A] less": the (energy, power) to pay, the payer choosing
     /// the half; nullopt if neither is payable.
     std::optional<std::pair<int, int>> chooseAccelerateHalf(
-        PlayerId player, const std::function<bool(int, int)>& payable);
+        PlayerId player, const std::function<bool(int, int)>& payable, GameObjectId card);
     bool chooseAccelerateHalfPayable(PlayerId player,
                                      const std::function<bool(int, int)>& payable) const;
     bool askAccelerate(PlayerId player, const GameObject& card);
@@ -985,7 +1002,10 @@ private:
         std::vector<std::vector<int>> discount_options;
         std::vector<Intent> next_options;    // the first unscripted prompt, if stopped there
         PlayerId next_player = PlayerId::None;
+        Prompt next_prompt;                  // what that prompt asks (T1)
     };
+    /// The prompt a scripted finalize pass last met (runScriptedPass reads it).
+    Prompt finalize_prompt_seen_;
     ScriptedPass runScriptedPass(const GameState& from, const ChainItem& pre,
                                  const std::vector<int>& script, bool stop_after_script);
     /// The same run from the state as it stands (the caller has put it at the
@@ -1105,7 +1125,15 @@ private:
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
     /// One agent decision among `options` for `player`, logged like any other.
-    Intent decideNow(PlayerId player, const std::vector<Intent>& options, const std::string& what);
+    Intent decideNow(PlayerId player, const std::vector<Intent>& options, PromptKind kind,
+                     GameObjectId source, const std::string& what,
+                     std::source_location where = std::source_location::current());
+    /// A Prompt for one of the engine's own questions: `kind` put to `decider`
+    /// about `source` (kInvalidId for the game's own: priority, the mulligan),
+    /// with the chain item being finalized or resolved if any.
+    Prompt enginePrompt(PlayerId decider, PromptKind kind, GameObjectId source = kInvalidId,
+                        std::string question = {},
+                        std::source_location where = std::source_location::current()) const;
     /// Pay an activated ability's costs and add it to the chain (no chain run).
     bool payAndQueueAbility(const Intent& intent);
     /// CR 323.6: recall unattached gear at battlefields and permanents / runes
@@ -1138,8 +1166,11 @@ private:
     int optionalCostDiscount(PlayerId player) const;
     bool canPayOptionalCost(PlayerId player, int energy, int power,
                             resource::DomainMask domains, SpendFor spend_for) const;
+    /// `source` / `what`: the card and the cost, for the prompt that asks
+    /// which half of a "[1] or [A] less" discount applies (testing phase T1).
     bool payOptionalCost(PlayerId player, int energy, int power,
-                         resource::DomainMask domains, SpendFor spend_for);
+                         resource::DomainMask domains, SpendFor spend_for,
+                         GameObjectId source, const char* what);
 
     /// "You may pay X as an additional cost to play me." Offers the agent a
     /// yes/no during the play action (called from executePlayCard /

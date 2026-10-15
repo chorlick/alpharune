@@ -43,7 +43,7 @@ public:
             if (gear.empty()) return false;
             // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(opp, build_choices(opp, gear),
-                                        "Acceptable Losses: kill one of your gear");
+                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
             ri.resume_point = 2;
             return true;
         };
@@ -54,7 +54,7 @@ public:
             // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(ctx.controller,
                                         build_choices(ctx.controller, gear),
-                                        "Acceptable Losses: kill one of your gear");
+                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

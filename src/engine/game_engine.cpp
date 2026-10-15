@@ -279,12 +279,14 @@ void GameEngine::refreshStepFromDriver() {
     if (!step_driver_) {
         current_step_.kind = StepKind::Done;
         current_step_.legal.clear();
+        current_step_.prompt = Prompt{};
         current_step_.perspective = PlayerId::None;
         return;
     }
     if (step_driver_->isDone()) {
         current_step_.kind = StepKind::Done;
         current_step_.legal.clear();
+        current_step_.prompt = Prompt{};
         current_step_.perspective = PlayerId::None;
         if (step_driver_->failure()) {
             // The fiber ended by exception: there is no game result. Make
@@ -300,6 +302,7 @@ void GameEngine::refreshStepFromDriver() {
     current_step_.kind = StepKind::NeedDecision;
     current_step_.legal = step_driver_->legalActionsSnapshot();
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
+    current_step_.prompt = parked_prompt_;
 }
 
 const StepResult& GameEngine::beginGame(
@@ -612,7 +615,7 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
         RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                           " (" + toString(player) + " — battlefield setup): " +
                           std::to_string(choices.size()) + " options");
-        auto chosen = askAgent(player, choices);
+        auto chosen = askAgent(player, choices, enginePrompt(player, PromptKind::BattlefieldSetup));
         state_.turn.turn_player = saved_turn;
 
         // askAgent accepts only an offered option, so the index is in range
@@ -750,7 +753,7 @@ void GameEngine::runMulligans() {
                          " (" + toString(player) + "): Mulligan, " +
                          std::to_string(adv.legal.size()) + " options");
 
-        auto chosen = askAgent(player, adv.legal);
+        auto chosen = askAgent(player, adv.legal, enginePrompt(player, PromptKind::Mulligan));
 
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
@@ -1244,7 +1247,7 @@ BattlefieldId GameEngine::chooseNextStaged(bool& is_combat) {
         o.choice_label = what + " \xE2\x80\x94 " + name;
         options.push_back(std::move(o));
     }
-    const Intent chosen = decideNow(chooser, options,
+    const Intent chosen = decideNow(chooser, options, PromptKind::NextStaged, kInvalidId,
         std::string(is_combat ? "where the next combat begins (CR 323.12)"
                               : "where the next showdown begins (CR 323.11)"));
     for (auto id : candidates)
@@ -1761,7 +1764,11 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
                                                        : std::string("?")));
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
-    auto chosen = askAgent(chooser, options);
+    Prompt asked = enginePrompt(chooser, PromptKind::Target, item.source);
+    asked.chain_item = item.id;
+    asked.is_spell = item.is_spell;
+    asked.at_finalization = true;
+    auto chosen = askAgent(chooser, options, std::move(asked));
     if (on_decision) on_decision(state_, options, chosen);
     GameObjectId t = legal.front();
     if (!chosen.chosen_objects.empty() &&
@@ -1822,7 +1829,8 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
 }
 
 Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options,
-                             const std::string& what) {
+                             PromptKind kind, GameObjectId source, const std::string& what,
+                             std::source_location where) {
     state_.decision_index++;
     // How many options is the decider's to know (batch 5b item T2).
     RIFT_TRACE_DECISION_SPLIT(events_, player,
@@ -1830,7 +1838,7 @@ Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options
                      toString(player) + "): " + what + " [" +
                      std::to_string(options.size()) + " options]",
                      "DECISION (" + std::string(toString(player)) + "): " + what);
-    auto chosen = askAgent(player, options);
+    auto chosen = askAgent(player, options, enginePrompt(player, kind, source, what, where));
     if (on_decision) on_decision(state_, options, chosen);
     return chosen;
 }
@@ -1907,7 +1915,8 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
             i.chosen_objects = {t};
             options.push_back(std::move(i));
         }
-        const Intent chosen = decideNow(chooser, options, "make a new choice");
+        const Intent chosen = decideNow(chooser, options, PromptKind::NewChoices, item->source,
+                                        "make a new choice");
         GameObjectId t = offered.front();
         if (!chosen.chosen_objects.empty() &&
             std::find(offered.begin(), offered.end(), chosen.chosen_objects.front()) !=
@@ -1928,8 +1937,148 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
 // Turn Order, each player orders their Triggered Abilities on the Chain."
 // What is simultaneous is ChainItem::trigger_batch. The first one placed is
 // the lowest: it is finalized first and resolves last.
+// The pending items `ids` of one trigger batch, put in an order of what both
+// players see of each ability (its source's card where both may see it, what
+// fired it, how the source and its subject stand) in their own places on the
+// chain, so that the chain, the order prompt's options and every decision met
+// before the batch is ordered do not depend on ids (batch 5b item T2, batch 5d
+// N1); the order queued decides only between abilities nobody can tell apart.
+// Returns the new order.
+std::string GameEngine::triggerOrderLabel(const ChainItem& ci) const {
+    std::string l = state_.objectExists(ci.source) ? state_.getObject(ci.source).name.get()
+                                                   : std::string("?");
+    if (ci.keyword_ability.has_value()) l += std::string(" [") + toString(*ci.keyword_ability) + "]";
+    if (ci.equipped_unit != kInvalidId && state_.objectExists(ci.equipped_unit))
+        l += " on " + state_.getObject(ci.equipped_unit).name;
+    else if (ci.triggering_subject != kInvalidId && ci.triggering_subject != ci.source &&
+             state_.objectExists(ci.triggering_subject))
+        l += " (" + state_.getObject(ci.triggering_subject).name + ")";
+    return l;
+}
+
+std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<ChainItemId>& ids) {
+    auto itemOf = [this](ChainItemId id) -> const ChainItem* {
+        for (const auto& ci : state_.chain.items) if (ci.id == id) return &ci;
+        return nullptr;
+    };
+    auto label = [this](const ChainItem& ci) { return triggerOrderLabel(ci); };
+    auto placeInOrder = [&](const std::vector<ChainItemId>& order) {
+        std::vector<ChainItem> in_order;
+        for (auto id : order)
+            if (const ChainItem* ci = itemOf(id)) in_order.push_back(*ci);
+        size_t n = 0;
+        for (auto& ci : state_.chain.items) {
+            if (n >= in_order.size()) break;
+            if (std::find(ids.begin(), ids.end(), ci.id) == ids.end()) continue;
+            ci = in_order[n++];
+        }
+    };
+    auto publicKey = [&](ChainItemId id) {
+        const ChainItem* ci = itemOf(id);
+        std::string text;
+        int64_t fired = -1, kw = -1;
+        std::vector<int64_t> where;   // the source as both players see it
+        if (ci) {
+            const bool seen_by_both =
+                knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
+                knowledge::identityVisible(state_, ci->source, PlayerId::Player2);
+            if (seen_by_both) text = label(*ci);
+            fired = static_cast<int64_t>(ci->fired_trigger);
+            if (ci->keyword_ability.has_value())
+                kw = static_cast<int64_t>(*ci->keyword_ability);
+            // Two copies of one card triggering together: told apart by
+            // where they are and how they stand, not by which was queued
+            // first (the table's order). The same for what each is about
+            // (its subject, the unit an Equipment is on): one ability
+            // triggered by two units dying together (batch 5d N1).
+            auto standing = [&](GameObjectId id) {
+                if (id == kInvalidId || !state_.objectExists(id) ||
+                    !knowledge::identityVisible(state_, id, PlayerId::Player1) ||
+                    !knowledge::identityVisible(state_, id, PlayerId::Player2)) {
+                    where.push_back(-9);
+                    return;
+                }
+                const GameObject& o = state_.getObject(id);
+                where.push_back(static_cast<int64_t>(o.card_def_id.raw()));
+                where.push_back(static_cast<int64_t>(o.zone.get()));
+                if (!o.location.has_value()) {
+                    // Off the board: its place in a public pile.
+                    int64_t at = -1;
+                    if (o.owner == PlayerId::Player1 || o.owner == PlayerId::Player2) {
+                        const auto& ps = state_.player(o.owner);
+                        const auto& pile = o.zone.get() == ZoneType::Trash ? ps.trash
+                                                                            : ps.banishment;
+                        const auto it = std::find(pile.begin(), pile.end(), id);
+                        if (it != pile.end()) at = it - pile.begin();
+                    }
+                    where.push_back(-1);
+                    where.push_back(at);
+                } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
+                    where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
+                } else {
+                    where.push_back(static_cast<int64_t>(
+                        std::get<BaseLocation>(*o.location).player));
+                }
+                where.push_back(o.current_might);
+                where.push_back(o.damage_marked);
+                where.push_back(o.is_exhausted);
+                where.push_back(o.is_stunned);
+                where.push_back(o.buff_count);
+                // (Everything else visibleObjectDescription shows of it.)
+                where.push_back(o.temp_buff_count);
+                where.push_back(o.temp_might_bonus);
+                where.push_back(static_cast<int64_t>(o.combat_designation));
+                where.push_back(o.empowered);
+                where.push_back(static_cast<int64_t>((o.keywords | o.aura_keywords).bits));
+                std::vector<int64_t> gear;
+                for (auto g : o.attachments)
+                    if (state_.objectExists(g))
+                        gear.push_back(static_cast<int64_t>(state_.getObject(g).card_def_id.raw()));
+                std::sort(gear.begin(), gear.end());
+                where.push_back(static_cast<int64_t>(gear.size()));
+                where.insert(where.end(), gear.begin(), gear.end());
+            };
+            if (seen_by_both && state_.objectExists(ci->source)) standing(ci->source);
+            if (ci->triggering_subject != ci->source) standing(ci->triggering_subject);
+            standing(ci->equipped_unit);
+        }
+        return std::make_tuple(std::move(text), fired, kw, std::move(where));
+    };
+    std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
+                          ChainItemId>> keyed;
+    for (auto id : ids) keyed.emplace_back(publicKey(id), id);
+    std::stable_sort(keyed.begin(), keyed.end(),
+                     [](const auto& x, const auto& y) { return x.first < y.first; });
+    std::vector<ChainItemId> canonical;
+    for (auto& [k, id] : keyed) canonical.push_back(id);
+    if (canonical != ids) placeInOrder(canonical);   // (most batches are already in order)
+    return canonical;
+}
+
 void GameEngine::orderPendingTriggers() {
     auto isPending = [](const ChainItem& ci) { return ci.status == ChainItemStatus::Pending; };
+    // Every batch still waiting is in an order of what the players see before
+    // anything is asked: a prompt met while finalizing an older item must not
+    // show the later batches in the order they were queued (batch 5d N1).
+    {
+        // (The oldest pending item's batch is ordered below; only later ones,
+        // rare, are put in order here.)
+        uint32_t oldest_batch = 0;
+        for (const auto& ci : state_.chain.items)
+            if (isPending(ci)) { oldest_batch = ci.trigger_batch; break; }
+        std::vector<uint32_t> waiting;
+        for (const auto& ci : state_.chain.items)
+            if (isPending(ci) && ci.trigger_batch != 0 && ci.trigger_batch != oldest_batch &&
+                !ci.batch_ordered &&
+                std::find(waiting.begin(), waiting.end(), ci.trigger_batch) == waiting.end())
+                waiting.push_back(ci.trigger_batch);
+        for (uint32_t b : waiting) {
+            std::vector<ChainItemId> members;
+            for (const auto& ci : state_.chain.items)
+                if (isPending(ci) && ci.trigger_batch == b) members.push_back(ci.id);
+            if (members.size() > 1) canonicalBatchOrder(members);
+        }
+    }
     const auto oldest = std::find_if(state_.chain.items.begin(), state_.chain.items.end(),
                                      isPending);
     if (oldest == state_.chain.items.end()) return;
@@ -1957,17 +2106,7 @@ void GameEngine::orderPendingTriggers() {
                a.triggering_subject == b.triggering_subject &&
                a.equipped_unit == b.equipped_unit && a.keyword_ability == b.keyword_ability;
     };
-    auto label = [this](const ChainItem& ci) {
-        std::string l = state_.objectExists(ci.source) ? state_.getObject(ci.source).name.get()
-                                                       : std::string("?");
-        if (ci.keyword_ability.has_value()) l += std::string(" [") + toString(*ci.keyword_ability) + "]";
-        if (ci.equipped_unit != kInvalidId && state_.objectExists(ci.equipped_unit))
-            l += " on " + state_.getObject(ci.equipped_unit).name;
-        else if (ci.triggering_subject != kInvalidId && ci.triggering_subject != ci.source &&
-                 state_.objectExists(ci.triggering_subject))
-            l += " (" + state_.getObject(ci.triggering_subject).name + ")";
-        return l;
-    };
+    auto label = [this](const ChainItem& ci) { return triggerOrderLabel(ci); };
 
     // Rewrite the batch's own places on the chain in the order of `order`.
     auto placeInOrder = [&](const std::vector<ChainItemId>& order) {
@@ -1982,57 +2121,8 @@ void GameEngine::orderPendingTriggers() {
         }
     };
     // The batch was queued in the object table's order, which follows object
-    // ids. Put it in an order of what both players see of each ability (its
-    // source's card where both may see it, what fired it), so that the chain
-    // and the order prompt's options do not depend on ids (batch 5b item T2);
-    // the order queued decides only between abilities nobody can tell apart.
-    {
-        auto publicKey = [&](ChainItemId id) {
-            const ChainItem* ci = itemOf(id);
-            std::string text;
-            int64_t fired = -1, kw = -1;
-            std::vector<int64_t> where;   // the source as both players see it
-            if (ci) {
-                const bool seen_by_both =
-                    knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
-                    knowledge::identityVisible(state_, ci->source, PlayerId::Player2);
-                if (seen_by_both) text = label(*ci);
-                fired = static_cast<int64_t>(ci->fired_trigger);
-                if (ci->keyword_ability.has_value())
-                    kw = static_cast<int64_t>(*ci->keyword_ability);
-                // Two copies of one card triggering together: told apart by
-                // where they are and how they stand, not by which was queued
-                // first (the table's order).
-                if (seen_by_both && state_.objectExists(ci->source)) {
-                    const GameObject& o = state_.getObject(ci->source);
-                    where.push_back(static_cast<int64_t>(o.zone.get()));
-                    if (!o.location.has_value()) {
-                        where.push_back(-1);
-                    } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
-                        where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
-                    } else {
-                        where.push_back(static_cast<int64_t>(
-                            std::get<BaseLocation>(*o.location).player));
-                    }
-                    where.push_back(o.current_might);
-                    where.push_back(o.damage_marked);
-                    where.push_back(o.is_exhausted);
-                    where.push_back(o.is_stunned);
-                    where.push_back(o.buff_count);
-                }
-            }
-            return std::make_tuple(std::move(text), fired, kw, std::move(where));
-        };
-        std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
-                              ChainItemId>> keyed;
-        for (auto id : ids) keyed.emplace_back(publicKey(id), id);
-        std::stable_sort(keyed.begin(), keyed.end(),
-                         [](const auto& x, const auto& y) { return x.first < y.first; });
-        std::vector<ChainItemId> canonical;
-        for (auto& [k, id] : keyed) canonical.push_back(id);
-        placeInOrder(canonical);
-        ids = canonical;
-    }
+    // ids: put it in an order of what both players see (canonicalBatchOrder).
+    ids = canonicalBatchOrder(ids);
 
     std::vector<ChainItemId> ordered;
     for (int pass = 0; pass < 2; ++pass) {
@@ -2065,7 +2155,7 @@ void GameEngine::orderPendingTriggers() {
                 o.choice_label = "Order — " + label(*itemOf(distinct[k]));
                 options.push_back(std::move(o));
             }
-            const Intent chosen = decideNow(who, options,
+            const Intent chosen = decideNow(who, options, PromptKind::TriggerOrder, kInvalidId,
                 "order simultaneous abilities: which goes on the chain next "
                 "(it resolves after the ones chosen later)");
             size_t k = static_cast<size_t>(std::max(0, chosen.chosen_value.value_or(0)));
@@ -2126,7 +2216,7 @@ bool GameEngine::accelerateAvailable(PlayerId player, GameObjectId card_id,
 }
 
 std::optional<std::pair<int, int>> GameEngine::chooseAccelerateHalf(
-    PlayerId player, const std::function<bool(int energy, int power)>& payable) {
+    PlayerId player, const std::function<bool(int energy, int power)>& payable, GameObjectId card) {
     // [Accelerate] is an Optional Additional Cost (CR 805.1): "optional
     // additional costs you pay cost [1] or [A] less" applies to it (CR
     // 356.4.c, 356.4.f; Card::optionalCostDiscount), the payer choosing the
@@ -2141,8 +2231,8 @@ std::optional<std::pair<int, int>> GameEngine::chooseAccelerateHalf(
         Intent e; e.type = IntentType::MakeChoice; e.player = player;
         e.chosen_value = 0; e.choice_label = "cost [1] less";
         Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
-        const bool pf = decideNow(player, {e, pw},
-            "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
+        const bool pf = decideNow(player, {e, pw}, PromptKind::CostSplit, card,
+            "[Accelerate]: [1] or [A] less").chosen_value.value_or(0) == 1;
         return pf ? p_first : e_first;
     }
     return e_ok ? e_first : p_first;
@@ -2163,7 +2253,7 @@ bool GameEngine::askAccelerate(PlayerId player, const GameObject& card) {
                      (card.domains.empty() ? std::string("A")
                                            : std::string(toString(card.domains.front()))) +
                      "] for Accelerate on " + card.name + "? [decline|pay] [2 options]");
-    auto chosen = askAgent(player, opts);
+    auto chosen = askAgent(player, opts, enginePrompt(player, PromptKind::Accelerate, card.id));
     if (on_decision) on_decision(state_, opts, chosen);
     return chosen.chosen_value.value_or(0) == 1;
 }
@@ -2201,7 +2291,7 @@ Card::PlayCostAdjust GameEngine::decideAccelerate(PlayerId player, GameObjectId 
         RIFT_TRACE(events_, "ACCELERATE: " + state_.getObject(card_id).name + " declined");
         return prepay;
     }
-    const auto half = chooseAccelerateHalf(player, payable);
+    const auto half = chooseAccelerateHalf(player, payable, card_id);
     auto& again = state_.getObject(card_id);
     if (!half.has_value()) return prepay;   // (judged payable just above)
     RIFT_TRACE(events_, "ACCELERATE: " + again.name + " pays [" + std::to_string(half->first) +
@@ -2234,7 +2324,7 @@ bool GameEngine::offerAccelerateOnItsOwn(PlayerId player, GameObjectId card_id, 
         RIFT_TRACE(events_, "ACCELERATE: " + card.name + " declined");
         return false;
     }
-    const auto half = chooseAccelerateHalf(player, payable);
+    const auto half = chooseAccelerateHalf(player, payable, card_id);
     if (!half.has_value()) return false;
     if (!effect_executor_->payResources(player, half->first, half->second, mask, SpendFor::Unit))
         return false;
@@ -2379,6 +2469,7 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
         // no item "resolving", no prompt pending — so the state a caller
         // inspects afterwards is a consistent one.
         if (answer) {
+            finalize_prompt_seen_ = pending.askedPrompt({});   // for a scripted pass
             auto given = (*answer)(asked++, pending.player, pending.legal);
             if (!given.has_value()) {
                 // Stopped here: the item as far as it got.
@@ -2392,12 +2483,12 @@ ChainItem GameEngine::collectFinalizeChoices(ChainItem item, const FinalizeAnswe
             continue;
         }
         try {
-            const EffectExecutor::Asking named(*effect_executor_, pending.label.empty()
-                ? (state_.chain.resuming.has_value() &&
-                   state_.objectExists(state_.chain.resuming->source)
-                       ? state_.getObject(state_.chain.resuming->source).name + ": a choice"
-                       : std::string("a choice"))
-                : pending.label);
+            const EffectExecutor::Asking named(*effect_executor_, pending.askedPrompt(
+                pending.label.empty() &&
+                        state_.chain.resuming.has_value() &&
+                        state_.objectExists(state_.chain.resuming->source)
+                    ? state_.getObject(state_.chain.resuming->source).name + ": a choice"
+                    : std::string("a choice")));
             Intent choice = queryAgentForChain(pending.player, pending.legal);
             effect_executor_->recordChoice(std::move(choice));
         } catch (...) {
@@ -2498,6 +2589,7 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
             aps.abilities_activated_this_turn++;
             aps.gear_abilities_activated_this_turn++;
             CardContext equip_ctx{state_, events_, *effect_executor_, player, source_id};
+            const EffectExecutor::ActingFor acting(*effect_executor_, source_id);
             equip_ctx.registry = &card_registry_;
             if (!gear_card->payEquip(equip_ctx, unit, terms))
                 throw std::logic_error("GameEngine::payAndQueueAbility: the Equip of " +
@@ -2690,8 +2782,8 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
                     o.chosen_objects = {hid};
                     options.push_back(std::move(o));
                 }
-                const Intent chosen = decideNow(player, options,
-                                                "choose a card to discard (cost)");
+                const Intent chosen = decideNow(player, options, PromptKind::DiscardCost,
+                                                source_id, "choose a card to discard (cost)");
                 GameObjectId pick = matching.front();
                 if (!chosen.chosen_objects.empty() &&
                     std::find(matching.begin(), matching.end(),
@@ -2803,9 +2895,13 @@ void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state
                 }
                 if (!viable.empty()) options = std::move(viable);
             }
-            Intent choice = events_.quiet() || options.size() == 1
-                ? options.front()
-                : queryAgentForChain(pending.player, options);
+            Intent choice = options.front();
+            if (!events_.quiet() && options.size() > 1) {
+                // The [Add] ability's own question (Ancient Henge's X), not
+                // the payment's that activated it.
+                const EffectExecutor::Asking named(*effect_executor_, pending.askedPrompt({}));
+                choice = queryAgentForChain(pending.player, options);
+            }
             effect_executor_->recordChoice(std::move(choice));
         }
     } catch (...) {
@@ -2816,9 +2912,7 @@ void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state
     const ChainItem done = std::move(*state_.chain.resuming);
     state_.chain.resuming.reset();
     if (outer.has_value()) state_.chain.resuming = std::move(*outer);
-    if (outer_prompt.has_value())
-        effect_executor_->requestChoice(outer_prompt->player, std::move(outer_prompt->legal),
-                                        std::move(outer_prompt->label));
+    if (outer_prompt.has_value()) effect_executor_->restorePendingChoice(std::move(*outer_prompt));
     events_.emit(ChainItemResolvedEvent{done.id, done.source, done.controller});
 }
 
@@ -2910,9 +3004,7 @@ bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameS
         }
         if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
     }
-    if (prompt.has_value())
-        effect_executor_->requestChoice(prompt->player, std::move(prompt->legal),
-                                        std::move(prompt->label));
+    if (prompt.has_value()) effect_executor_->restorePendingChoice(std::move(*prompt));
     return ok;
 }
 
@@ -3013,6 +3105,7 @@ Card::PlayCostAdjust GameEngine::payAdditionalPlayCosts(PlayerId player, GameObj
     const auto addl = cc->additionalPlayCost(state_, card_db_, player, card_id);
     if (!addl.exists || !addl.payable) return {};
     CardContext ctx{state_, events_, *effect_executor_, player, card_id};
+    const EffectExecutor::ActingFor acting(*effect_executor_, card_id);
     ctx.registry = &card_registry_;
     const auto adj = cc->payAdditionalPlayCost(ctx, [&](const Card::PlayCostAdjust& a) {
         return canAffordWith(player, card_id, extra_any_power, a);
@@ -3142,6 +3235,7 @@ GameEngine::ScriptedPass GameEngine::runScriptedPassHere(const ChainItem& pre,
         if (stop_after_script) {
             out.next_options = legal;
             out.next_player = p;
+            out.next_prompt = finalize_prompt_seen_;
             return std::nullopt;
         }
         if (legal.empty()) { dead = true; return std::nullopt; }
@@ -3312,9 +3406,13 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
                          std::to_string(offered.size()) + " of " +
                          std::to_string(options.size()) + " options keep the spell payable] (" +
                          toString(asked_player) + ")");
-        const EffectExecutor::Asking named(*effect_executor_,
-            (state_.objectExists(pre.source) ? state_.getObject(pre.source).name : std::string("?")) +
-            ": a choice made as it is played");
+        Prompt asked = std::move(at.next_prompt);
+        if (asked.question.empty())
+            asked.question =
+                (state_.objectExists(pre.source) ? state_.getObject(pre.source).name
+                                                 : std::string("?")) +
+                ": a choice made as it is played";
+        const EffectExecutor::Asking named(*effect_executor_, std::move(asked));
         const Intent chosen = queryAgentForChain(asked_player, offered);
         int picked = viable.front();
         for (size_t v = 0; v < offered.size(); ++v)
@@ -3548,6 +3646,7 @@ void GameEngine::executePlayCard(const Intent& intent) {
         if (Card* card_obj = card_registry_.get(card.card_def_id)) {
             CardContext on_play_ctx{state_, events_, *effect_executor_,
                                      intent.player, intent.card};
+            const EffectExecutor::ActingFor acting(*effect_executor_, intent.card);
             card_obj->onPlay(on_play_ctx);
         }
     }
@@ -3561,6 +3660,13 @@ void GameEngine::executePlayCard(const Intent& intent) {
 // See the header. Shared by a play from hand (executePlaySpell) and an
 // effect play that pays (EffectExecutor::playPayingCost, via the play-cost
 // hook): either way the choices come before the cost (CR 355 -> 356).
+namespace {
+// Defined with generateSpellActions below.
+std::vector<std::vector<GameObjectId>> spellTargetSets(
+    const Card* card, const GameState& state, PlayerId player,
+    const TargetRequirements& req, const std::vector<GameObjectId>& legal);
+}  // namespace
+
 bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                                           bool via_trash_grant, bool by_effect,
                                           std::vector<GameObjectId>& play_targets,
@@ -3614,7 +3720,7 @@ bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                     i.chosen_objects = {t};
                     options.push_back(std::move(i));
                 }
-                const Intent chosen = decideNow(player, options,
+                const Intent chosen = decideNow(player, options, PromptKind::Target, card_id,
                                                 "choose a target for " + card.name);
                 GameObjectId t = legal.front();
                 if (!chosen.chosen_objects.empty() &&
@@ -3626,6 +3732,49 @@ bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                 RIFT_TRACE(events_, "TARGET (play): " + card.name + " -> " +
                                  state_.getObject(t).name);
             }
+        }
+        // Played by an effect, a spell whose play intent names two or more
+        // targets (and that asks none of them itself: no pair helper, no
+        // finalize pass) has no intent to name them: the whole set is asked
+        // here, as the hand play offers it (spellTargetSets: an "up to N" set
+        // may be empty, CR 355.13), among the sets it can be paid for with
+        // (testing phase M3: Singularity, Deathgrip, Smoke and Mirrors,
+        // Piercing Light played by Fizz, Void Rush, ...).
+        const bool sets_from_intent =
+            by_effect && sc && !sc->needsPlayTimeTarget() && !sc->needsPlayTimeTargetPair() &&
+            req.count > 1 && !(sc->choicesAtFinalization() & Card::kFinalizeResolve);
+        if (sets_from_intent && play_targets.empty()) {
+            const PlayerState::TrashReplayGrant* grant =
+                via_trash_grant ? trashGrantFor(player, card_id) : nullptr;
+            std::vector<std::vector<GameObjectId>> sets;
+            for (auto& set : spellTargetSets(sc, state_, player, req,
+                                             sc->enumerateLegalTargets(state_, player)))
+                if (!set.empty() && (grant ? canPayTrashGrant(player, card_id, *grant, set)
+                                           : canAffordChoosing(player, card_id, set)))
+                    sets.push_back(std::move(set));
+            if (sets.empty() && !req.optional) return false;   // CR 355.8
+            std::vector<Intent> options;
+            for (const auto& set : sets) {
+                Intent i;
+                i.type = IntentType::MakeChoice;
+                i.player = player;
+                i.chosen_objects = set;
+                options.push_back(std::move(i));
+            }
+            if (req.optional) {
+                Intent none;
+                none.type = IntentType::MakeChoice;
+                none.player = player;
+                none.chosen_value = 0;
+                none.choice_label = "No target";
+                options.push_back(std::move(none));
+            }
+            // Asked even with one set, as every play-time target is.
+            const Intent chosen = decideNow(player, options, PromptKind::Target, card_id,
+                                            "choose the targets for " + card.name);
+            play_targets = chosen.chosen_objects;
+            RIFT_TRACE(events_, "TARGETS (play): " + card.name + " -> " +
+                                 std::to_string(play_targets.size()) + " target(s)");
         }
     }
 
@@ -3895,6 +4044,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
                 if (addl.exists && addl.payable) {
                     CardContext pctx{state_, events_, *effect_executor_,
                                      intent.player, intent.card};
+                    const EffectExecutor::ActingFor acting(*effect_executor_, intent.card);
                     pctx.registry = &card_registry_;
                     prepay = sc->payAdditionalPlayCost(pctx,
                         [&](const Card::PlayCostAdjust& a) {
@@ -3921,7 +4071,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
                 Intent e; e.type = IntentType::MakeChoice; e.player = intent.player;
                 e.chosen_value = 0; e.choice_label = "cost [1] less";
                 Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
-                take_power = decideNow(intent.player, {e, pw},
+                take_power = decideNow(intent.player, {e, pw}, PromptKind::CostSplit, intent.card,
                     "discount for " + card.name + ": [1] or [A] less").chosen_value.value_or(0) == 1;
             }
             if (take_power) total = plus(prepay, disc_power);
@@ -3998,10 +4148,12 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
                          " (" + toString(intent.player) + "): "
                          "pay Repeat tranche " + std::to_string(repeats + 1) +
                          " for " + card.name + "? [decline|pay] [2 options]");
-        auto chosen = askAgent(intent.player, opts);
+        auto chosen = askAgent(intent.player, opts,
+                               enginePrompt(intent.player, PromptKind::Repeat, card.id));
         if (on_decision) on_decision(state_, opts, chosen);
         if (chosen.chosen_value.value_or(0) != 1) continue;
-        if (!payOptionalCost(intent.player, rc.energy, rc.power, rc.domains, SpendFor::Spell))
+        if (!payOptionalCost(intent.player, rc.energy, rc.power, rc.domains, SpendFor::Spell,
+                             intent.card, "[Repeat]"))
             continue;
         if (rc.discard_cards > 0)
             effect_executor_->discardCards(intent.player, rc.discard_cards);
@@ -4383,6 +4535,8 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // Read before asking: the name lives only while the prompt does.
     const std::string asked = effect_executor_ ? effect_executor_->asking() : std::string();
     auto chosen = askAgent(player, actions,
+        is_priority ? enginePrompt(player, PromptKind::ChainPriority)
+                    : (effect_executor_ ? effect_executor_->askingPrompt() : Prompt{}),
         is_priority ? PendingQuery::ChainPriority : PendingQuery::None);
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
@@ -4460,7 +4614,7 @@ void GameEngine::executeStandardMove(const Intent& intent) {
                 join.chosen_objects = {uid};
                 options.push_back(std::move(join));
             }
-            const Intent chosen = decideNow(intent.player, options,
+            const Intent chosen = decideNow(intent.player, options, PromptKind::MoveJoin, kInvalidId,
                 tax > 0 ? "move another unit with this move (pay " + std::to_string(tax) + " [A])"
                         : std::string("move another unit with this move"));
             if (chosen.chosen_objects.empty() ||
@@ -4585,6 +4739,10 @@ void GameEngine::executeMulligan(const Intent& intent) {
     // Recycle set-aside cards to bottom of deck in random order (CR 118.3)
     // The owner knows which cards went down, not their order; the opponent
     // knows only how many.
+    // Shuffled from an order of the cards, not of their ids (batch 5d N1).
+    std::stable_sort(set_aside.begin(), set_aside.end(), [&](GameObjectId a, GameObjectId b) {
+        return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+    });
     std::shuffle(set_aside.begin(), set_aside.end(), rng_);
     std::vector<deck::Placed> placed;
     for (auto card_id : set_aside) {
@@ -4770,7 +4928,7 @@ void GameEngine::executeHideCard(const Intent& intent) {
             en.choice_label = "pay [" + std::to_string(hide_cost.energy) + "]";
             // (The prompt's header is a line both players read: it names no
             // card, the one being hidden is in the player's hand — D11.)
-            pay_energy = decideNow(intent.player, {pw, en},
+            pay_energy = decideNow(intent.player, {pw, en}, PromptKind::CostSplit, intent.card,
                 "Hide cost").chosen_value.value_or(0) == 1;
         }
         if (pay_energy)
@@ -6427,7 +6585,9 @@ void GameEngine::runShowdownLoop(BattlefieldId bf_id) {
         if (adv.kind == ShowdownAdvance::Kind::Done) return;
 
         state_.decision_index++;
-        auto chosen = askAgent(current_focus, adv.legal, PendingQuery::Showdown);
+        auto chosen = askAgent(current_focus, adv.legal,
+                               enginePrompt(current_focus, PromptKind::ShowdownFocus),
+                               PendingQuery::Showdown);
         if (on_decision) {
             on_decision(state_, adv.legal, chosen);
         }
@@ -6653,7 +6813,7 @@ std::optional<Intent> GameEngine::assignCombatDamage(PlayerId assigner, int tota
     if (adv.kind == CombatDamageAdvance::Kind::Skip) return std::nullopt;
     if (adv.kind == CombatDamageAdvance::Kind::NeedDecision) {
         state_.decision_index++;
-        auto chosen = askAgent(assigner, adv.legal);
+        auto chosen = askAgent(assigner, adv.legal, enginePrompt(assigner, PromptKind::CombatDamage));
         if (on_decision) on_decision(state_, adv.legal, chosen);
         return chosen;
     }
@@ -6692,7 +6852,8 @@ std::optional<Intent> GameEngine::assignCombatDamage(PlayerId assigner, int tota
             RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                              " (" + toString(assigner) + "): combat damage, which unit next [" +
                              std::to_string(options.size()) + " options]");
-            const Intent chosen = askAgent(assigner, options);
+            const Intent chosen =
+                askAgent(assigner, options, enginePrompt(assigner, PromptKind::CombatDamageNext));
             if (on_decision) on_decision(state_, options, chosen);
             if (state_.game_over) return std::nullopt;   // a concession
             for (auto k : open)
@@ -8224,8 +8385,13 @@ void GameEngine::processLethalDamage() {
             RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
         to_kill.push_back(id);
     }
-    // They die at the same time: each one's last-known information is taken
-    // while all of them are still on the board.
+    // They die at the same time; the engine kills them one after another, in
+    // an order of what the players see (they are on the board), not in the
+    // object table's: which dies "first" decides what the others' abilities
+    // see as they leave (batch 5d N1; the trash order is the batch's,
+    // endDeathBatch). Each one's last-known information is taken while all of
+    // them are still on the board.
+    if (to_kill.size() > 1) openspiel::sortObjectsAsSeen(state_, to_kill, state_.turn.turn_player);
     const DeathBatchMark batch = effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);
@@ -8483,6 +8649,7 @@ void GameEngine::shuffleDeck(PlayerId player) {
 void GameEngine::shuffleRuneDeck(PlayerId player) {
     auto& deck = state_.player(player).rune_deck;
     std::shuffle(deck.begin(), deck.end(), rng_);
+    knowledge::runeDeckShuffled(state_, player);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -8552,7 +8719,8 @@ bool GameEngine::canPayOptionalCost(PlayerId player, int energy, int power,
 }
 
 bool GameEngine::payOptionalCost(PlayerId player, int energy, int power,
-                                 resource::DomainMask domains, SpendFor spend_for) {
+                                 resource::DomainMask domains, SpendFor spend_for,
+                                 GameObjectId source, const char* what) {
     const int disc = optionalCostDiscount(player);
     const auto e_first = afterEitherDiscount(std::max(0, energy), std::max(0, power), disc, false);
     const auto p_first = afterEitherDiscount(std::max(0, energy), std::max(0, power), disc, true);
@@ -8567,8 +8735,8 @@ bool GameEngine::payOptionalCost(PlayerId player, int energy, int power,
         Intent e; e.type = IntentType::MakeChoice; e.player = player;
         e.chosen_value = 0; e.choice_label = "cost [1] less";
         Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
-        power_first = decideNow(player, {e, pw},
-            "optional additional cost: [1] or [A] less").chosen_value.value_or(0) == 1;
+        power_first = decideNow(player, {e, pw}, PromptKind::CostSplit, source,
+            std::string(what) + ": [1] or [A] less").chosen_value.value_or(0) == 1;
     }
     const auto net = power_first ? p_first : e_first;
     return effect_executor_->payResources(player, net.first, net.second, domains, spend_for);
@@ -8595,13 +8763,17 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
         if (static_cast<int>(state_.player(player).hand.size()) < cost.discard_cards) return;
         Intent no;  no.type  = IntentType::MakeChoice; no.player  = player; no.chosen_value  = 0;
         Intent yes; yes.type = IntentType::MakeChoice; yes.player = player; yes.chosen_value = 1;
+        no.declines = true;   // the "no" of a yes/no (Intent::declines; testing phase T1)
         std::vector<Intent> dopts = {no, yes};
         state_.decision_index++;
         RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
                          toString(player) + "): discard " +
                          std::to_string(cost.discard_cards) + " as additional cost for " +
                          card.name + "? [decline|pay] [2 options]");
-        auto dchosen = askAgent(player, dopts);
+        auto dchosen = askAgent(player, dopts,
+                                enginePrompt(player, PromptKind::AdditionalCost, card_id,
+                                             "discard " + std::to_string(cost.discard_cards) +
+                                                 " as an additional cost"));
         if (on_decision) on_decision(state_, dopts, dchosen);
         if (dchosen.chosen_value.value_or(0) == 1) {
             effect_executor_->discardCards(player, cost.discard_cards);
@@ -8640,7 +8812,8 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
         } quiet(events_);
         state_ = parked.game;
         forgetCleanupFacts();
-        payOptionalCost(player, cost.energy, cost.power, domains, spend_for);
+        payOptionalCost(player, cost.energy, cost.power, domains, spend_for, card_id,
+                        "optional additional cost");
         if (!base.ignore_cost && !canAffordWith(player, card_id, extra_any_power, base)) return;
     }
 
@@ -8653,11 +8826,12 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): pay additional cost for " + card.name +
                      "? [decline|pay] [2 options]");
-    auto chosen = askAgent(player, opts);
+    auto chosen = askAgent(player, opts, enginePrompt(player, PromptKind::AdditionalCost, card_id));
     if (on_decision) on_decision(state_, opts, chosen);
 
     if (chosen.chosen_value.value_or(0) == 1) {
-        payOptionalCost(player, cost.energy, cost.power, domains, spend_for);
+        payOptionalCost(player, cost.energy, cost.power, domains, spend_for, card_id,
+                        "optional additional cost");
         if (cost.paid_flag && cost.paid_flag[0] != '\0') {
             card.card_counters[cost.paid_flag] = 1;
         }
@@ -9196,6 +9370,7 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
         rune.zone = ZoneType::RuneDeck;
         state_.player(cur.player).rune_deck.insert(
             state_.player(cur.player).rune_deck.begin(), rune_id);
+        knowledge::runeToBottom(state_, rune_id, knowledge::everyone());   // a public rune (T4)
         events_.emit(LeftBoardEvent{rune_id, cur.player, CardType::Rune,
             base_loc, ZoneType::RuneDeck, false});
         forgetBoardState(state_.getObject(rune_id), nullptr);
@@ -9346,7 +9521,13 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
         // returns the only option for trivial cases; HumanAgent
         // auto-passes without surfacing UI, so the player UX is
         // unchanged. The win is training fidelity.
-        auto chosen = askAgent(player, adv.legal);
+        auto chosen = askAgent(player, adv.legal,
+            enginePrompt(player,
+                         state_.cost_cursor->phase ==
+                                 GameState::CostPaymentCursor::Phase::PayingEnergy
+                             ? PromptKind::RuneForEnergy
+                             : PromptKind::RuneForPower,
+                         card_obj));
         if (on_decision) on_decision(state_, adv.legal, chosen);
         adv = resolveCostPaymentDecision(chosen);
     }
@@ -9571,9 +9752,23 @@ void GameEngine::noteEditWhileParked() {
     for (auto id : ids) parked_refs_.push_back(parkedRefOf(id));
 }
 
-Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
+Prompt GameEngine::enginePrompt(PlayerId decider, PromptKind kind, GameObjectId source,
+                                std::string question, std::source_location where) const {
+    Prompt p = effect_executor_
+        ? effect_executor_->promptHere(decider, kind, std::move(question), where)
+        : Prompt{};
+    p.kind = kind;
+    p.decider = decider;
+    if (source != kInvalidId) p.source = source;
+    p.where = where;
+    return p;
+}
+
+Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                             PendingQuery kind) {
     pending_query_ = kind;
+    prompt.decider = player;
+    parked_prompt_ = std::move(prompt);
     pending_query_player_ = player;
     parked_legal_ = &legal;
     edited_while_parked_ = false;
@@ -9582,6 +9777,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
         ~Unpark() {
             e.parked_legal_ = nullptr;
             e.pending_query_ = PendingQuery::None;
+            e.parked_prompt_.kind = PromptKind::Unspecified;
         }
     } unpark{*this};
 
@@ -9624,7 +9820,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
         }
     }
 
-    Intent chosen = getAgent(player).selectAction(state_, legal);
+    Intent chosen = getAgent(player).decide(state_, legal, parked_prompt_);
     parked_legal_ = nullptr;
     // (A card's prompt: priority and Focus decisions are the chance to break
     // a loop, not what keeps one going — TR 505.3 against 505.5.)
@@ -9686,7 +9882,8 @@ Intent GameEngine::queryAgent(PlayerId player, std::vector<Intent> actions) {
                      std::to_string(actions.size()) + " legal actions",
                      "DECISION (" + std::string(toString(player)) + ")");
 
-    auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
+    auto chosen = askAgent(player, actions, enginePrompt(player, PromptKind::MainPhase),
+                           PendingQuery::MainPhase);
 
     // Whether the choice names a card the other player may not know.
     const auto names_hidden = [&] {

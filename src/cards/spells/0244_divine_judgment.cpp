@@ -79,7 +79,7 @@ public:
                 }
             // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(p, std::move(options),
-                std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep");
+                std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep", PromptKind::ChooseObject);
             ri.resume_point = kAwait;
             return;
         }

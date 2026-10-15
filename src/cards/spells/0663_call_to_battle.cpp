@@ -145,7 +145,7 @@ public:
         slot(kBfSlot) = static_cast<int32_t>(dest.raw());
         // CR 355.10.e: chosen by the other player, as the spell resolves.
         ctx.executor.requestChoice(opp, std::move(opts),
-                                   "Call to Battle: move a unit you control to that battlefield");
+                                   "Call to Battle: move a unit you control to that battlefield", PromptKind::ChooseObject);
     }
 private:
     const CardDef def_ = [] {

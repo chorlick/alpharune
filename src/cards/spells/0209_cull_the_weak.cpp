@@ -65,7 +65,7 @@ public:
             for (auto id : units) options.push_back(objChoice(players[who], id));
             // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(players[who], std::move(options),
-                                       "Cull the Weak: kill one of your units");
+                                       "Cull the Weak: kill one of your units", PromptKind::ChooseObject);
             ri.resume_point = who == 0 ? kAwaitCaster : kAwaitOpponent;
             return;
         }

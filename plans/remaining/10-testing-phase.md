@@ -38,12 +38,9 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Batch 5 — Trainer-facing engine work (owner, 2026-10-14: settled before v6 starts; trainer plan `../riftbound-trainer/plans/README.md` section 0)
 
-- [ ] **T1** What a decision asks: every prompt carries a description — who asks, which card and ability (`ChainItem` / source), the kind of question (may / mode / X / target / cost / order / rune / location ...), and what each option means — exposed on `StepResult` and the decision API; a `MakeChoice` is no longer a bare integer to an observer. Covers every helper (`confirmOptional`, `pickMode`, `pickXAmount`, `pickTarget`, `pickTargetPair`, `selectSeveral`, `splitDamageAmong`, `confirmNow`, `chooseObjectNow`, engine prompts). Test: every prompt of every decision of a few hundred random and `random-player` games has a description, and two prompts with different meaning never share one — serious (trainer item 8)
-- [ ] **T4** Completeness of the observation: list every fact a player may know (trainer plan section 2) and check each reaches the observation (knowledge tracker, known top/bottom runes per observer, revealed cards still in a hand, public zones up to a whole deck); the reverse of the leak test: two states that differ in a fact the observer may know give different observations — trainer items 10, 14
 
 ## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
 
-- [ ] **T6** Derived facts as exact inputs (owner discussion, 2026-10-14: what the engine computes the network should not have to re-derive, and what a player could infer about hidden cards must be available): expose to the observation, per observer — effective Might and keywords after continuous effects, damage and lethal-on-board, combat designations and the combat in progress, each player's spendable resources (ready runes, floating Energy / Power, restricted pools) and the open timing window, and the opponent's legal card pool (cards of their legend's Domains, released sets, no banned card, minus copies already seen beyond the copy limit). Test: each fact matches what the engine itself uses for its rules on every decision of a few hundred games — trainer items 8-10
 
 ## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
 
@@ -56,13 +53,11 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 5b (2026-10-15, `plans/reports/batch-5b.md` section 7; N2, N3 are T1's)
 
-- [ ] **N1** (batch 5c) The engine handles some simultaneous things in object-table (id) order: under other id labels 110 of 300 game pairs become different games (which identical rune pays, the order cards enter a deck together, ...). Not a leak (ids are random now); a determinism and test-coverage issue: order such ties by what the players see, or by the rules' order — CODE-ONLY
+N1, N2, N3 closed by batch 5d.
+
 
 ## Found by batch 3 (2026-10-15, `plans/reports/batch-3.md` section 10)
 
-- [ ] **M2** X-cost activated abilities and "pay [X]" effects do not count [Add] abilities when they work out the largest X the player can pay (Hextech Anomaly, Ancient Henge, Bullet Time's `max_x`): the payment itself can use them (CR 357.1.a, `addForPayment`), so an X the player could reach is not offered — CODE-ONLY
-- [ ] **M3** A spell whose play intent names two or more targets and that has no pair helper or finalize pass (Singularity, Deathgrip, Smoke and Mirrors, Piercing Light: `getTargetRequirements` count > 1) gets no targets when an effect plays it (Fizz, Void Rush, Void Burrower, Wild Claw, Temporal Breach's kin): the effect-play path asks one play-time target or a spell's one intent target (G16 / D32 / D57), and `chooseFirstExecution` asks nothing for these, so the spell resolves with none. Ask them as for a hand play (`spellTargetSets`), or give the cards a pass — CODE-ONLY
-- [ ] **M4** Thrill of the Hunt ("Banish a friendly unit, then its owner plays it to any battlefield"): with a unit its controller does not own, the spell's controller picks the battlefield and the owner plays it there; check whether the owner, who plays it, chooses the battlefield (CR 355.2.a) — QUESTION if the text does not settle it
 - [ ] **M5** (batch 6 — now a DEFECT, not a convention: batch M1 found CR 420.3.b.1-420.3.b.2, "checked on finalization of the resulting Game Object", which happens as the effect resolves; the engine settles an effect play's location at the ability's own finalization instead) (was: convention, question if the owner wants one) An ability's effect play of a token or a card settles its location at finalization (Flame Chompers, Immortal Phoenix, Soulgorger, Herald of the Arcane, Zed after B5); CR 185.2.a ("tokens ... played ... following all the applicable steps for playing a card") can be read as the play's own 355.2 choice, at resolution. One judge question for the whole convention if the owner wants it settled — QUESTION (convention). Batch M1 found the rule that settles it: CR 420.3.b.1-420.3.b.2 say the play locations an effect names are "checked on finalization of the resulting Game Object" (the examples: a unit played to "an enemy occupied battlefield", Rek'Sai's "here"). That means they are chosen as the played card or token is finalized, during the resolution. The 23 spells and abilities batch M1 read do it that way; the abilities listed above settle the location at their own finalization, which the rule does not support
 
 
@@ -108,3 +103,8 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **P1** (owner decision on scope) Throughput is still 14% short of the pre-batch-1 rate per decision (187k against 218k decisions/s). What is left, by size: the Cleanup after every chain step (27%; 94% change nothing, but skipping a pass needs write tracking of the ~100 fields aura hooks read — a project); signals2 dispatch (17%, about 6% the library's own machinery; reworking the bus was ruled out earlier by the owner); allocation (13%: `Intent` holds 7 vectors — small-vector storage would cut most per-decision allocations); a `GameState` copy per pre-play probe and optional cost (2.7%, and the main cost of search, where every node copies); `refreshFlowGrants` reading every trash card each pass (2.9%); `canAffordWith` walking base runes per card per generation (3%) — perf
 
 - [ ] **R15** (batch 6) `src/openspiel/clone_breakdown.cpp:51`: `-Wmismatched-new-delete` warning in our code (pre-existing; seen when building `all`) — CODE-ONLY
+
+## Found by batch 5d (2026-10-15, `plans/reports/batch-5d.md` section 8)
+
+- [ ] **Q1** (N1 tail) Under other object ids 1 to 3 game pairs in 300 still become other games (the relabelled test allows 1 in 50): cards returned to a hand together enter it in the order the effect listed them; two Zero Drives triggering for one death track the banished unit by trigger order; an effect that buffed one of several identical tokens. Each is a list a card builds in id order — CODE-ONLY
+- [ ] **Q2** (perf) Batch 5d costs +1.9% instructions on the throughput benchmark (T1's prompt carried at every decision: +0.7% on identical games; the rest the N1 orderings and other games); wall -2.6% at load 3.1-3.7 — perf

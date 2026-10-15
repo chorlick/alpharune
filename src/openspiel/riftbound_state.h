@@ -45,6 +45,7 @@
 #include "core/events.h"
 #include "core/game_state.h"
 #include "engine/game_engine.h"
+#include "engine/prompt_description.h"
 
 #include <functional>
 #include <memory>
@@ -226,6 +227,18 @@ public:
         if (lazy_) return lazy_->step.legal;
         return engine_->currentStep().legal;
     }
+
+    /// What the pending decision asks (testing phase T1, core/prompt.h). Holds
+    /// object ids: not for a model. Kind Unspecified when the game is over.
+    const ::riftbound::Prompt& decisionPrompt() const {
+        if (lazy_) return lazy_->step.prompt;
+        return engine_->currentStep().prompt;
+    }
+    /// What `player` may be shown of the pending decision's question
+    /// (describePrompt): for the decider its words and its options in
+    /// action-id order (each with its OpenSpiel action id), for the other
+    /// player who decides what.
+    ::riftbound::PromptDescription describeDecision(::open_spiel::Player player) const;
 
     /// Read the resolved engine seed (whether set explicitly or chosen
     /// randomly when the Game's seed param is 0). Lets the replay

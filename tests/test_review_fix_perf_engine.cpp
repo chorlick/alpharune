@@ -2726,10 +2726,11 @@ TEST_F(PerfEngineRuneDeck, TheOrderOfARuneDeckIsInNoObservationOrInfoSetId) {
 
 // The Hatchling look and Twisted Fate's reveal, through the engine: the rune
 // is named on one line only, readable by the player who looked; no public
-// line names the rune that was looked at and recycled; and afterwards the
-// knowledge view says "unknown" about every rune in the deck, for both
-// players (a look and a reveal are not recorded for a Rune Deck).
-TEST_F(PerfEngineRuneDeck, TheLookIsPrivateAndNothingAboutTheRuneDeckIsRecorded) {
+// line names the rune that was looked at and recycled; and afterwards each
+// player knows of the Rune Deck what it was shown (batch 5d T4; before, the
+// tracker recorded nothing for a Rune Deck): the revealed rune at the bottom
+// to both, the rune looked at and recycled to the looker only, one above it.
+TEST_F(PerfEngineRuneDeck, TheLookIsPrivateAndEachPlayerKnowsWhatItWasShownOfTheRuneDeck) {
     addUnit(P1, kVoidHatchling, 0, -1);
     const GameObjectId tf = addUnit(P1, 200 /* Twisted Fate, Gambler */, 0, 0);
     addToDeck(P1, kShipyardSkulker);
@@ -2775,11 +2776,19 @@ TEST_F(PerfEngineRuneDeck, TheLookIsPrivateAndNothingAboutTheRuneDeckIsRecorded)
         knowledge::GameKnowledgeView view(state, observer);
         for (GameObjectId rune : {calm, below, top}) {
             const CardKnowledge k = view.about(rune);
-            EXPECT_FALSE(k.identity_known) << toString(observer) << " / " << o(rune).name;
+            const bool shown = rune == below || (rune == top && observer == P1);
+            EXPECT_EQ(k.identity_known, shown) << toString(observer) << " / " << o(rune).name;
             EXPECT_EQ(k.last_known_zone, ZoneType::RuneDeck);
         }
-        EXPECT_TRUE(view.knownDeckTop(P1).empty());
+        EXPECT_TRUE(view.knownDeckTop(P1).empty()) << "nothing of the Main Deck";
         EXPECT_TRUE(view.knownDeckBottom(P1).empty());
+        const auto bottom = view.knownRuneDeckBottom(P1);
+        ASSERT_EQ(bottom.size(), observer == P1 ? 2u : 1u) << toString(observer);
+        EXPECT_EQ(bottom[0].object, below);
+        if (observer == P1) {
+            EXPECT_EQ(bottom[1].object, top);
+        }
+        EXPECT_TRUE(view.knownRuneDeckTop(P1).empty());
     }
 }
 

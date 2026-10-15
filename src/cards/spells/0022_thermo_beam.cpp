@@ -22,6 +22,7 @@ public:
                 gear_ids.push_back(id);
             }
         }
+        inSeenOrder(ctx.state, gear_ids);   // killed at once (batch 5d N1)
         RIFT_TRACE(ctx.events, "THERMO BEAM: killing " +
                              std::to_string(gear_ids.size()) + " gear");
         for (auto id : gear_ids) ctx.executor.killObject(id);

@@ -59,7 +59,7 @@ public:
                 ctx.executor.requestChoice(owner,
                     {valChoice(owner, 0, "Keeper's Verdict: top of your Main Deck"),
                      valChoice(owner, 1, "Keeper's Verdict: bottom of your Main Deck")},
-                    "Keeper's Verdict: top or bottom of your Main Deck");
+                    "Keeper's Verdict: top or bottom of your Main Deck", PromptKind::Mode);
                 ri->resume_point = kAwaitOwner;
                 return;
             }

@@ -65,7 +65,7 @@ public:
             // so an agent can name it (the cards are told apart by object).
             choices.push_back(valChoice(ctx.controller, 0, "Rek'Sai: banish none"));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "Rek'Sai: banish & play one of top 2 (or decline)");
+                                        "Rek'Sai: banish & play one of top 2 (or decline)", PromptKind::ChooseObject);
             ri.resume_data[kStepSlot] = 1;
             return;
         }

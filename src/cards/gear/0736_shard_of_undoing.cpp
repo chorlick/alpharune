@@ -59,6 +59,7 @@ public:
             if (ri->resume_point != kAsking) {
                 std::vector<Intent> options;
                 for (auto id : theirs) options.push_back(objChoice(opp, id));
+                // At resolution: the other player's own pick, a "must" (CR 355.10.e-f; batch M1).
                 ctx.executor.requestChoice(opp, std::move(options),
                                            "Shard of Undoing: kill one of your units");
                 ri->resume_point = kAsking;

@@ -15,25 +15,34 @@ namespace {
 class Unforgiven : public LegendCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "[2], [E]: Move a friendly unit to or from its base." A unit at a
-    // battlefield goes to its base; a unit in its base goes to a battlefield
-    // the controller chooses as the ability resolves.
+    // "[2], [E]: Move a friendly unit to or from its base." The unit is the
+    // ability's target; where it moves is the move's destination (CR 355.4),
+    // chosen as the ability is activated, before its cost (CR 403.2 ->
+    // 405.1): a unit at a battlefield goes to its base (nothing to choose), a
+    // unit in its base to a battlefield its controller chooses.
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        const auto& unit = ctx.state.getObject(targets[0]);
+        const GameObjectId u = targets.empty() ? kInvalidId : targets[0];
+        int dest = -2;
+        if (u != kInvalidId && ctx.state.objectExists(u) &&
+            ctx.state.getObject(u).location.has_value()) {
+            const auto& unit = ctx.state.getObject(u);
+            // At a battlefield: to its base, nothing to choose (stored as the
+            // answer, so it is not asked later). In base: a battlefield.
+            if (!unit.isAtBase()) settleMode(ctx, 0);
+            dest = pickMoveDest(*this, ctx, "Unforgiven: move it to which battlefield?", unit,
+                                /*battlefields_only=*/true);
+            if (dest == -1) return;   // waiting for the agent
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403.2)
+        if (u == kInvalidId || !ctx.state.objectExists(u) || dest < 0) return;
+        const auto& unit = ctx.state.getObject(u);
         if (!unit.isUnit() || !unit.location.has_value()) return;   // left the board
         if (unit.controller != ctx.controller) return;              // no longer friendly
-        if (!unit.isAtBase()) {
-            ctx.executor.moveToBase(targets[0]);
-            return;
-        }
-        const int num_bfs = static_cast<int>(ctx.state.battlefields.size());
-        if (num_bfs == 0) return;
-        std::vector<std::string> labels;
-        for (int i = 0; i < num_bfs; ++i) labels.push_back(destLabel(1 + i));
-        const int bf = pickMode(ctx, "Unforgiven: move it to which battlefield?", num_bfs, labels);
-        if (bf < 0) return;   // waiting for the agent
-        ctx.executor.moveToBattlefield(targets[0], ctx.state.battlefields[static_cast<size_t>(bf)].id);
+        // Already there, or unable to go there now: it does not move.
+        const auto now = moveDests(ctx.state, unit);
+        if (std::find(now.begin(), now.end(), dest) == now.end()) return;
+        moveTo(ctx, u, dest);
     }
     TriggerType triggerType() const override { return TriggerType::Activated; }
     TargetRequirements getTargetRequirements() const override {

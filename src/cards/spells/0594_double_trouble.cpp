@@ -47,11 +47,13 @@ public:
         }
         // "You may reveal a unit from among them and draw it": whether, and
         // which one. Both answers come before any card moves.
+        // At resolution: a spell's "may" (CR 355.12, 355.18; batch M1).
         const int go = confirmOptional(ctx, "Double Trouble: reveal a unit and draw it",
                                        [&]() { return !units.empty(); });
         if (go == -1) return;
         GameObjectId drawn = kInvalidId;
         if (go == 1) {
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             drawn = pickTarget(ctx, "Double Trouble: unit to draw", units);
             if (drawn == kInvalidId) return;   // waiting
         }

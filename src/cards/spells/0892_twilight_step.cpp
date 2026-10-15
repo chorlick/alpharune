@@ -16,28 +16,38 @@ class TwilightStep : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
-    // "Move a unit with 3 [M] or less." The unit is the spell's target, chosen
-    // as it is played (the engine's play-time choice, which pays Deflect and
-    // records the choice); where it moves — its controller's base or any
-    // other battlefield — is chosen as it resolves.
+    // "Move a unit with 3 [M] or less." The unit is the spell's target and
+    // where it moves — its controller's base or any other battlefield — is
+    // the move's destination (CR 355.4): both are chosen as the spell is
+    // played, in its finalize pass, before its cost.
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true, .max_might = 3};
     }
     bool needsPlayTimeTarget() const override { return true; }
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return u.current_might <= 3 && !moveDests(state, u).empty();
+        });
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         const auto locked = lockedPlayTarget(ctx, targets);
         const GameObjectId u = locked ? *locked
             : pickTarget(ctx, "Twilight Step: move a unit with 3 [M] or less",
                          enumerateLegalTargets(ctx.state, ctx.controller));
-        if (u == kInvalidId || !ctx.state.objectExists(u)) return;   // waiting, or no target
-        const auto dests = moveDests(ctx.state, ctx.state.getObject(u));
-        const int n = 1 + static_cast<int>(ctx.state.battlefields.size());
-        std::vector<std::string> labels;
-        uint32_t mask = 0;
-        for (int d = 0; d < n; ++d) labels.push_back(destLabel(d));
-        for (int d : dests) if (d >= 0 && d < 32) mask |= (1u << d);
-        const int dest = pickMode(ctx, "Twilight Step: move it where?", n, labels, mask);
-        if (dest < 0) return;   // -1 waiting, -2 nowhere to move
+        if (u == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        int dest = -2;
+        if (u != kInvalidId && ctx.state.objectExists(u)) {
+            dest = pickMoveDest(*this, ctx, "Twilight Step: move it where?", ctx.state.getObject(u));
+            if (dest == -1) return;   // waiting for the agent
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (u == kInvalidId || dest < 0) return;   // a mistarget, or nowhere to move
+        const auto now = moveDests(ctx.state, ctx.state.getObject(u));
+        if (std::find(now.begin(), now.end(), dest) == now.end()) return;   // already there
         moveTo(ctx, u, dest);
     }
     // "[Flow] [4][P]"

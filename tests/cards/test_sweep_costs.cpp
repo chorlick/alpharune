@@ -2350,6 +2350,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
         {822, {"Empower a unit (disempower it at end of turn)",              // Sanction
                "Disempower an Empowered unit (empower it at end of turn)"}},
         {606, {"Counter a spell", "Play four Bird tokens"}},                 // Flurry of Feathers
+        {665, {"Recycle up to 3 from opponent's trash", "Draw 1"}},          // Disposal Order
     };
     std::map<CardDefId, std::set<std::string>> labels_seen;
     const GameState blank = state;
@@ -2496,7 +2497,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                 << card_db.get(id).name << " (" << id << "): mode \"" << label
                 << "\" was never offered on the test boards";
     }
-    // And those five are all the modal ones: the spells among them whose
+    // And those six are all the modal ones: the spells among them whose
     // text says "Choose one".
     for (CardDefId id : spells)
         EXPECT_EQ(card_db.get(id).ability_text.find("Choose one") != std::string::npos,
@@ -3258,6 +3259,12 @@ TEST_F(SweepCostsTest, Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOn
         // [Hidden] revealed this way, then recycle the revealed cards."
         // No enemy unit he can choose: no reveal, no recycle.
         "Teemo, Strategist (121)",
+        // "At the start of your Beginning Phase, recycle 3 from your trash."
+        // The three cards are targets (CR 355.10.a); with fewer than three
+        // in the trash the third has no legal choice and the ability is
+        // removed (CR 403.4), so the ones there are not recycled (judge
+        // question 15; batch M1).
+        "Dr. Mundo, Expert (109)",
     };
     std::string extra, gone;
     for (const auto& d : differs) if (!listed.count(d)) extra += "\n  " + d;

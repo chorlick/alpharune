@@ -18,79 +18,60 @@ public:
     // [vendetta-E]
     // "At the start of your Main Phase, you may kill 3 other friendly units
     //  and/or gear to score 1 point."
-    // Resumable: yes/no (only offered with 3+ other friendly units/gear), then
-    // three sequential picks; all three die together, then the point is scored.
-    // resume_points: 0-2 confirmOptional, 20 = collecting picks, 21 = done.
+    // The leading "may" is decided as the ability is finalized (CR 383.3.a),
+    // and "kill 3 ... to" is a cost in the instruction right after it: the
+    // ability's base cost, chosen and paid as it is finalized (CR 383.3.b,
+    // 404.1.b.1, 405). The three are not targets (CR 355.10.c.1). They die
+    // together; a death that something replaces is not a kill, and then the
+    // cost is unpaid and no point is scored (Card::killAsCost, the engine's
+    // reading for "kill X to" abilities; CR 357.2.a may differ: judge
+    // question 16).
     TriggerType triggerType() const override { return TriggerType::AtStartOfMain; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto fodder = [&](const std::vector<int32_t>& taken) {
-            std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (id == ctx.source || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                if (!obj.isUnit() && !obj.isGear()) continue;
-                if (std::find(taken.begin(), taken.end(), static_cast<int32_t>(id.raw())) !=
-                    taken.end()) continue;
-                out.push_back(id);
-            }
-            std::sort(out.begin(), out.end());
-            return out;
-        };
-        auto pay_and_score = [&](const std::vector<GameObjectId>& victims) {
-            {   // the batch is for these kills only
-                DeathBatch together(ctx.executor, victims);   // they die at the same time
-                for (auto id : victims) {
-                    if (!ctx.state.objectExists(id)) continue;
-                    if (ctx.state.getObject(id).isGear()) ctx.executor.unattachGear(id);
-                    ctx.executor.killObject(id);
-                }
-            }
-            // CR 194.1.c: scorePoints honours "can't gain points" and ends the
-            // game at once at the Victory Score.
-            if (ctx.executor.scorePoints(ctx.controller, 1) == 0)
-                RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: can't gain points");
-            else
-                RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: scored 1 point -> " +
-                    std::to_string(ctx.state.player(ctx.controller).score));
+        auto fodder = [&](const std::vector<GameObjectId>& taken) {
+            return boardObjects(ctx.state, [&](const GameObject& obj) {
+                if (obj.id == ctx.source || obj.controller != ctx.controller) return false;
+                if (!obj.isUnit() && !obj.isGear()) return false;
+                return std::find(taken.begin(), taken.end(), obj.id) == taken.end();
+            });
         };
         const int go = confirmOptional(
             ctx, "Bottled Constellation: kill 3 other friendly units/gear to score 1 point",
-            [&]() { return fodder({}).size() >= 3; });
-        if (go != 1) return;
-        if (!ctx.state.chain.resuming.has_value()) {
-            // Direct invocation (no chain to suspend on): first three.
-            auto all = fodder({});
-            all.resize(3);
-            pay_and_score(all);
-            return;
-        }
-        auto& ri = *ctx.state.chain.resuming;
-        auto prompt = [&]() {
-            auto c = fodder(ri.resume_data);
-            if (c.empty()) { ri.resume_point = 21; return; }
-            std::vector<Intent> opts;
-            for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                "Bottled Constellation: kill which? (" +
-                std::to_string(ri.resume_data.size() + 1) + " of 3)");
-            ri.resume_point = 20;
-        };
-        if (ri.resume_point == 2) {   // just confirmed
-            ri.resume_data.clear();
-            prompt();
-            return;
-        }
-        if (ri.resume_point != 20) return;
-        GameObjectId picked = takenObject(ctx);
-        auto legal = fodder(ri.resume_data);
-        if (legal.empty()) { ri.resume_point = 21; return; }
-        if (std::find(legal.begin(), legal.end(), picked) == legal.end()) picked = legal.front();
-        ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
-        if (ri.resume_data.size() < 3) { prompt(); return; }
-        ri.resume_point = 21;
+            [&]() { return costAlreadyPaid(ctx) || fodder({}).size() >= 3; });
+        if (go == -1) return;   // waiting for the agent
         std::vector<GameObjectId> victims;
-        for (auto v : ri.resume_data) victims.push_back(GameObjectId::fromRaw(v));
-        pay_and_score(victims);
+        if (go == 1) {
+            // Three picks, one prompt each (slots 7, 9, 11). A lone option is
+            // taken without asking.
+            for (size_t k = 0; k < 3; ++k) {
+                const auto pick = selectObject(ctx,
+                    "Bottled Constellation: kill which? (" + std::to_string(k + 1) + " of 3)",
+                    fodder(victims), 7 + 2 * k);
+                if (!pick.has_value()) return;   // waiting for the agent
+                if (*pick != kInvalidId) victims.push_back(*pick);
+            }
+            if (costDueNow(ctx) && !costUnpaid(ctx)) {
+                bool paid = victims.size() == 3;
+                {   // they die at the same time; the batch is for these kills only
+                    DeathBatch together(ctx.executor, victims);
+                    for (auto id : victims) {
+                        if (ctx.state.getObject(id).isGear()) ctx.executor.unattachGear(id);
+                        paid = killAsCost(ctx, id) && paid;
+                    }
+                }
+                if (!paid) markCostUnpaid(ctx);
+            }
+        }
+        if (finalizingChoices(ctx)) return;   // choices and the cost end here (CR 383.3)
+        if (go != 1 || costUnpaid(ctx)) return;
+        // CR 194.1.c: scorePoints honours "can't gain points" and ends the
+        // game at once at the Victory Score.
+        if (ctx.executor.scorePoints(ctx.controller, 1) == 0)
+            RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: can't gain points");
+        else
+            RIFT_TRACE(ctx.events, "BOTTLED CONSTELLATION: scored 1 point -> " +
+                std::to_string(ctx.state.player(ctx.controller).score));
     }
 private:
     const CardDef def_ = [] {

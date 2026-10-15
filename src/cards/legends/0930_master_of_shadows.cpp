@@ -43,6 +43,7 @@ public:
     }
     bool isActionAbility() const override { return true; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardOneThenAct(ctx, "Master of Shadows: discard 1",
             [](CardContext& c, GameObjectId) { c.executor.drawCards(c.controller, 1); });
     }

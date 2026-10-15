@@ -29,9 +29,14 @@ public:
         c.disempower_self = true;
         return c;
     }
+    // The player is a target (CR 355.7), chosen as the ability is activated,
+    // before its cost is paid (CR 403.2 -> 405.1).
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const int who = pickMode(ctx, "Glowstone: choose a player", 2, {"You", "Opponent"});
-        if (who < 0) return;   // waiting on the agent
+        if (who == -1) return;                // waiting on the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403.2)
+        if (who < 0) return;
         if (!ctx.state.objectExists(ctx.source)) return;
         if (!ctx.state.getObject(ctx.source).location.has_value()) return;   // left the board
         const PlayerId chosen = who == 0 ? ctx.controller : opponent(ctx.controller);

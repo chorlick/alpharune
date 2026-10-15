@@ -36,6 +36,7 @@ public:
                                             /*enter_ready=*/false);
         };
         std::vector<GameObjectId> made;
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         if (!playTokensChoosingLocations(ctx, "Ultrasoft Poro: play a Bird", 2, make, made))
             return;   // waiting for a location
         RIFT_TRACE(ctx.events, "ULTRASOFT PORO: played 2 Bird tokens w/ [Deflect]");

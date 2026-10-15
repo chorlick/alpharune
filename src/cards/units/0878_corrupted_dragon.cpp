@@ -23,64 +23,50 @@ public:
         return victory - state.player(controller).score > 3;
     }
     // "When I attack, you may move any number of enemy units here each with
-    // 5 [M] or less to their base." Offered one unit at a time with a trailing
-    // "done" choice (empty chosen_objects) until the agent stops or none remain.
-    // Each unit moved is a unit chosen: units that can't be chosen by enemy
-    // abilities are left out, Deflect is paid (Card::offerableChoices /
-    // commitChosenObject).
+    // 5 [M] or less to their base." The leading "may" is decided as the
+    // ability is finalized (CR 383.3.a), and the units — targets, any number
+    // (CR 355.5, 355.13) — are chosen then too (CR 403.2), one at a time with
+    // "None". Units that can't be chosen by enemy abilities, or that enemy
+    // effects can't move, are left out; Deflect is paid as a unit is chosen
+    // (selectSeveralTargets). As it resolves, a chosen unit that is no longer
+    // here with 5 [M] or less is a mistarget; the others move together.
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;    // needs the resume loop
-        auto& ri = *ctx.state.chain.resuming;
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!bf) return;
-        auto eligible = [&]() {
-            const PlayerId me = ctx.controller;
-            const BattlefieldId here = *bf;
-            auto out = chooseableUnits(ctx.state, me, [&, me, here](const GameObject& obj) {
-                auto obf = obj.battlefieldId();
-                // Not a unit enemy abilities can't move, and not one that
-                // can't move to base (the executor would leave it here).
-                return obj.controller != me && obf && *obf == here && obj.current_might <= 5 &&
-                       !obj.cant_be_moved_by_enemy && !moveToBaseBlocked(ctx.state, obj);
+        std::optional<BattlefieldId> here;
+        if (ctx.state.objectExists(ctx.source)) here = ctx.state.getObject(ctx.source).battlefieldId();
+        const PlayerId me = ctx.controller;
+        const auto eligible = !here.has_value() ? std::vector<GameObjectId>{}
+            : chooseableUnits(ctx.state, me, [&](const GameObject& obj) {
+                  // Not a unit enemy abilities can't move, and not one that
+                  // can't move to base (the executor would leave it here).
+                  return obj.controller != me && obj.battlefieldId() == here &&
+                         obj.current_might <= 5 && !obj.cant_be_moved_by_enemy &&
+                         !moveToBaseBlocked(ctx.state, obj);
+              });
+        // Offered when a unit could be chosen now (its Deflect payable); as it
+        // resolves the units were chosen already, and it goes on while any
+        // eligible unit is left (the chosen ones are checked one by one).
+        const bool finalizing = ctx.state.chain.resuming.has_value() &&
+                                ctx.state.chain.resuming->finalizing;
+        const int go = confirmOptional(ctx,
+            "Corrupted Dragon: move enemy units here (5 [M] or less) to their base?",
+            [&]() {
+                return finalizing ? !offerableChoices(ctx, eligible).empty() : !eligible.empty();
             });
-            return offerableChoices(ctx, out);
-        };
-        auto offer = [&]() {
-            auto units = eligible();
-            if (units.empty()) return false;
-            std::vector<Intent> out;
-            for (auto uid : units) out.push_back(objChoice(ctx.controller, uid));
-            Intent done;
-            done.type = IntentType::MakeChoice;
-            done.player = ctx.controller;
-            done.chosen_value = 0;   // nameable by value, not only by position
-            done.choice_label = "Corrupted Dragon: stop";
-            out.push_back(std::move(done));
-            ctx.executor.requestChoice(ctx.controller, std::move(out),
-                "Corrupted Dragon: move an enemy unit (5 [M] or less) to its base, or stop");
-            return true;
-        };
-        switch (ri.resume_point) {
-        case 0:
-            ri.resume_point = offer() ? 1 : 2;
-            return;
-        case 1: {
-            auto choice = ctx.executor.takeChoice();
-            if (!choice || choice->chosen_objects.empty()) { ri.resume_point = 2; return; }
-            auto uid = choice->chosen_objects[0];
-            auto legal = eligible();
-            if (std::find(legal.begin(), legal.end(), uid) != legal.end()) {
-                commitChosenObject(ctx, uid);
-                ctx.executor.moveToBase(uid);
-                RIFT_TRACE(ctx.events, "CORRUPTED DRAGON: moved an enemy unit to its base");
-            }
-            if (!offer()) ri.resume_point = 2;
-            return;
+        if (go == -1) return;   // waiting for the agent
+        std::vector<GameObjectId> moving;
+        if (go == 1) {
+            const auto picks = selectSeveralTargets(*this, ctx,
+                "Corrupted Dragon: move an enemy unit (5 [M] or less) to its base", eligible);
+            if (!picks.has_value()) return;   // waiting for the agent
+            moving = *picks;
         }
-        default:
-            return;
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (go != 1) return;
+        for (auto uid : moving) {
+            ctx.executor.moveToBase(uid);
+            RIFT_TRACE(ctx.events, "CORRUPTED DRAGON: moved an enemy unit to its base");
         }
     }
 private:

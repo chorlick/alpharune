@@ -39,6 +39,7 @@ public:
                                                      /*token_card=*/955);
             return clone_id;
         };
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);
     }
     // "[Flow] [1][A][A]" — each [A] is Power of any domain: the two need not

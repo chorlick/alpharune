@@ -93,6 +93,7 @@ public:
                 if (!where.empty()) {
                     where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
                     ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
+                    // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
                                                "Reinforce: where to play it");
                     ri.resume_point = kAwaitWhere;
@@ -104,6 +105,7 @@ public:
             std::vector<Intent> options;
             options.push_back(valChoice(ctx.controller, 0, "Banish none"));
             for (auto u : units) options.push_back(objChoice(ctx.controller, u));
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(options),
                                        "Reinforce: banish a unit to play (cost reduced by 5)");
             ri.resume_point = kAwait;

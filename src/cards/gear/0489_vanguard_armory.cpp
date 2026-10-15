@@ -66,6 +66,7 @@ public:
         if (placed < 3) {
             std::vector<Intent> opts;
             for (int d : options) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
+            // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
                 "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?");
             ri.resume_point = kAsking;

@@ -644,7 +644,11 @@ TEST_F(VendettaE, Vendetta_AccelerationGate_ReadiesUpToFour) {
     int call = 0;
     driveResumable(kAccelerationGate, P1, spell, [&](const std::vector<Intent>& legal) {
         ++call;
-        EXPECT_FALSE(offers(legal, ready)) << "already ready";
+        // Batch M1: the objects are chosen as the spell is played, when
+        // nothing says what will be exhausted as it resolves, and the text
+        // has no "exhausted" restriction (CR 355.9): a ready one is offered
+        // too (was EXPECT_FALSE, "already ready").
+        EXPECT_TRUE(offers(legal, ready));
         const GameObjectId order[] = {u1, g, r1, r2};
         return script({O(order[call - 1])})(legal);
     }, exec);

@@ -127,6 +127,7 @@ public:
                     where.insert(where.begin(),
                                  valChoice(ctx.controller, 0, "The Zero Drive: play to base"));
                     ri->resume_data[0] = static_cast<int32_t>(next);
+                    // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
                         "The Zero Drive: where to play " + ctx.state.getObject(uid).name);
                     ri->resume_point = kAwaitWhere;

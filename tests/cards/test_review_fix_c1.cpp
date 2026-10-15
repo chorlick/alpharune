@@ -955,7 +955,9 @@ TEST_F(ReviewFixC1Test, Unforgiven_MovesAUnitFromItsBaseToAChosenBattlefield) {
     auto yasuo = addLegend(P1, kUnforgiven);
     auto unit = addUnit(P1, kInvalidId, 3);          // in base
     state.player(P1).rune_pool.energy = 2;
-    EnginePathAgent agent(EnginePathAgent::script({1}));   // battlefield 1
+    // Batch M1: asked as the ability is activated (CR 355.4), in the move
+    // destination codes of pickMoveDest (0 base, 1 + i battlefield i): was {1}.
+    EnginePathAgent agent(EnginePathAgent::script({2}));   // battlefield 1
     activate(yasuo, 0, &agent, {unit});
     EXPECT_EQ(state.getObject(unit).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
     EXPECT_TRUE(state.getObject(yasuo).is_exhausted);

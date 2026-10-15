@@ -17,30 +17,32 @@ public:
     const CardDef& def() const override { return def_; }
     // "When you play me, buff up to four friendly units. (Give each a +1 [M]
     //  buff if it doesn't have one.)"
-    // The controller chooses which, one at a time, and may stop early. Only
-    // units without a buff are offered: buffing one that has a buff does
-    // nothing (CR 427.1.b).
+    // The units are targets, up to four, zero allowed (CR 355.5, 355.13),
+    // chosen as the ability is finalized (CR 383.3, 403.2), one at a time
+    // with "None". A unit that already has a buff can still be chosen; it is
+    // just not buffed again (CR 427.1.c). One that has left as it resolves is
+    // a mistarget.
     //
     // "When you spend a buff, play a Gold gear token exhausted." Every spend
-    // goes through EffectExecutor::spendBuff, which announces it.
+    // goes through EffectExecutor::spendBuff, which announces it. Nothing to
+    // choose.
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenYouSpendABuff};
     }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenYouSpendABuff) {
+            if (finalizingChoices(ctx)) return;   // nothing to choose
             createGoldExhausted(ctx);
             RIFT_TRACE(ctx.events, "FAE DRAGON: a buff was spent -> Gold token (exhausted)");
             return;
         }
-        std::vector<GameObjectId> unbuffed;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.location.has_value() || obj.buff_count > 0) continue;
-            unbuffed.push_back(id);
-        }
-        const auto chosen = selectSeveral(ctx, "Fae Dragon: buff a friendly unit (up to four)",
-                                          unbuffed, /*max_picks=*/4);
-        if (!chosen.has_value()) return;   // waiting for the agent
+        const auto friendly = chooseableUnits(ctx.state, ctx.controller,
+            [&](const GameObject& u) { return u.controller == ctx.controller; });
+        const auto chosen = selectSeveralTargets(*this, ctx,
+            "Fae Dragon: buff a friendly unit (up to four)", friendly, /*max_picks=*/4);
+        if (!chosen.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;       // choices end here (CR 383.3)
         int buffed = 0;
         for (auto id : *chosen)
             if (ctx.executor.buffUnit(id)) ++buffed;

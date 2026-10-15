@@ -17,60 +17,35 @@ public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
     // "Ready up to 4 units, gear, and/or runes."
-    // Resumable: up to four sequential picks (each with a "Done" option) over
-    // the exhausted units, gear and runes on the board. The text is not
-    // limited to friendly objects — bare "units", "gear" and "runes" are any
-    // on the board, either player's (CR 133.3.a, 355.9.a.1; only a printed
-    // "friendly" / "your" narrows a choice, CR 355.9.b), so an opponent's
-    // exhausted rune is offered like its unit or gear (the same reading as
-    // Dark Child 315); enemy objects that can't be chosen by
-    // enemy spells are excluded, an enemy [Deflect] unit is offered only if
-    // its Deflect can be paid, and each pick is committed like a pickTarget
-    // choice (Deflect paid, recorded as chosen).
+    // The objects are targets, up to four, zero allowed (CR 355.5, 355.13),
+    // chosen as the spell is played, in its finalize pass, before its cost:
+    // one prompt each, with "None". The text is not limited to friendly
+    // objects — bare "units", "gear" and "runes" are any on the board, either
+    // player's (CR 133.3.a, 355.9.a.1; judge question 1) — nor to exhausted
+    // ones: at play nothing says what will be exhausted as it resolves (an
+    // object exhausted in response is readied). Enemy objects that can't be
+    // chosen by enemy spells are left out; an enemy [Deflect] unit is offered
+    // only if its Deflect can be paid, and paid as it is chosen
+    // (selectSeveralTargets). One that has left the board as it resolves is a
+    // mistarget.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    static std::vector<GameObjectId> readyable(const GameState& state, PlayerId controller) {
+        return boardObjects(state, [&](const GameObject& obj) {
+            if (!obj.isUnit() && !obj.isGear() && !obj.isRune()) return false;
+            return obj.controller == controller || !obj.untargetable_by_enemy;
+        });
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        auto candidates = [&]() {
-            std::vector<GameObjectId> out;
-            for (const auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (!obj.location.has_value() || !obj.is_exhausted) continue;
-                if (!obj.isUnit() && !obj.isGear() && !obj.isRune()) continue;
-                if (obj.controller != ctx.controller && obj.untargetable_by_enemy) continue;
-                out.push_back(id);
-            }
-            std::sort(out.begin(), out.end());
-            return out;
-        };
-        auto prompt = [&]() {
-            auto c = offerableChoices(ctx, candidates());
-            if (c.empty()) return false;
-            std::vector<Intent> opts;
-            for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
-            // "up to 4" includes none (CR 355.13): "Done" is on every prompt,
-            // and with nothing exhausted the spell still resolves.
-            opts.push_back(valChoice(ctx.controller, 0, "Done"));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Acceleration Gate: ready a unit, gear or rune");
-            ri.resume_point = 1;
-            return true;
-        };
-        if (ri.resume_point == 0) {
-            ri.resume_data = {0};
-            if (!prompt()) ri.resume_point = 2;
-            return;
-        }
-        if (ri.resume_point != 1) return;
-        GameObjectId picked = takenObject(ctx);
-        auto legal = offerableChoices(ctx, candidates());
-        if (picked == kInvalidId ||
-            std::find(legal.begin(), legal.end(), picked) == legal.end()) {
-            ri.resume_point = 2;   // "Done"
-            return;
-        }
-        commitChosenObject(ctx, picked);
-        ctx.executor.readyObject(picked);
-        if (ri.resume_data.empty()) ri.resume_data = {0};
-        if (++ri.resume_data[0] >= 4 || !prompt()) ri.resume_point = 2;
+        const auto picks = selectSeveralTargets(*this, ctx,
+            "Acceleration Gate: ready a unit, gear or rune (up to four)",
+            readyable(ctx.state, ctx.controller), /*max_picks=*/4);
+        if (!picks.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        for (auto id : *picks) ctx.executor.readyObject(id);
     }
 private:
     const CardDef def_ = [] {

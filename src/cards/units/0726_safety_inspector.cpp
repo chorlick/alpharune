@@ -86,12 +86,14 @@ public:
         const PlayerId opp = opponent(ctx.controller);
         GameObjectId mine = kInvalidId;
         if (!paid_xp) {
+            // At resolution: each player chooses (CR 355.10.e; batch M1).
             auto pick = selectObjectAs(ctx, ctx.controller,
                                        "Safety Inspector: kill one of your units",
                                        units_of(ctx.controller), kOwnPickSlot);
             if (!pick.has_value()) return;   // waiting on the controller
             mine = *pick;
         }
+        // At resolution: each player chooses (CR 355.10.e; batch M1).
         auto theirs = selectObjectAs(ctx, opp, "Safety Inspector: kill one of your units",
                                      units_of(opp), kOppPickSlot);
         if (!theirs.has_value()) return;     // waiting on the opponent

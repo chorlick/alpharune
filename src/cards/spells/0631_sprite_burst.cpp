@@ -24,6 +24,7 @@ public:
             return ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
                                             {"Fae"}, kw, loc, /*enter_ready=*/true);
         };
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         playTokensChoosingLocations(ctx, "Sprite Burst: play a Sprite", 2, make, made);
     }
 private:

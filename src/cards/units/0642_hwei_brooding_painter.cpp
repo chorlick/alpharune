@@ -38,6 +38,7 @@ public:
             // Draw 1, then prompt the discard.
             ctx.executor.drawCards(ctx.controller, 1);
             if (ps.hand.empty()) return;  // nothing to discard, no branch
+            // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, build_choices(),
                                         "Hwei: discard 1");
             ri.resume_point = 1;

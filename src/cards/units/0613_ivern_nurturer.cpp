@@ -37,6 +37,7 @@ public:
         for (auto id : top3) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
         // "You may reveal a unit from among them and draw it." — which one, or
         // none. Asked as this resolves: the cards are only looked at now.
+        // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
         const auto answer = selectObject(ctx, "Ivern, Nurturer: reveal a unit and draw it",
                                          units, 7, /*may_decline=*/true);
         if (!answer.has_value()) return;       // waiting for the agent

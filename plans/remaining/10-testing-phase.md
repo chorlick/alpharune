@@ -60,12 +60,48 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 3 (2026-10-15, `plans/reports/batch-3.md` section 10)
 
-- [ ] **M1** (K3 kind, cards) 107 card files use a choice helper (`pickTarget`, `pickTargetPair`, `confirmOptional`, `pickMode`, `selectObject`, `selectSeveral`) and do not opt into a finalize pass (`choicesAtFinalization`). A choice the rules place at finalization — a target, a mode, a leading "may", a "[cost] to [effect]" payment (CR 355, 383.3, 403.1-403.2) — is then made at resolution, after both players had priority; a choice the effect itself makes ("choose" in the effect, a hidden-zone pick) belongs at resolution and is right. Each file needs reading and either the opt-in or a note at the card; batch 3 did the ones its items named — CODE-ONLY
 - [ ] **M2** X-cost activated abilities and "pay [X]" effects do not count [Add] abilities when they work out the largest X the player can pay (Hextech Anomaly, Ancient Henge, Bullet Time's `max_x`): the payment itself can use them (CR 357.1.a, `addForPayment`), so an X the player could reach is not offered — CODE-ONLY
 - [ ] **M3** A spell whose play intent names two or more targets and that has no pair helper or finalize pass (Singularity, Deathgrip, Smoke and Mirrors, Piercing Light: `getTargetRequirements` count > 1) gets no targets when an effect plays it (Fizz, Void Rush, Void Burrower, Wild Claw, Temporal Breach's kin): the effect-play path asks one play-time target or a spell's one intent target (G16 / D32 / D57), and `chooseFirstExecution` asks nothing for these, so the spell resolves with none. Ask them as for a hand play (`spellTargetSets`), or give the cards a pass — CODE-ONLY
 - [ ] **M4** Thrill of the Hunt ("Banish a friendly unit, then its owner plays it to any battlefield"): with a unit its controller does not own, the spell's controller picks the battlefield and the owner plays it there; check whether the owner, who plays it, chooses the battlefield (CR 355.2.a) — QUESTION if the text does not settle it
-- [ ] **M5** (convention, question if the owner wants one) An ability's effect play of a token or a card settles its location at finalization (Flame Chompers, Immortal Phoenix, Soulgorger, Herald of the Arcane, Zed after B5); CR 185.2.a ("tokens ... played ... following all the applicable steps for playing a card") can be read as the play's own 355.2 choice, at resolution. One judge question for the whole convention if the owner wants it settled — QUESTION (convention)
+- [ ] **M5** (convention, question if the owner wants one) An ability's effect play of a token or a card settles its location at finalization (Flame Chompers, Immortal Phoenix, Soulgorger, Herald of the Arcane, Zed after B5); CR 185.2.a ("tokens ... played ... following all the applicable steps for playing a card") can be read as the play's own 355.2 choice, at resolution. One judge question for the whole convention if the owner wants it settled — QUESTION (convention). Batch M1 found the rule that settles it: CR 420.3.b.1-420.3.b.2 say the play locations an effect names are "checked on finalization of the resulting Game Object" (the examples: a unit played to "an enemy occupied battlefield", Rek'Sai's "here"). That means they are chosen as the played card or token is finalized, during the resolution. The 23 spells and abilities batch M1 read do it that way; the abilities listed above settle the location at their own finalization, which the rule does not support
 
+
+
+## Found by batch M1 (2026-10-15, `plans/reports/batch-m1.md` section 7; verified against the card text and code)
+
+- [ ] **R1** Lunar Boon: the "LUNAR BOON: drew <card>" trace lines are `RIFT_TRACE` (both players), so they name the drawn cards to the opponent. The discard prompt's label also lists every card in hand. Use the private form (D11 kind) — CODE-ONLY
+- [ ] **R2** Dragon Form: "Its base Might becomes 5 this turn" is written as `temp_might_bonus += 5 - base_might`. Two Dragon Forms on one unit stack: a base-2 unit becomes 8, a base-7 unit becomes 3 — CODE-ONLY
+- [ ] **R3** Safety Inspector: the two units "each player must kill" are killed one after the other, not in one `DeathBatch`, so they do not die together (CR 370.1.a.2) — CODE-ONLY
+- [ ] **R4** Acceptable Losses: the controller's gear is killed before the opponent chooses theirs, so the two are not simultaneous (CR 370.1.a.2; compare Cull the Weak). The options are also listed in object-table order, not by `boardObjects` — CODE-ONLY
+- [ ] **R5** Token play locations:
+  - Iterative Design and Vanguard Armory build their own lists, which do not leave out a battlefield units can't be played to (`battlefieldTakesUnitsFrom`).
+  - Iterative Design, Vanguard Armory, Recruit the Vanguard and Guards! pass no `location_choices`, so an "additional copy" effect does not get the same choice.
+
+  Use `playTokensChoosingLocations` / `tokenPlayDests` — CODE-ONLY
+- [ ] **R6** The order of "banish/draw one ... recycle the rest":
+  - Wild Claw, Reinforce and Dazzling Aurora recycle the rest before the chosen card is played. Lightning Rush trashes the rest before the draw.
+  - Lightning Rush also puts the chosen card back on top and calls `drawCards(1)` instead of `drawHeldCard`.
+  - Wild Claw and Promising Future (and Reinforce's location list) are built by hand. They ignore the unit's own play permissions and player grants (`playLocations`).
+
+  CODE-ONLY
+- [ ] **R7** Cursed Sarcophagus: `canActivateAbility` asks whether ANY copy the player controls, in any zone, tracks a banished unit. So a copy with nothing banished with it can be activated and exhausted for nothing. Use `canActivateAbilityAt` with `source`, as The Zero Drive does. A replayed Sarcophagus also keeps its `tracked_objects` (CR 124.1) — CODE-ONLY
+- [ ] **R8** Siphon Power ("Choose a battlefield") and Firestorm ("all enemy units at a battlefield") choose a unit to stand for the battlefield, but the battlefield is the target (CR 355.10.b). As a result:
+  - a battlefield with no unit (Siphon) or no chooseable enemy unit (Firestorm) can't be chosen;
+  - the anchor's Deflect is charged;
+  - an anchor moved in response makes the spell do nothing.
+
+  CODE-ONLY
+- [ ] **R9** Whirlwind: each player's pick is not a target (CR 355.10.e). Yet the pick is filtered by "can't be chosen" and charged Deflect (CR 809 applies to spells that target) — CODE-ONLY
+- [ ] **R10** Back Off: "If you played this from your hand, draw 1" is tested as "not played from facedown". A play from the trash or by an effect from another zone still draws (`Card::kPlayedNotFromHand` says where the play came from) — CODE-ONLY
+- [ ] **R11** Arcane Shift: "Banish a friendly unit, then its owner plays it". For a unit its controller does not own, the controller is asked where it is played. Batch 5d's M4 settles the same question for Thrill of the Hunt; apply the answer here — CODE-ONLY
+- [ ] **R12** Card data:
+  - Disposal Order's `ability_text` runs its modes together ("them.Draw 1.").
+  - Hwei, Brooding Painter's has no spaces ("Draw 1.Gear", "runes.Unit").
+  - Scryer's Bloom's def carries `Keyword::Predict`, which belongs to its ability, not the card (plans/08 8.8). The ledger test does not catch it.
+
+  CODE-ONLY
+- [ ] **R13** Picks from a hidden zone made with `pickTarget`: Here to Help, Decree of Strength, Void Rush, Double Trouble, Ornn, Fate Weaver, Rift Herald, Insightful Investigator, Ashe, Bone Skewer. These are not targets (CR 355.10.a), but the prompt is labelled "target:" and runs the target bookkeeping (no Deflect is charged off the board). Give them a non-target helper and prompt kind (with batch 5d's prompt kinds) — CODE-ONLY
+- [ ] **R14** (QUESTION if the owner wants one) Maduli the Gatekeeper reads "an occupied enemy battlefield" as "a battlefield with enemy units". "Occupied" is defined (CR 170.11.a) but "enemy battlefield" is not; the other reading is "controlled by an opponent" — QUESTION
 
 ## Found by batch 5c-perf (2026-10-15, `plans/reports/batch-5c-perf.md` section 5)
 

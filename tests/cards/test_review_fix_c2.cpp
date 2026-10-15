@@ -774,7 +774,9 @@ TEST_F(ReviewFixC2Test, ZenithBlade_TheFriendlyUnitToMoveIsChosen) {
     auto second = addUnit(P1, kInvalidId, 3, 1);
     auto enemy = addUnit(P2, kInvalidId, 3, 0);
 
-    EnginePathAgent agent(script({O(enemy), V(1), O(second)}));
+    // Batch M1: the friendly unit is a target chosen as the spell is played
+    // (CR 355.12), before the "may" asked as it resolves (was enemy, yes, unit).
+    EnginePathAgent agent(script({O(enemy), O(second), V(1)}));
     playThroughEngine(addToHand(P1, kZenithBlade), &agent);
     EXPECT_TRUE(state.getObject(enemy).is_stunned);
     EXPECT_TRUE(atBf(second, BattlefieldId::fromRaw(0)));

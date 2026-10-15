@@ -73,6 +73,7 @@ public:
         uint32_t legal_mask = (locations.size() >= 32)
             ? 0xFFFFFFFFu
             : ((1u << locations.size()) - 1);
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int chosen = pickMode(ctx, "Thrill: which battlefield",
                               static_cast<int>(locations.size()), labels, legal_mask);
         if (chosen == -1) return;  // yielded for agent input

@@ -36,19 +36,37 @@ public:
         return self.location.has_value() &&
                !qualifyingBfs(state, controller, self.current_might, source).empty();
     }
+    // The battlefield is the move's destination (CR 355.4), chosen as the
+    // ability is activated, before its cost (CR 403.2 -> 405.1), among those
+    // that qualify then. As it resolves, Maduli moves only if it still
+    // qualifies ("if my Might is greater than the total Might of enemy units
+    // there").
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        int my_might = ctx.state.getObject(ctx.source).current_might;
-        auto bfs = qualifyingBfs(ctx.state, ctx.controller, my_might, ctx.source);
-        if (bfs.empty()) return;
+        const auto& bfs = ctx.state.battlefields;
+        const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+        auto qualifying = [&]() {
+            if (!ctx.state.objectExists(ctx.source) ||
+                !ctx.state.getObject(ctx.source).location.has_value())
+                return std::vector<BattlefieldId>{};
+            return qualifyingBfs(ctx.state, ctx.controller,
+                                 ctx.state.getObject(ctx.source).current_might, ctx.source);
+        };
+        // One mode per battlefield slot; the qualifying ones are legal.
+        uint32_t mask = 0;
         std::vector<std::string> labels;
-        for (auto bf : bfs) labels.push_back("BF#" + std::to_string(static_cast<int>(bf.raw())));
-        uint32_t mask = (bfs.size() >= 32) ? 0xFFFFFFFFu : ((1u << bfs.size()) - 1);
-        int chosen = pickMode(ctx, "Maduli: move to which enemy battlefield",
-                              static_cast<int>(bfs.size()), labels, mask);
-        if (chosen == -1) return;  // waiting on agent
-        if (chosen < 0 || static_cast<size_t>(chosen) >= bfs.size()) chosen = 0;
-        ctx.executor.moveToBattlefield(ctx.source, bfs[chosen]);
+        const auto now = qualifying();
+        for (int i = 0; i < n; ++i) {
+            labels.push_back(destLabel(1 + i));
+            if (std::find(now.begin(), now.end(), bfs[i].id) != now.end()) mask |= 1u << i;
+        }
+        const int chosen = pickMode(ctx, "Maduli: move to which enemy battlefield", n, labels, mask);
+        if (chosen == -1) return;              // waiting on agent
+        if (finalizingChoices(ctx)) return;    // choices end here (CR 403.2)
+        if (chosen < 0 || chosen >= n) return; // nowhere to move
+        const BattlefieldId dest = bfs[chosen].id;
+        if (std::find(now.begin(), now.end(), dest) == now.end()) return;   // no longer qualifies
+        ctx.executor.moveToBattlefield(ctx.source, dest);
         RIFT_TRACE(ctx.events, "MADULI: moved to occupied enemy battlefield");
     }
 

@@ -49,6 +49,7 @@ public:
                                             "Sand Soldier", 2, {"Shurima"}, KeywordSet{},
                                             where, /*enter_ready=*/false);
         };
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         if (!playTokensChoosingLocations(ctx, "Arise!: play a Sand Soldier", equip_count,
                                          make, made))
             return;   // waiting for a location

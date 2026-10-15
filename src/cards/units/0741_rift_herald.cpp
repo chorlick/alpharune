@@ -59,6 +59,7 @@ private:
                     ZoneType::MainDeck});
             }
         }
+        // At resolution: not the first part of the effect (CR 383.3.a.3; batch M1).
         int conf = confirmOptional(ctx, "Rift Herald: reveal a unit from the top 3 and draw it?",
                                    [&]() { return !unitsAmong(ctx, topThree(ctx)).empty(); });
         if (conf == -1) return;  // waiting for agent
@@ -66,6 +67,7 @@ private:
         const std::vector<GameObjectId> looked = topThree(ctx);
         GameObjectId drawn = kInvalidId;
         if (conf == 1) {
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             drawn = pickTarget(ctx, "Rift Herald: choose a unit to draw",
                                unitsAmong(ctx, looked));
             if (drawn == kInvalidId && ri.has_value() && ri->resume_point == 7)
@@ -115,6 +117,7 @@ private:
         return out;
     }
     void onDeath(CardContext& ctx) {
+        // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
         GameObjectId picked = pickTarget(ctx, "Rift Herald (deathknell: unit from hand)",
                                          playableHandUnits(ctx));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;  // none / waiting

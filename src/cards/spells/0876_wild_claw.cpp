@@ -107,6 +107,7 @@ public:
                 c.chosen_objects = {cid};
                 choices.push_back(std::move(c));
             }
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                        "Wild Claw: banish and play a unit or gear");
             ri.resume_point = 1;
@@ -151,6 +152,7 @@ public:
             }
             if (!where.empty()) {
                 where.insert(where.begin(), intChoice(ctx.controller, 0, "Wild Claw: play to base"));
+                // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                 ctx.executor.requestChoice(ctx.controller, std::move(where),
                                            "Wild Claw: where to play it");
                 ri.resume_point = 2;

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -14,23 +15,40 @@ namespace {
 class ConvergentMutation : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        GameObjectId chosen = targets[0];
-        // "increase its Might to the Might of another friendly unit."
-        // Pick another friendly unit (not the chosen one).
-        const auto others = boardObjects(ctx.state, [&](const GameObject& o) {
-            return o.id != chosen && o.isUnit() && o.controller == ctx.controller;
+    // "Choose a friendly unit. This turn, increase its Might to the Might of
+    // another friendly unit." Both units are targets (CR 355.5, 355.10): the
+    // first is named in the play intent, the other is chosen in the finalize
+    // pass, before the cost and before anyone can respond. A spell needs a
+    // valid choice for every target to be played (CR 355.8): two friendly
+    // units.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return friendlyUnits(state, controller, kInvalidId).size() >= 2;
+    }
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId controller,
+                                                   GameObjectId except) {
+        return chooseableUnits(state, controller, [&](const GameObject& u) {
+            return u.controller == controller && u.id != except;
         });
-        GameObjectId other = pickTarget(ctx, "Convergent Mutation (copy Might from)", others);
-        if (other == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended for agent decision
-        }
-        if (other == kInvalidId || !ctx.state.objectExists(other)) return;
-        int target_might = ctx.state.getObject(other).current_might;
-        int cur = ctx.state.getObject(chosen).current_might;
-        int delta = target_might - cur;
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
+        const GameObjectId chosen = targets.empty() ? kInvalidId : targets[0];
+        const auto other = selectTargetOrNone(*this, ctx, "Convergent Mutation (copy Might from)",
+                                              friendlyUnits(ctx.state, ctx.controller, chosen),
+                                              7, /*allow_none=*/false);
+        if (!other.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        // Either target no longer legal: that instruction is ignored (CR
+        // 359.3.e.5), and it has nothing else to do.
+        if (chosen == kInvalidId || *other == kInvalidId) return;
+        if (!ctx.state.objectExists(chosen) || !ctx.state.objectExists(*other)) return;
+        const int target_might = ctx.state.getObject(*other).current_might;
+        const int cur = ctx.state.getObject(chosen).current_might;
+        const int delta = target_might - cur;
         if (delta > 0) ctx.executor.giveTemporaryMight(chosen, delta);
         RIFT_TRACE(ctx.events, "CONVERGENT MUTATION: set Might to " +
                              std::to_string(target_might));

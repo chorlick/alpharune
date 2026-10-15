@@ -698,8 +698,12 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
     // panel, which prepends events (latest first), so a CHOSE line
     // can be visually separated from its DECISION # context.
     if (!events_.logging()) {
-        events_.noteUnheardLine();   // the CHOSE line below, unread
-        if (!chosen.cards_to_mulligan.empty()) events_.noteUnheardLine();   // two copies
+        if (chosen.cards_to_mulligan.empty()) {
+            events_.noteUnheardLine();   // the CHOSE line below, unread
+        } else {
+            events_.noteUnheardPrivateLine();   // two copies, one per player
+            events_.noteUnheardPrivateLine();
+        }
     } else {
         std::string who = std::string("[") + toString(chosen.player) + "] ";
         if (chosen.cards_to_mulligan.empty()) {
@@ -1975,6 +1979,7 @@ void GameEngine::orderPendingTriggers() {
             const ChainItem* ci = itemOf(id);
             std::string text;
             int64_t fired = -1, kw = -1;
+            std::vector<int64_t> where;   // the source as both players see it
             if (ci) {
                 const bool seen_by_both =
                     knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
@@ -1983,10 +1988,31 @@ void GameEngine::orderPendingTriggers() {
                 fired = static_cast<int64_t>(ci->fired_trigger);
                 if (ci->keyword_ability.has_value())
                     kw = static_cast<int64_t>(*ci->keyword_ability);
+                // Two copies of one card triggering together: told apart by
+                // where they are and how they stand, not by which was queued
+                // first (the table's order).
+                if (seen_by_both && state_.objectExists(ci->source)) {
+                    const GameObject& o = state_.getObject(ci->source);
+                    where.push_back(static_cast<int64_t>(o.zone.get()));
+                    if (!o.location.has_value()) {
+                        where.push_back(-1);
+                    } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
+                        where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
+                    } else {
+                        where.push_back(static_cast<int64_t>(
+                            std::get<BaseLocation>(*o.location).player));
+                    }
+                    where.push_back(o.current_might);
+                    where.push_back(o.damage_marked);
+                    where.push_back(o.is_exhausted);
+                    where.push_back(o.is_stunned);
+                    where.push_back(o.buff_count);
+                }
             }
-            return std::make_tuple(std::move(text), fired, kw);
+            return std::make_tuple(std::move(text), fired, kw, std::move(where));
         };
-        std::vector<std::pair<std::tuple<std::string, int64_t, int64_t>, ChainItemId>> keyed;
+        std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
+                              ChainItemId>> keyed;
         for (auto id : ids) keyed.emplace_back(publicKey(id), id);
         std::stable_sort(keyed.begin(), keyed.end(),
                          [](const auto& x, const auto& y) { return x.first < y.first; });
@@ -9602,8 +9628,12 @@ Intent GameEngine::queryAgent(PlayerId player) {
         return false;
     };
     if (!events_.logging()) {
-        events_.noteUnheardLine();   // the CHOSE line below, unread
-        if (names_hidden()) events_.noteUnheardLine();   // and its other player's copy
+        if (names_hidden()) {
+            events_.noteUnheardPrivateLine();   // the chooser's copy and
+            events_.noteUnheardPrivateLine();   // the other player's
+        } else {
+            events_.noteUnheardLine();   // the CHOSE line below, unread
+        }
     } else {
         // Written twice when the choice names a card the other player may not
         // know (a card in hand being hidden or played, a facedown card): the

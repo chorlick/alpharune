@@ -283,10 +283,11 @@ void EventBus::logFor(LogLevel level, LogAudience audience, const std::string& m
         // Nobody will read it: no prefix is formatted and nothing is emitted,
         // but the line is counted as tagWithDecision would have counted it.
         if (isDecisionLine(msg)) noteUnheardDecision();
-        else noteUnheardLine();
+        else if (audience.isBoth()) noteUnheardLine();
+        else noteUnheardPrivateLine();
         return;
     }
-    emit(LogEvent{level, tagWithDecision(msg), audience});
+    emit(LogEvent{level, tagWithDecision(msg, audience), audience});
 }
 
 void EventBus::disconnectAll() {
@@ -332,17 +333,24 @@ bool EventBus::isDecisionLine(const std::string& msg) {
     return msg.compare(0, 10, kDecisionPrefix) == 0;
 }
 
-std::string EventBus::tagWithDecision(const std::string& msg) {
+std::string EventBus::tagWithDecision(const std::string& msg, LogAudience audience) {
     ++activity_;
     if (isDecisionLine(msg)) {
         ++log_decision_counter_;
         log_sub_counter_ = 0;
+        ++shown_decision_;
+        shown_sub_ = 0;
     } else {
         ++log_sub_counter_;
+        if (audience.isBoth()) ++shown_sub_;
     }
+    // The number shown counts the lines both players read: counting a line
+    // one player may not read, or a probe's unread lines, would tell a
+    // player how many it missed (batch 5b item T2). A line for one player
+    // shows the number of the last line both read.
     char buf[24];
     std::snprintf(buf, sizeof(buf), "[D:%03d.%02d] ",
-                  log_decision_counter_, log_sub_counter_);
+                  shown_decision_, shown_sub_);
     return std::string(buf) + msg;
 }
 

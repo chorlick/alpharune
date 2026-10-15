@@ -255,6 +255,7 @@ std::vector<std::string> HiddenOrderLeak::lists_;
 
 struct VariantTally {
     long decisions = 0, variants = 0, changed_cards = 0, hand_orders = 0, ids_named = 0;
+    long prompts = 0, chain_item_prompts = 0, add_payment_prompts = 0;
     std::vector<std::string> problems;
     void problem(const std::string& s) { if (problems.size() < 20) problems.push_back(s); }
 };
@@ -354,6 +355,21 @@ void checkVariants(const GameState& state, const StepResult& step, const CardDB&
     ++t.decisions;
     const PlayerId decider = step.perspective;
     if (decider == PlayerId::None) return;
+    // Census of prompt kinds (batch 3's chain-item and [Add]-payment prompts).
+    if (!step.legal.empty() && step.legal.front().type == IntentType::MakeChoice) {
+        ++t.prompts;
+        bool chain_item = false, add_payment = false;
+        for (const Intent& i : step.legal) {
+            if (i.choice_label.rfind("[Add] for this payment", 0) == 0) add_payment = true;
+            if (i.chosen_value && !i.chosen_objects.empty())
+                for (const auto& ci : state.chain.items)
+                    if (static_cast<int64_t>(ci.id.raw()) == *i.chosen_value &&
+                        ci.source == i.chosen_objects.front())
+                        chain_item = true;
+        }
+        t.chain_item_prompts += chain_item;
+        t.add_payment_prompts += add_payment;
+    }
     for (const Intent& i : step.legal) {
         auto named = [&](GameObjectId id) {
             return id != kInvalidId && state.objectExists(id) &&
@@ -438,7 +454,9 @@ TEST_F(HiddenOrderLeak, PositionsTheDeciderCannotTellApartShowItTheSame) {
     std::cout << "[ hidden order, variants: " << games << " games, " << t.decisions
               << " decisions, " << t.variants << " variant positions (" << t.changed_cards
               << " hidden cards changed, " << t.hand_orders << " own hands reordered); "
-              << t.ids_named << " options naming an object the decider cannot see ]\n";
+              << t.ids_named << " options naming an object the decider cannot see; " << t.prompts
+              << " prompts, " << t.chain_item_prompts << " choosing a chain item, "
+              << t.add_payment_prompts << " choosing an [Add] for a payment ]\n";
 }
 
 // ─── 2. The same game under other ids ───────────────────────────────────────

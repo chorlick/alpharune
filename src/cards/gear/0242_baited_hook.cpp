@@ -99,7 +99,7 @@ public:
             // CR 355.2.a: no location is printed, so the unit goes to its
             // controller's base or to a battlefield they control (and may be
             // played to). Asked before anything leaves the deck.
-            // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+            // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             const int where = pickEffectPlayLocation(*this, ctx, "Baited Hook: play it to");
             if (where == -1) return;   // waiting for the agent
             // Banish it (out of the deck, counted and announced as a banish),

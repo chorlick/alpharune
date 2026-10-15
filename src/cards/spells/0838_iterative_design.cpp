@@ -31,7 +31,7 @@ public:
             if (bfs[i].controller.has_value() && *bfs[i].controller == ctx.controller)
                 mask |= (1u << (i + 1));
         }
-        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int mode = pickMode(ctx, "Iterative Design: where to play the Mech", nbf + 1, labels, mask);
         if (mode < 0 || mode > nbf) return;   // -1 waiting for the agent
         LocationId loc = BaseLocation{ctx.controller};

@@ -51,9 +51,8 @@ public:
         if (finalizingChoices(ctx)) return;    // choices end here (CR 355)
         const GameObjectId picked = *picked_opt;   // kInvalidId: a mistarget
         // Where the unit comes back: its owner's base or a battlefield they
-        // control (CR 355.2.a), chosen as it is played, at resolution (CR
-        // 355.10.b: a play location is not a target; item M5). A token is not
-        // played back (CR 183.1).
+        // control (CR 355.2.a), chosen as it is played and finalized, at
+        // resolution (CR 420.3.b.2). A token is not played back (CR 183.1).
         std::optional<LocationId> back_to;
         const bool replay = unit != kInvalidId && !ctx.state.getObject(unit).isToken();
         if (replay) {

@@ -93,7 +93,7 @@ public:
                 if (!where.empty()) {
                     where.insert(where.begin(), valChoice(ctx.controller, 0, "Reinforce: play to base"));
                     ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
-                    // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+                    // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
                                                "Reinforce: where to play it");
                     ri.resume_point = kAwaitWhere;

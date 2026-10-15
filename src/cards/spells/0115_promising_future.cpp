@@ -121,7 +121,7 @@ public:
                         "Promising Future: play to battlefield " + std::to_string(i)));
             if (where.empty()) return false;
             where.insert(where.begin(), valChoice(p, 0, "Promising Future: play to base"));
-            // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+            // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             ctx.executor.requestChoice(p, std::move(where),
                                        "Promising Future: where to play it");
             return true;

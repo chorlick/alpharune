@@ -24,7 +24,7 @@ public:
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer, TriggerType::WhenIHold};
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         const int dest = pickTokenDest(*this, ctx, "Illaoi: play the Tentacle to");
         if (dest < 0) return;   // waiting for the agent (or nowhere to play it)
         ctx.executor.createToken(ctx.controller, CardType::Unit, "Tentacle", 1,

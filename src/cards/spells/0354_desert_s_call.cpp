@@ -23,7 +23,7 @@ public:
                    const std::vector<GameObjectId>& /*targets*/) override {
         // To the base or a battlefield its controller controls, their choice
         // (asked again for each [Repeat] execution).
-        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         const int dest = pickTokenDest(*this, ctx, "Desert's Call: play the Sand Soldier to");
         if (dest < 0) return;   // waiting for the choice, or nowhere to play it
         // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.

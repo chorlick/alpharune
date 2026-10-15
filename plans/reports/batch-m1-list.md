@@ -210,7 +210,7 @@ Verdicts:
 
 Abbreviations:
 
-- "M5" is the open convention of item M5: an effect play's location is chosen as the play happens, CR 355.10.b.
+- "M5" marks the location of an effect play. It is chosen as the played card or token is finalized, during the resolution (CR 420.3.b.1-420.3.b.2, with Rek'Sai's example). Item M5 asks whether to keep this convention.
 - "hidden" is CR 355.10.a: a hand, a deck, banishment, or cards revealed while the item resolves.
 - "1v1" marks "choose an opponent". It is a target (CR 355.10.d.2), but with one opponent there is nothing to ask.
 

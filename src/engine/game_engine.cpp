@@ -303,7 +303,7 @@ void GameEngine::refreshStepFromDriver() {
     current_step_.kind = StepKind::NeedDecision;
     current_step_.legal = step_driver_->legalActionsSnapshot();
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
-    current_step_.prompt = parked_prompt_;
+    current_step_.prompt = *parked_prompt_;
 }
 
 const StepResult& GameEngine::beginGame(
@@ -4566,12 +4566,15 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // state; a card's prompt asked through this path cannot.
     const bool is_priority = std::any_of(actions.begin(), actions.end(),
         [](const Intent& i) { return i.type == IntentType::PassPriority; });
-    // Read before asking: the name lives only while the prompt does.
-    const std::string asked = effect_executor_ ? effect_executor_->asking() : std::string();
-    auto chosen = askAgent(player, actions,
-        is_priority ? enginePrompt(player, PromptKind::ChainPriority)
-                    : (effect_executor_ ? effect_executor_->askingPrompt() : Prompt{}),
-        is_priority ? PendingQuery::ChainPriority : PendingQuery::None);
+    // The name of what is asked: the executor's prompt, which lives (in the
+    // Asking guard of whoever asked) until this returns.
+    static const std::string kNoName;
+    const std::string& asked = effect_executor_ ? effect_executor_->asking() : kNoName;
+    Intent chosen =
+        is_priority ? askAgent(player, actions, enginePrompt(player, PromptKind::ChainPriority),
+                               PendingQuery::ChainPriority)
+        : effect_executor_ ? askAgentAbout(player, actions, effect_executor_->askingPrompt())
+                           : askAgent(player, actions, Prompt{});
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
     // Closed State (CR 337). Without this, trivial-pass decisions are
@@ -9770,11 +9773,24 @@ Prompt GameEngine::enginePrompt(PlayerId decider, PromptKind kind, GameObjectId 
     return p;
 }
 
+const Prompt GameEngine::kNoPrompt{};
+
 Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                             PendingQuery kind) {
-    pending_query_ = kind;
     prompt.decider = player;
-    parked_prompt_ = std::move(prompt);
+    return askAgentAbout(player, legal, prompt, kind);   // (`prompt` lives for the call)
+}
+
+Intent GameEngine::askAgentAbout(PlayerId player, const std::vector<Intent>& legal,
+                                 const Prompt& prompt, PendingQuery kind) {
+    pending_query_ = kind;
+    if (prompt.decider == player) {
+        parked_prompt_ = &prompt;
+    } else {
+        parked_prompt_copy_ = prompt;
+        parked_prompt_copy_.decider = player;
+        parked_prompt_ = &parked_prompt_copy_;
+    }
     pending_query_player_ = player;
     parked_legal_ = &legal;
     edited_while_parked_ = false;
@@ -9783,7 +9799,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, P
         ~Unpark() {
             e.parked_legal_ = nullptr;
             e.pending_query_ = PendingQuery::None;
-            e.parked_prompt_.kind = PromptKind::Unspecified;
+            e.parked_prompt_ = &kNoPrompt;
         }
     } unpark{*this};
 
@@ -9826,7 +9842,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, P
         }
     }
 
-    Intent chosen = getAgent(player).decide(state_, legal, parked_prompt_);
+    Intent chosen = getAgent(player).decide(state_, legal, *parked_prompt_);
     parked_legal_ = nullptr;
     // (A card's prompt: priority and Focus decisions are the chance to break
     // a loop, not what keeps one going — TR 505.3 against 505.5.)

@@ -196,7 +196,7 @@ public:
     /// phase T1): the prompt of `currentStep()` in step mode, and of the
     /// `AgentInterface::decide` call under way in runGame. Kind Unspecified
     /// when no decision is pending.
-    const Prompt& pendingPrompt() const { return parked_prompt_; }
+    const Prompt& pendingPrompt() const { return *parked_prompt_; }
 
     /// Mutable access, for tests that build a position by hand and for the
     /// play server's god mode. Not for the OpenSpiel wrapper, BatchRunner or
@@ -431,9 +431,17 @@ private:
     /// state-derived decision this is, if any (recomputePendingLegalActions).
     Intent askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                     PendingQuery kind = PendingQuery::None);
-    /// What the decision being asked right now asks (askAgent); kind
-    /// Unspecified while no agent is being asked.
-    Prompt parked_prompt_;
+    /// The same with a prompt that lives for the whole call (the executor's
+    /// prompt being asked): it is pointed at, not copied (batch 7 Q2).
+    Intent askAgentAbout(PlayerId player, const std::vector<Intent>& legal, const Prompt& prompt,
+                         PendingQuery kind = PendingQuery::None);
+    /// What the decision being asked right now asks (askAgent): the caller's
+    /// prompt while an agent is being asked, kNoPrompt (kind Unspecified)
+    /// otherwise. parked_prompt_copy_ holds it when the prompt names another
+    /// decider than the one asked.
+    static const Prompt kNoPrompt;
+    const Prompt* parked_prompt_ = &kNoPrompt;
+    Prompt parked_prompt_copy_;
 
     // Step machine state (Phase 11 C-1, fiber refactor 6w).
     // No more std::thread — the engine runs in a userspace fiber

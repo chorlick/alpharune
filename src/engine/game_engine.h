@@ -140,6 +140,15 @@ public:
     /// The engine's RNG stream at this moment (for `resumeFromSnapshot`).
     const std::mt19937_64& rngState() const { return rng_; }
 
+    /// Object ids carry no information (batch 5b item T2): the Main Deck and
+    /// Rune Deck cards of each player get their ids in a random order, drawn
+    /// from a stream of their own (a copy of the engine RNG mixed with this
+    /// salt), so the deal is the same whatever the salt; only which number
+    /// each card gets changes. Default 0. A test sets another salt before
+    /// `beginGame` / `runGame` to play the same game under other ids
+    /// (`HiddenOrderLeak.*`).
+    void setIdLabelSalt(uint64_t salt) { id_label_salt_ = salt; }
+
     /// Inspect what the engine is currently waiting on without advancing.
     /// Throws the engine's exception if the game failed (see applyChoice).
     ///
@@ -359,6 +368,7 @@ private:
     EventBus& events_;
     GameState state_;
     std::mt19937_64 rng_;
+    uint64_t id_label_salt_ = 0;   // see setIdLabelSalt
 
     // Connection for the CardRevealedEvent subscriber installed in
     // the constructor. Stored so the destructor can disconnect — if

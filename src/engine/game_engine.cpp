@@ -6,6 +6,7 @@
 #include "engine/trash_replacement.h"
 #include "game_engine.h"
 #include "engine/keyword_abilities.h"
+#include "engine/knowledge_tracker.h"
 #include "cards/card.h"
 #include "cards/card_helpers.h"
 #include "openspiel/action_vocab.h"
@@ -529,17 +530,34 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
     ps.champion_zone = champ_id;
     ps.chosen_champion = champ_id;
 
+    // Ids in a random order (setIdLabelSalt, batch 5b item T2). Created in
+    // list order, an id said which line of the deck list a card came from,
+    // and the lists are grouped by card: the id of a hidden card nearly
+    // named it. The ids are handed out in an order drawn from a copy of the
+    // engine RNG, which leaves the engine's own stream untouched; the decks
+    // are still filled in list order and shuffled below, so the deal is what
+    // it was.
+    std::mt19937_64 labels = rng_;
+    labels.seed(labels() ^ (id_label_salt_ * 0x9E3779B97F4A7C15ull) ^
+                (player == PlayerId::Player2 ? 0xD1B54A32D192ED03ull : 0));
+    auto instantiateInRandomOrder = [&](const std::vector<CardDefId>& cards) {
+        std::vector<size_t> order(cards.size());
+        for (size_t k = 0; k < order.size(); ++k) order[k] = k;
+        std::shuffle(order.begin(), order.end(), labels);
+        std::vector<GameObjectId> ids(cards.size());
+        for (size_t k : order) ids[k] = instantiateCard(cards[k], player);
+        return ids;
+    };
+
     // Main Deck → shuffled
-    for (auto card_def_id : deck.main_deck) {
-        auto obj_id = instantiateCard(card_def_id, player);
+    for (auto obj_id : instantiateInRandomOrder(deck.main_deck)) {
         state_.getObject(obj_id).zone = ZoneType::MainDeck;
         ps.main_deck.push_back(obj_id);
     }
     shuffleDeck(player);
 
     // Rune Deck → shuffled
-    for (auto rune_def_id : deck.rune_deck) {
-        auto obj_id = instantiateCard(rune_def_id, player);
+    for (auto obj_id : instantiateInRandomOrder(deck.rune_deck)) {
         state_.getObject(obj_id).zone = ZoneType::RuneDeck;
         ps.rune_deck.push_back(obj_id);
     }
@@ -680,8 +698,12 @@ void GameEngine::resolveMulliganDecision(const Intent& chosen) {
     // panel, which prepends events (latest first), so a CHOSE line
     // can be visually separated from its DECISION # context.
     if (!events_.logging()) {
-        events_.noteUnheardLine();   // the CHOSE line below, unread
-        if (!chosen.cards_to_mulligan.empty()) events_.noteUnheardLine();   // two copies
+        if (chosen.cards_to_mulligan.empty()) {
+            events_.noteUnheardLine();   // the CHOSE line below, unread
+        } else {
+            events_.noteUnheardPrivateLine();   // two copies, one per player
+            events_.noteUnheardPrivateLine();
+        }
     } else {
         std::string who = std::string("[") + toString(chosen.player) + "] ";
         if (chosen.cards_to_mulligan.empty()) {
@@ -1716,11 +1738,16 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         options.push_back(std::move(i));
     }
     state_.decision_index++;
-    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
+    RIFT_TRACE_DECISION_SPLIT(events_, item.controller,
+                     "DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(item.controller) + "): choose a target for " +
                      (state_.objectExists(item.source) ? state_.getObject(item.source).name
                                                        : std::string("?")) +
-                     " [" + std::to_string(options.size()) + " options]");
+                     " [" + std::to_string(options.size()) + " options]",
+                     "DECISION (" + std::string(toString(item.controller)) +
+                     "): choose a target for " +
+                     (state_.objectExists(item.source) ? state_.getObject(item.source).name
+                                                       : std::string("?")));
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
     auto chosen = askAgent(chooser, options);
@@ -1785,9 +1812,12 @@ void GameEngine::commitEngineChosenTarget(const Card& card, PlayerId chooser, Ga
 Intent GameEngine::decideNow(PlayerId player, const std::vector<Intent>& options,
                              const std::string& what) {
     state_.decision_index++;
-    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) + " (" +
+    // How many options is the decider's to know (batch 5b item T2).
+    RIFT_TRACE_DECISION_SPLIT(events_, player,
+                     "DECISION #" + std::to_string(state_.decision_index) + " (" +
                      toString(player) + "): " + what + " [" +
-                     std::to_string(options.size()) + " options]");
+                     std::to_string(options.size()) + " options]",
+                     "DECISION (" + std::string(toString(player)) + "): " + what);
     auto chosen = askAgent(player, options);
     if (on_decision) on_decision(state_, options, chosen);
     return chosen;
@@ -1927,6 +1957,71 @@ void GameEngine::orderPendingTriggers() {
         return l;
     };
 
+    // Rewrite the batch's own places on the chain in the order of `order`.
+    auto placeInOrder = [&](const std::vector<ChainItemId>& order) {
+        std::vector<ChainItem> in_order;
+        for (auto id : order)
+            if (const ChainItem* ci = itemOf(id)) in_order.push_back(*ci);
+        size_t n = 0;
+        for (auto& ci : state_.chain.items) {
+            if (n >= in_order.size()) break;
+            if (std::find(ids.begin(), ids.end(), ci.id) == ids.end()) continue;
+            ci = in_order[n++];
+        }
+    };
+    // The batch was queued in the object table's order, which follows object
+    // ids. Put it in an order of what both players see of each ability (its
+    // source's card where both may see it, what fired it), so that the chain
+    // and the order prompt's options do not depend on ids (batch 5b item T2);
+    // the order queued decides only between abilities nobody can tell apart.
+    {
+        auto publicKey = [&](ChainItemId id) {
+            const ChainItem* ci = itemOf(id);
+            std::string text;
+            int64_t fired = -1, kw = -1;
+            std::vector<int64_t> where;   // the source as both players see it
+            if (ci) {
+                const bool seen_by_both =
+                    knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
+                    knowledge::identityVisible(state_, ci->source, PlayerId::Player2);
+                if (seen_by_both) text = label(*ci);
+                fired = static_cast<int64_t>(ci->fired_trigger);
+                if (ci->keyword_ability.has_value())
+                    kw = static_cast<int64_t>(*ci->keyword_ability);
+                // Two copies of one card triggering together: told apart by
+                // where they are and how they stand, not by which was queued
+                // first (the table's order).
+                if (seen_by_both && state_.objectExists(ci->source)) {
+                    const GameObject& o = state_.getObject(ci->source);
+                    where.push_back(static_cast<int64_t>(o.zone.get()));
+                    if (!o.location.has_value()) {
+                        where.push_back(-1);
+                    } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
+                        where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
+                    } else {
+                        where.push_back(static_cast<int64_t>(
+                            std::get<BaseLocation>(*o.location).player));
+                    }
+                    where.push_back(o.current_might);
+                    where.push_back(o.damage_marked);
+                    where.push_back(o.is_exhausted);
+                    where.push_back(o.is_stunned);
+                    where.push_back(o.buff_count);
+                }
+            }
+            return std::make_tuple(std::move(text), fired, kw, std::move(where));
+        };
+        std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
+                              ChainItemId>> keyed;
+        for (auto id : ids) keyed.emplace_back(publicKey(id), id);
+        std::stable_sort(keyed.begin(), keyed.end(),
+                         [](const auto& x, const auto& y) { return x.first < y.first; });
+        std::vector<ChainItemId> canonical;
+        for (auto& [k, id] : keyed) canonical.push_back(id);
+        placeInOrder(canonical);
+        ids = canonical;
+    }
+
     std::vector<ChainItemId> ordered;
     for (int pass = 0; pass < 2; ++pass) {
         std::vector<ChainItemId> mine;
@@ -1973,15 +2068,7 @@ void GameEngine::orderPendingTriggers() {
         for (auto id : mine) ordered.push_back(id);
     }
     // Rewrite the batch's own places on the chain in the chosen order.
-    std::vector<ChainItem> in_order;
-    for (auto id : ordered)
-        if (const ChainItem* ci = itemOf(id)) in_order.push_back(*ci);
-    size_t n = 0;
-    for (auto& ci : state_.chain.items) {
-        if (n >= in_order.size()) break;
-        if (std::find(ids.begin(), ids.end(), ci.id) == ids.end()) continue;
-        ci = in_order[n++];
-    }
+    placeInOrder(ordered);
 }
 
 void GameEngine::placeBelowWhatItsPlayTriggered(ChainItemId item_id, ChainItemId first_new) {
@@ -4296,14 +4383,19 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // prompt carries its own text (EffectExecutor::asking — a card's prompt
     // label, or the executor's name for one it asks itself).
     if (is_priority) {
-        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+        RIFT_TRACE_DECISION_SPLIT(events_, player,
+                         "DECISION #" + std::to_string(state_.decision_index) +
                          " (" + std::string(toString(player)) + " — chain priority): " +
-                         std::to_string(actions.size()) + " legal actions");
+                         std::to_string(actions.size()) + " legal actions",
+                         "DECISION (" + std::string(toString(player)) + " — chain priority)");
     } else {
-        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+        RIFT_TRACE_DECISION_SPLIT(events_, player,
+                         "DECISION #" + std::to_string(state_.decision_index) +
                          " (" + std::string(toString(player)) + "): " +
                          (asked.empty() ? std::string("a choice") : asked) + " [" +
-                         std::to_string(actions.size()) + " options]");
+                         std::to_string(actions.size()) + " options]",
+                         "DECISION (" + std::string(toString(player)) + "): " +
+                         (asked.empty() ? std::string("a choice") : asked));
     }
     RIFT_TRACE(events_, "CHOSE: [" + std::string(toString(player)) + "] " +
                      std::string(toString(chosen.type)));
@@ -5389,10 +5481,22 @@ std::vector<std::vector<GameObjectId>> spellTargetSets(
     }
     std::vector<GameObjectId> current;
     std::vector<bool> used(legal.size(), false);
+    // "Up to N" targets are a set: each is listed in an order of what the
+    // player sees of them, not in the order of `legal` (ascending ids), so
+    // that the intent does not follow object ids (batch 5b item T2).
+    auto asSeen = [&](std::vector<GameObjectId> set) {
+        std::vector<std::pair<std::vector<int64_t>, GameObjectId>> keyed;
+        for (auto id : set)
+            keyed.emplace_back(openspiel::visibleObjectDescription(state, id, player), id);
+        std::stable_sort(keyed.begin(), keyed.end(),
+                         [](const auto& a, const auto& b) { return a.first < b.first; });
+        for (size_t i = 0; i < set.size(); ++i) set[i] = keyed[i].second;
+        return set;
+    };
     std::function<void(size_t)> build = [&](size_t from) {
         if (req.optional ? !current.empty()
                          : static_cast<int>(current.size()) == req.count)
-            sets.push_back(current);
+            sets.push_back(req.optional ? asSeen(current) : current);
         if (static_cast<int>(current.size()) == req.count) return;
         for (size_t i = req.optional ? from : 0; i < legal.size(); ++i) {
             if (used[i]) continue;
@@ -6446,19 +6550,21 @@ void GameEngine::combatDamageStep(BattlefieldId bf_id) {
     if (!events_.logging()) {
         events_.noteUnheardLine();   // the DAMAGE_STEP line below, unread
     } else {
-        std::string att_str, def_str;
-        for (auto uid : att_units) {
-            auto& u = state_.getObject(uid);
-            if (!att_str.empty()) att_str += ", ";
-            att_str += u.name + "(" + std::to_string(u.current_might) + "M" +
-                       (u.is_stunned ? ",STUNNED" : "") + ")";
-        }
-        for (auto uid : def_units) {
-            auto& u = state_.getObject(uid);
-            if (!def_str.empty()) def_str += ", ";
-            def_str += u.name + "(" + std::to_string(u.current_might) + "M" +
-                       (u.is_stunned ? ",STUNNED" : "") + ")";
-        }
+        // Each side in the order of its text, not of the object table (whose
+        // order follows object ids, batch 5b item T2).
+        auto side = [&](const std::vector<GameObjectId>& units) {
+            std::vector<std::string> parts;
+            for (auto uid : units) {
+                auto& u = state_.getObject(uid);
+                parts.push_back(u.name + "(" + std::to_string(u.current_might) + "M" +
+                                (u.is_stunned ? ",STUNNED" : "") + ")");
+            }
+            std::sort(parts.begin(), parts.end());
+            std::string out;
+            for (const auto& p : parts) out += (out.empty() ? "" : ", ") + p;
+            return out;
+        };
+        const std::string att_str = side(att_units), def_str = side(def_units);
         RIFT_TRACE(events_, "DAMAGE_STEP: BF#" + toString(bf_id) +
                          " ATK=[" + att_str + "] DEF=[" + def_str + "]");
     }
@@ -6718,7 +6824,16 @@ GameEngine::CombatDamageAdvance GameEngine::advanceCombatDamage(
                 const uint64_t next = taken | (uint64_t{1} << k);
                 const int left = remaining - assigned;
                 // Same set fully served -> same continuations: expand once.
-                if (left > 0 && !expanded.insert(next).second) continue;
+                // Not once every unit is served: the damage left over goes to
+                // the last unit served (CR 460.2.c.4), which differs between
+                // the orders that reach that set, so each is an assignment of
+                // its own. (Pruning it kept only the first order the walk met,
+                // which follows object ids: batch 5b, found by the relabelled-
+                // games test of item T2.)
+                const bool all_served = next == (flat.size() >= 64
+                                                     ? ~uint64_t{0}
+                                                     : (uint64_t{1} << flat.size()) - 1);
+                if (left > 0 && !all_served && !expanded.insert(next).second) continue;
                 cur.push_back({flat[k], assigned});
                 self(self, next, left);
                 cur.pop_back();
@@ -9494,9 +9609,11 @@ Intent GameEngine::queryAgent(PlayerId player) {
     if (player == PlayerId::Player1) state_.turn.turn_decisions_p1++;
     else state_.turn.turn_decisions_p2++;
 
-    RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+    RIFT_TRACE_DECISION_SPLIT(events_, player,
+                     "DECISION #" + std::to_string(state_.decision_index) +
                      " (" + toString(player) + "): " +
-                     std::to_string(actions.size()) + " legal actions");
+                     std::to_string(actions.size()) + " legal actions",
+                     "DECISION (" + std::string(toString(player)) + ")");
 
     auto chosen = askAgent(player, actions, PendingQuery::MainPhase);
 
@@ -9511,8 +9628,12 @@ Intent GameEngine::queryAgent(PlayerId player) {
         return false;
     };
     if (!events_.logging()) {
-        events_.noteUnheardLine();   // the CHOSE line below, unread
-        if (names_hidden()) events_.noteUnheardLine();   // and its other player's copy
+        if (names_hidden()) {
+            events_.noteUnheardPrivateLine();   // the chooser's copy and
+            events_.noteUnheardPrivateLine();   // the other player's
+        } else {
+            events_.noteUnheardLine();   // the CHOSE line below, unread
+        }
     } else {
         // Written twice when the choice names a card the other player may not
         // know (a card in hand being hidden or played, a facedown card): the

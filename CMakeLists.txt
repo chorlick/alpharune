@@ -717,3 +717,23 @@ set_tests_properties(riftbound_one_card_table PROPERTIES
     PASS_REGULAR_EXPRESSION "Card tables built in this process: 1\n"
     TIMEOUT 300)
 
+# tools/balance.cpp: first-player edge and deck balance (testing phase item
+# T5). One agent kind in both seats over every ordered pairing of the deck
+# lists of a directory, or over random constructed decks; one CSV line per
+# game. Not part of `all`: `cmake --build build --target balance`.
+add_executable(balance EXCLUDE_FROM_ALL
+    tools/balance.cpp
+    src/agents/mcts_agent.cpp
+    src/openspiel/riftbound_game.cpp
+    src/openspiel/riftbound_state.cpp
+    $<TARGET_OBJECTS:algorithms>
+    $<TARGET_OBJECTS:game_transforms>
+    $<TARGET_OBJECTS:utils>
+)
+target_link_libraries(balance PRIVATE
+    riftbound_core open_spiel_core Threads::Threads
+    absl::algorithm absl::flags absl::flags_parse absl::flat_hash_map
+    absl::optional absl::random_random absl::str_format absl::strings absl::time
+)
+target_include_directories(balance PRIVATE ${open_spiel_SOURCE_DIR})
+riftbound_enable_warnings(balance)

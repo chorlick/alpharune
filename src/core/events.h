@@ -541,8 +541,24 @@ public:
         return (static_cast<uint64_t>(static_cast<uint32_t>(log_decision_counter_)) << 32) |
                static_cast<uint32_t>(log_sub_counter_);
     }
-    void noteUnheardLine() { ++log_sub_counter_; ++activity_; }
-    void noteUnheardDecision() { ++log_decision_counter_; log_sub_counter_ = 0; ++activity_; }
+    void noteUnheardLine() {
+        ++log_sub_counter_;
+        ++activity_;
+        if (quiet_depth_ == 0) ++shown_sub_;
+    }
+    /// A line only one player (or neither) may read: it does not advance the
+    /// number shown in the prefix (see tagWithDecision).
+    void noteUnheardPrivateLine() { ++log_sub_counter_; ++activity_; }
+    void noteUnheardDecision() {
+        ++log_decision_counter_;
+        log_sub_counter_ = 0;
+        ++activity_;
+        if (quiet_depth_ == 0) { ++shown_decision_; shown_sub_ = 0; }
+    }
+    void noteUnheardLineFor(LogAudience audience) {
+        if (audience.isBoth()) noteUnheardLine();
+        else noteUnheardPrivateLine();
+    }
     /// Advances with everything the bus is told: every event emitted (kept,
     /// dropped in a quiet stretch or delivered — and again when a held event
     /// is delivered, since that is when its subscribers act) and every log
@@ -571,12 +587,17 @@ private:
     std::vector<std::function<void()>> held_;
     int log_decision_counter_ = 0;
     int log_sub_counter_      = 0;
+    // The numbers shown in the prefix: decisions and lines both players read,
+    // outside quiet stretches (a probe's lines reach nobody, and how many
+    // there were follows hidden cards). See tagWithDecision.
+    int shown_decision_ = 0;
+    int shown_sub_      = 0;
     uint64_t activity_        = 0;   // see activity()
 
     /// Prefix the message with `[D:NNN.NN] `. Bumps the decision
     /// counter (and resets the sub-counter to 0) when `msg` begins
     /// with `"DECISION #"`; otherwise bumps the sub-counter.
-    std::string tagWithDecision(const std::string& msg);
+    std::string tagWithDecision(const std::string& msg, LogAudience audience);
     static bool isDecisionLine(const std::string& msg);
 };
 
@@ -598,14 +619,45 @@ private:
         if (rift_log_bus_.logging()) rift_log_bus_.call;             \
         else rift_log_bus_.unheard();                                \
     } while (0)
+// As RIFT_LOG_LAZY_, for a line with an audience: an unheard line advances
+// the shown number only if both players would read it.
+#define RIFT_LOG_LAZY_FOR_(bus, call, audience)                      \
+    do {                                                             \
+        ::riftbound::EventBus& rift_log_bus_ = (bus);                \
+        if (rift_log_bus_.logging()) rift_log_bus_.call;             \
+        else rift_log_bus_.noteUnheardLineFor(audience);             \
+    } while (0)
 #define RIFT_TRACE(bus, ...)          RIFT_LOG_LAZY_(bus, logTrace(__VA_ARGS__), noteUnheardLine)
 #define RIFT_TRACE_DECISION(bus, ...) RIFT_LOG_LAZY_(bus, logTrace(__VA_ARGS__), noteUnheardDecision)
 #define RIFT_DEBUG(bus, ...)          RIFT_LOG_LAZY_(bus, logDebug(__VA_ARGS__), noteUnheardLine)
 #define RIFT_INFO(bus, ...)           RIFT_LOG_LAZY_(bus, logInfo(__VA_ARGS__), noteUnheardLine)
 #define RIFT_WARN(bus, ...)           RIFT_LOG_LAZY_(bus, logWarn(__VA_ARGS__), noteUnheardLine)
+/// (bus, decider, message, for_others): a "DECISION #" header that says
+/// something only the decider may know (how many options it has: that
+/// follows its hand). The decider reads `message`; the other player reads
+/// `for_others`, which must not start with "DECISION #" (one decision is one
+/// decision line) — e.g. "DECISION (P2): chain priority" with no count
+/// (batch 5b item T2). Both are counted as lines when nobody listens.
+#define RIFT_TRACE_DECISION_SPLIT(bus, decider, message, for_others)               \
+    do {                                                                             \
+        ::riftbound::EventBus& rift_log_bus_ = (bus);                                \
+        const ::riftbound::PlayerId rift_decider_ = (decider);                       \
+        if (rift_log_bus_.logging()) {                                               \
+            rift_log_bus_.logTracePrivate(rift_decider_, message);                   \
+            rift_log_bus_.logTraceFor(                                               \
+                ::riftbound::LogAudience{rift_decider_ != ::riftbound::PlayerId::Player1, \
+                                         rift_decider_ != ::riftbound::PlayerId::Player2}, \
+                for_others);                                                         \
+        } else {                                                                     \
+            rift_log_bus_.noteUnheardDecision();                                     \
+            rift_log_bus_.noteUnheardPrivateLine();                                  \
+        }                                                                            \
+    } while (0)
 /// (bus, visible_to, message) — see EventBus::logTracePrivate.
-#define RIFT_TRACE_PRIVATE(bus, ...)  RIFT_LOG_LAZY_(bus, logTracePrivate(__VA_ARGS__), noteUnheardLine)
+#define RIFT_TRACE_PRIVATE(bus, ...)  RIFT_LOG_LAZY_(bus, logTracePrivate(__VA_ARGS__), noteUnheardPrivateLine)
 /// (bus, audience, message) — see EventBus::logTraceFor.
-#define RIFT_TRACE_FOR(bus, ...)      RIFT_LOG_LAZY_(bus, logTraceFor(__VA_ARGS__), noteUnheardLine)
+#define RIFT_TRACE_FOR(bus, audience, ...)                                        \
+    RIFT_LOG_LAZY_FOR_(bus, logTraceFor(audience, __VA_ARGS__), audience)
 /// (bus, level, audience, message) — see EventBus::logFor.
-#define RIFT_LOG_FOR(bus, ...)        RIFT_LOG_LAZY_(bus, logFor(__VA_ARGS__), noteUnheardLine)
+#define RIFT_LOG_FOR(bus, level, audience, ...)                                   \
+    RIFT_LOG_LAZY_FOR_(bus, logFor(level, audience, __VA_ARGS__), audience)

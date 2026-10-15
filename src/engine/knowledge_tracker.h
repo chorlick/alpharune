@@ -126,6 +126,19 @@ void prune(GameState& state);
 /// slot that does not hold the card. Empty means consistent. For tests.
 std::vector<std::string> check(const GameState& state);
 
+/// Whether `observer` knows which card `object` is: an object in a public
+/// zone, the observer's own hand and facedown cards, and a hidden card it was
+/// shown (`GameKnowledgeView::about`). Cheap for the public case; what is
+/// shown to a player names a card only through this (batch 5b item T2:
+/// action slots, twin order, the observation).
+bool identityVisible(const GameState& state, GameObjectId object, PlayerId observer);
+
+/// `player`'s hand sorted by card id (cards of one card in the order they
+/// entered the hand). The order the observation writes a hand in and the
+/// positions a mulligan slot names: a hand is shown as what it holds, not in
+/// the order it was dealt (batch 5b item T2).
+std::vector<GameObjectId> sortedHand(const GameState& state, PlayerId player);
+
 /// `KnowledgeView` over a `GameState`. Holds a reference: build one per
 /// observation and do not keep it across a state change.
 class GameKnowledgeView final : public KnowledgeView {

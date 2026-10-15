@@ -323,34 +323,22 @@ std::vector<double> RiftboundState::Returns() const {
 }
 
 uint64_t RiftboundState::InfoSetId(::open_spiel::Player player) const {
-    // Thin wrapper: extract masked features + delegate hashing to the
-    // pure ml::computeInfoSetId so the hash function itself is unit-
-    // testable without a full game.
-    ::riftbound::PlayerId rb_player = (player == 0)
+    // One definition for the engine and OpenSpiel: openspiel::infoSetIdFor
+    // (action_vocab.h) hashes the player's masked features, its seat, who
+    // decides and, for the decider, the action ids on offer.
+    const ::riftbound::PlayerId rb_player = (player == 0)
         ? ::riftbound::PlayerId::Player1
         : ::riftbound::PlayerId::Player2;
-    const ::riftbound::GameState& gs = engineState();
-    // Search asks for this key on every node visit: reuse one buffer per
-    // thread instead of allocating the kStateFeatureDim-float vector each time.
-    thread_local std::vector<float> feats;
-    ::riftbound::ml::extractStateFeatures(
-        gs, rb_player, rb_game_.cardDb(), feats);
-    // The features describe the board, not the question being asked. Two
-    // decisions in a row can leave the board untouched (a card's mode prompt
-    // followed by its target prompt, two "you may" prompts) yet offer
-    // different actions, and a search tree or regret table keyed on the
-    // board alone would file both under one node. So the key also carries
-    // who is deciding and, for the decider, the actions on offer — which
-    // the decider sees, and which makes "same key => same action set" hold
-    // by construction. Other players get only the public "who decides".
     const ::open_spiel::Player decider = CurrentPlayer();
-    std::vector<int64_t> offered;
-    if (player == decider) {
-        for (auto a : LegalActions()) offered.push_back(static_cast<int64_t>(a));
-    }
-    return ::riftbound::ml::mixDecisionIntoInfoSetId(
-        ::riftbound::ml::computeInfoSetId(feats, player),
-        static_cast<int>(decider), offered);
+    const ::riftbound::PlayerId rb_decider =
+        decider == 0 ? ::riftbound::PlayerId::Player1
+        : decider == 1 ? ::riftbound::PlayerId::Player2
+                       : ::riftbound::PlayerId::None;
+    static const std::vector<::riftbound::Intent> kNone;
+    const std::vector<::riftbound::Intent>& legal =
+        rb_decider == ::riftbound::PlayerId::None ? kNone
+        : lazy_ ? lazy_->step.legal : engine_->currentStep().legal;
+    return infoSetIdFor(engineState(), legal, rb_decider, rb_player, rb_game_.cardDb());
 }
 
 std::string RiftboundState::ObservationString(::open_spiel::Player player) const {

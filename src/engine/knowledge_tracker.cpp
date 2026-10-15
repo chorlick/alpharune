@@ -355,6 +355,11 @@ void seenInDeck(GameState& state, GameObjectId object, Seers seers,
 
 void shown(GameState& state, GameObjectId object, Seers seers) {
     if (!seers.p1 && !seers.p2) return;
+    // A rune of a Rune Deck: what is looked at or revealed there is its top.
+    if (state.objectExists(object) && state.getObject(object).zone == ZoneType::RuneDeck) {
+        runeSeenOnTop(state, object, seers);
+        return;
+    }
     switch (deck::whereIs(state, object)) {
         case Place::Public:
             return;
@@ -437,6 +442,30 @@ void shuffled(GameState& state, PlayerId owner) {
     clearDeckPositions(state, owner);
 }
 
+// ── Rune Decks ──
+
+void runeToBottom(GameState& state, GameObjectId rune, Seers seers) {
+    for (PlayerId o : kPlayers) {
+        auto& known = state.knowledge.runes[playerIndex(o)];
+        // Who knew it where it was (on top, looked at or revealed) still does.
+        const bool knew = known.count(rune) > 0;
+        if (seers.includes(o) || knew) known[rune] = DeckEnd::Bottom;
+    }
+}
+
+void runeSeenOnTop(GameState& state, GameObjectId rune, Seers seers) {
+    for (PlayerId o : kPlayers)
+        if (seers.includes(o)) state.knowledge.runes[playerIndex(o)][rune] = DeckEnd::Top;
+}
+
+void runeDeckShuffled(GameState& state, PlayerId owner) {
+    for (PlayerId o : kPlayers) {
+        auto& known = state.knowledge.runes[playerIndex(o)];
+        for (auto it = known.begin(); it != known.end();)
+            it = ownerOf(state, it->first) == owner ? known.erase(it) : std::next(it);
+    }
+}
+
 void prune(GameState& state) {
     // Called before every decision. Most of the time nobody holds a fact
     // about a hidden card and no group is tracked: then there is nothing to
@@ -444,6 +473,14 @@ void prune(GameState& state) {
     // std::map of every card in both hands and decks, built and thrown away
     // per decision — plans/09 item 9.JJ1).
     auto& known = state.knowledge;
+    // Rune facts last only while their rune is in a Rune Deck.
+    for (auto& runes : known.runes) {
+        for (auto it = runes.begin(); it != runes.end();) {
+            const auto oit = state.objects.find(it->first);
+            const bool there = oit != state.objects.end() && oit->second.zone == ZoneType::RuneDeck;
+            it = there ? std::next(it) : runes.erase(it);
+        }
+    }
     if (known.facts[0].empty() && known.facts[1].empty() && known.groups.empty()) return;
 
     // Where each hidden card is: sorted by id for lookup. A card listed twice
@@ -558,6 +595,15 @@ std::vector<std::string> check(const GameState& state) {
                            std::to_string(from_end));
             }
         }
+        // A known rune is in its owner's Rune Deck (read before the next prune).
+        for (const auto& [id, end] : state.knowledge.runes[playerIndex(o)]) {
+            const PlayerId owner = ownerOf(state, id);
+            if (owner == PlayerId::None) { say(o, id, "rune does not exist"); continue; }
+            if (state.getObject(id).zone != ZoneType::RuneDeck) continue;   // pruned next
+            const auto& rd = state.player(owner).rune_deck;
+            if (std::find(rd.begin(), rd.end(), id) == rd.end())
+                say(o, id, "known rune is not in its owner's Rune Deck");
+        }
     }
     return out;
 }
@@ -662,7 +708,7 @@ CardKnowledge GameKnowledgeView::about(GameObjectId object) const {
             return k;
         }
         k.last_known_zone = obj.zone;
-        if (obj.zone == ZoneType::RuneDeck) return k;
+        if (obj.zone == ZoneType::RuneDeck) return aboutRune(object);
         // A card held by another player's "look at" is in no zone list either.
         if (obj.zone == ZoneType::MainDeck || obj.zone == ZoneType::Hand) return k;
         k.identity_known = true;
@@ -774,6 +820,70 @@ std::vector<CardKnowledge> GameKnowledgeView::knownDeckEnd(PlayerId owner,
         next += span;
     }
     return out;
+}
+
+CardKnowledge GameKnowledgeView::aboutRune(GameObjectId rune) const {
+    CardKnowledge k;
+    k.object = rune;
+    auto oit = state_.objects.find(rune);
+    if (oit == state_.objects.end()) return k;
+    const GameObject& obj = oit->second;
+    k.owner = obj.owner;
+    k.last_known_zone = ZoneType::RuneDeck;
+    if (observer_ != PlayerId::Player1 && observer_ != PlayerId::Player2) return k;
+    const auto& known = state_.knowledge.runes[playerIndex(observer_)];
+    const auto fit = known.find(rune);
+    if (fit == known.end() || obj.owner == PlayerId::None) return k;
+    const auto& rd = state_.player(obj.owner).rune_deck;   // top = back
+    const auto at = std::find(rd.begin(), rd.end(), rune);
+    if (at == rd.end()) return k;
+    k.identity_known = true;
+    k.card_def_id = obj.card_def_id;
+    const int index = static_cast<int>(at - rd.begin());
+    if (fit->second == DeckEnd::Top) {
+        k.deck_position = DeckPosition::Top;
+        k.deck_rank = static_cast<int>(rd.size()) - 1 - index;
+    } else {
+        k.deck_position = DeckPosition::Bottom;
+        k.deck_rank = index;
+    }
+    return k;
+}
+
+std::vector<CardKnowledge> GameKnowledgeView::knownRuneDeckEnd(PlayerId owner, DeckEnd end) const {
+    const auto& rd = state_.player(owner).rune_deck;   // top = back
+    std::vector<CardKnowledge> out;
+    const int n = static_cast<int>(rd.size());
+    for (int r = 0; r < n; ++r) {
+        const GameObjectId id = end == DeckEnd::Top ? rd[static_cast<size_t>(n - 1 - r)]
+                                                    : rd[static_cast<size_t>(r)];
+        CardKnowledge k = aboutRune(id);
+        if (!k.identity_known) break;
+        // Counted from the end asked for.
+        k.deck_position = end == DeckEnd::Top ? DeckPosition::Top : DeckPosition::Bottom;
+        k.deck_rank = r;
+        out.push_back(k);
+    }
+    return out;
+}
+
+std::vector<CardKnowledge> GameKnowledgeView::knownRuneDeckTop(PlayerId owner) const {
+    return knownRuneDeckEnd(owner, DeckEnd::Top);
+}
+
+std::vector<CardKnowledge> GameKnowledgeView::knownRuneDeckBottom(PlayerId owner) const {
+    return knownRuneDeckEnd(owner, DeckEnd::Bottom);
+}
+
+std::vector<std::pair<CardDefId, int>> GameKnowledgeView::ownRuneDeckComposition() const {
+    std::map<CardDefId, int> counts;
+    if (observer_ != PlayerId::Player1 && observer_ != PlayerId::Player2) return {};
+    for (auto id : state_.player(observer_).rune_deck) {
+        if (aboutRune(id).identity_known) continue;
+        auto oit = state_.objects.find(id);
+        if (oit != state_.objects.end()) ++counts[oit->second.card_def_id];
+    }
+    return {counts.begin(), counts.end()};
 }
 
 std::vector<CardKnowledge> GameKnowledgeView::knownDeckTop(PlayerId owner) const {

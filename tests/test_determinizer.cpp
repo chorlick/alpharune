@@ -132,13 +132,16 @@ protected:
             changed = true;
             ++*swaps;
         }
-        // A rune of their rune deck replaced.
-        if (!op.rune_deck.empty()) {
+        // A rune of their rune deck the observer does not know replaced (a
+        // recycled rune is known at the bottom: batch 5d T4).
+        std::vector<GameObjectId> unknown_runes;
+        for (auto id : op.rune_deck) if (unknown(id)) unknown_runes.push_back(id);
+        if (!unknown_runes.empty()) {
             std::vector<CardDefId> runes;
             for (const auto& [id, def] : db_->all())
                 if (def.card_type == CardType::Rune && !def.isTokenCard()) runes.push_back(id);
             std::sort(runes.begin(), runes.end());
-            becomeCard(variant.getObject(op.rune_deck[rng() % op.rune_deck.size()]),
+            becomeCard(variant.getObject(unknown_runes[rng() % unknown_runes.size()]),
                        db_->get(runes[rng() % runes.size()]));
             changed = true;
             ++*swaps;

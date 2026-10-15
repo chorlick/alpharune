@@ -64,6 +64,13 @@ struct KnowledgeState {
     uint32_t next_group = 1;
     /// Indexed by playerIndex(deck owner).
     std::array<DeckCounters, 2> deck;
+    /// Rune Decks (testing phase T4): the runes each observer (indexed by
+    /// playerIndex) knows by identity while they are in a Rune Deck, and the
+    /// end they were seen at. A Rune Deck is only added to at its bottom and
+    /// taken from at its top, and how many runes go each way is public, so a
+    /// known rune's slot is read from the deck itself (GameKnowledgeView);
+    /// a shuffle forgets them (knowledge::runeDeckShuffled).
+    std::array<std::map<GameObjectId, DeckEnd>, 2> runes;
 };
 
 } // namespace riftbound

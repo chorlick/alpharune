@@ -53,6 +53,7 @@
 #include "core/card_db.h"
 #include "core/game_object.h"
 #include "core/game_state.h"
+#include "rules/deck_model.h"
 #include "rules/random_deck.h"
 
 #include <cstdint>
@@ -100,20 +101,17 @@ public:
     std::vector<std::string> check(const GameState& truth, const GameState& world,
                                    PlayerId observer) const;
 
+    /// The deck model it draws from (rules/deck_model.h), shared with the
+    /// opponent's card pool an observer is shown (ObserverView, T6).
+    const DeckModel& model() const { return model_; }
+
 private:
-    struct LegendPool {
-        std::vector<CardDefId> cards;    // main + signatures
-        std::vector<CardDefId> hidden;   // the [Hidden] ones
-        std::vector<std::vector<CardDefId>> runes;
-        bool found = false;              // the legend has a RandomDeckBuilder pool
-    };
-    const LegendPool& poolFor(CardDefId legend) const;
-    const CardDef* def(CardDefId id) const;
+    using LegendPool = DeckModel::LegendPool;
+    const LegendPool& poolFor(CardDefId legend) const { return model_.poolFor(legend); }
+    const CardDef* def(CardDefId id) const { return model_.def(id); }
 
     const CardDB& db_;
-    RandomDeckBuilder builder_;
-    std::map<CardDefId, LegendPool> pools_;   // one per legend, built in the constructor
-    LegendPool any_;                          // fallback: every legal Main Deck card
+    DeckModel model_;
 };
 
 } // namespace riftbound

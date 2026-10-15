@@ -5,6 +5,8 @@
 
 #include "card_test_fixture.h"
 #include "cards/card_helpers.h"
+#include "engine/knowledge_tracker.h"
+#include "engine/observer_view.h"
 #include "engine/prompt_description.h"
 
 #include <algorithm>
@@ -217,6 +219,96 @@ TEST_F(Batch5dTest, T1_AnEffectPlaysTargetQuestionIsTheSpellsTarget) {
         if (target->legal[opt.index].chosen_objects.front() == mine) names_mine = true;
     }
     EXPECT_TRUE(names_mine);
+}
+
+
+// ─── T4: what a player may know of a Rune Deck ───────────────────────────────
+
+/// A rune of `owner`'s on top of their Rune Deck (top = back of the list).
+inline GameObjectId runeOnTopOfDeck(GameState& state, PlayerId owner, Domain domain) {
+    auto id = state.createObject();
+    auto& r = state.getObject(id);
+    r.owner = r.controller = owner;
+    r.card_type = CardType::Rune;
+    r.name = std::string(toString(domain)) + " Rune";
+    r.domains = {domain};
+    r.zone = ZoneType::RuneDeck;
+    state.player(owner).rune_deck.push_back(id);
+    return id;
+}
+
+// A rune recycled for Power goes to the bottom of its Rune Deck in the open
+// (CR 164.2, 417.1.b): both players know which rune is there, and a world
+// drawn for honest search keeps it (agents/determinizer.h). Before batch 5d
+// the tracker did not follow Rune Decks: about() said "unknown" for every
+// rune in one.
+TEST_F(Batch5dTest, T4_ARecycledRuneIsKnownToBothPlayersAtTheBottomOfItsRuneDeck) {
+    runeOnTopOfDeck(state, P1, Domain::Fury);
+    runeOnTopOfDeck(state, P1, Domain::Calm);
+    auto rune = addRune(P1, Domain::Body);
+    withEngine([&](GameEngine& e) { ASSERT_TRUE(e.testHook_executor().payAnyPower(P1, 1)); });
+    ASSERT_EQ(o(rune).zone.get(), ZoneType::RuneDeck);
+    ASSERT_EQ(ps(P1).rune_deck.front(), rune) << "at the bottom";
+    for (PlayerId who : {P1, P2}) {
+        const knowledge::GameKnowledgeView view(state, who);
+        const CardKnowledge k = view.about(rune);
+        EXPECT_TRUE(k.identity_known) << toString(who);
+        EXPECT_EQ(k.deck_position, DeckPosition::Bottom);
+        EXPECT_EQ(k.deck_rank, 0);
+        const auto bottom = view.knownRuneDeckBottom(P1);
+        ASSERT_EQ(bottom.size(), 1u) << "the next one up is not known";
+        EXPECT_EQ(bottom.front().object, rune);
+        EXPECT_TRUE(view.knownRuneDeckTop(P1).empty());
+    }
+    // Its owner knows the rest of its Rune Deck as a composition.
+    const knowledge::GameKnowledgeView mine(state, P1);
+    int copies = 0;
+    for (const auto& [card, n] : mine.ownRuneDeckComposition()) copies += n;
+    EXPECT_EQ(copies, 2) << "Fury and Calm, not the known Body";
+    // A shuffle forgets the slot.
+    knowledge::runeDeckShuffled(state, P1);
+    EXPECT_FALSE(knowledge::GameKnowledgeView(state, P2).about(rune).identity_known);
+    EXPECT_TRUE(knowledge::check(state).empty());
+}
+
+// The rune a player looks at on top of its Rune Deck (Void Hatchling's
+// look) is known to that player only; recycled unrevealed it is still known
+// to it alone, now at the bottom.
+TEST_F(Batch5dTest, T4_ALookAtTheTopRuneTellsTheLookerOnly) {
+    auto bottom = runeOnTopOfDeck(state, P1, Domain::Fury);
+    auto top = runeOnTopOfDeck(state, P1, Domain::Calm);
+    knowledge::shown(state, top, knowledge::only(P1));
+    EXPECT_TRUE(knowledge::GameKnowledgeView(state, P1).about(top).identity_known);
+    EXPECT_FALSE(knowledge::GameKnowledgeView(state, P2).about(top).identity_known);
+    EXPECT_EQ(knowledge::GameKnowledgeView(state, P1).knownRuneDeckTop(P1).size(), 1u);
+    // Recycled from the top, unrevealed.
+    ps(P1).rune_deck.pop_back();
+    withEngine([&](GameEngine& e) { e.testHook_executor().recycleCards(P1, {top}); });
+    ASSERT_EQ(ps(P1).rune_deck.front(), top);
+    const knowledge::GameKnowledgeView mine(state, P1), theirs(state, P2);
+    EXPECT_TRUE(mine.about(top).identity_known);
+    EXPECT_EQ(mine.about(top).deck_position, DeckPosition::Bottom);
+    EXPECT_FALSE(theirs.about(top).identity_known);
+    EXPECT_FALSE(mine.about(bottom).identity_known) << "never seen";
+    EXPECT_TRUE(knowledge::check(state).empty());
+}
+
+// The chain as an observer is shown it: each item's links (source, targets,
+// the item a counter chose by its place) with its card only where the
+// observer may see it (T4).
+TEST_F(Batch5dTest, T4_TheChainIsShownWithItsLinks) {
+    auto lower = spellOnChain(P2, kDredgeUp);
+    auto upper = spellOnChain(P2, kPremonition);
+    state.chain.items.back().chosen_item = state.chain.items.front().id;   // as a counter's
+    const ObserverView view(state, P1, card_db);
+    const auto items = view.chain();
+    ASSERT_EQ(items.size(), 2u);
+    EXPECT_EQ(items[0].source, lower);
+    EXPECT_EQ(items[0].card, kDredgeUp);
+    EXPECT_EQ(items[1].source, upper);
+    EXPECT_EQ(items[1].chosen_item, 0) << "the chosen item by its place on the chain";
+    EXPECT_EQ(items[1].kind, ChainItemFacts::Kind::Spell);
+    EXPECT_EQ(items[1].controller, P2);
 }
 
 }  // namespace riftbound::test::batch_5d

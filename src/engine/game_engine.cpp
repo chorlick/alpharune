@@ -8441,6 +8441,7 @@ void GameEngine::shuffleDeck(PlayerId player) {
 void GameEngine::shuffleRuneDeck(PlayerId player) {
     auto& deck = state_.player(player).rune_deck;
     std::shuffle(deck.begin(), deck.end(), rng_);
+    knowledge::runeDeckShuffled(state_, player);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -9161,6 +9162,7 @@ GameEngine::CostPaymentAdvance GameEngine::resolveCostPaymentDecision(
         rune.zone = ZoneType::RuneDeck;
         state_.player(cur.player).rune_deck.insert(
             state_.player(cur.player).rune_deck.begin(), rune_id);
+        knowledge::runeToBottom(state_, rune_id, knowledge::everyone());   // a public rune (T4)
         events_.emit(LeftBoardEvent{rune_id, cur.player, CardType::Rune,
             base_loc, ZoneType::RuneDeck, false});
         forgetBoardState(state_.getObject(rune_id), nullptr);

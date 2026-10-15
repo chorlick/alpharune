@@ -95,6 +95,14 @@ LogAudience audienceNaming(const GameState& state, PlayerId knower,
 /// Power of any Domain `player` could pay right now.
 int payableAnyPower(const GameState& state, PlayerId player, SpendFor f = SpendFor::Other);
 
+/// The lethal-damage rule as a function of the state, the one EffectExecutor::
+/// damageKills (and so the cleanup) applies: lethal damage (CR 142.4), or any
+/// damage marked by a player one of whose units makes all their damage lethal
+/// (Elder Dragon, Card::anyDamageIsLethal). For a reader with no executor
+/// (ObserverView, testing phase T6).
+bool anyDamageIsLethalFor(const GameState& state, const CardRegistry* registry, PlayerId damager);
+bool damageKillsIn(const GameState& state, const CardRegistry* registry, const GameObject& unit);
+
 class EffectExecutor {
 public:
     EffectExecutor(GameState& state, EventBus& events, const CardDB& card_db,

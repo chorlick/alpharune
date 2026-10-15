@@ -13,7 +13,9 @@
 ///   - for each player, the log lines it may read (LogEvent::visibleTo);
 ///   - for each player, what it is shown of the decision's question
 ///     (describePrompt, testing phase T1: the decider's words and options,
-///     the other player's "who decides what").
+///     the other player's "who decides what");
+///   - for each player, everything the per-observer queries show it
+///     (ObserverView::fingerprint, testing phase T4 / T6).
 ///
 /// Three ways of making two positions a player cannot tell apart, each at
 /// every decision of real games (deck lists, [Hidden] decks among them, and
@@ -36,6 +38,7 @@
 #include "core/events.h"
 #include "engine/game_engine.h"
 #include "engine/knowledge_tracker.h"
+#include "engine/observer_view.h"
 #include "engine/prompt_description.h"
 #include "ml/feature_extractor.h"
 #include "openspiel/action_vocab.h"
@@ -79,6 +82,7 @@ struct Shown {
     uint64_t info_set = 0;
     std::vector<float> observation;
     PromptDescription prompt;                      // what `who` is shown of the question
+    std::vector<int64_t> knowable;                 // ObserverView::fingerprint
 
     bool operator==(const Shown&) const = default;
 };
@@ -94,9 +98,11 @@ std::vector<size_t> byActionId(const GameState& s, const std::vector<Intent>& le
 }
 
 Shown shownTo(const GameState& s, const std::vector<Intent>& legal, PlayerId decider,
-              PlayerId who, const CardDB& db, const Prompt& prompt) {
+              PlayerId who, const CardDB& db, const Prompt& prompt,
+              const CardRegistry* registry) {
     Shown out;
     if (decider != PlayerId::None) out.prompt = describePrompt(s, prompt, legal, who, db);
+    out.knowable = ObserverView(s, who, db, registry).fingerprint();
     if (who == decider) {
         const std::vector<int> ids = openspiel::actionIds(legal, s);
         for (size_t i : byActionId(s, legal)) {
@@ -150,6 +156,12 @@ std::string firstDifference(const Shown& a, const Shown& b) {
         return "observation length differs";
     }
     if (a.info_set != b.info_set) return "info-set id differs";
+    if (a.knowable != b.knowable) {
+        size_t i = 0;
+        while (i < std::min(a.knowable.size(), b.knowable.size()) && a.knowable[i] == b.knowable[i]) ++i;
+        return "the per-observer queries differ (ObserverView::fingerprint, at " +
+               std::to_string(i) + " of " + std::to_string(a.knowable.size()) + ")";
+    }
     if (!(a.prompt == b.prompt)) {
         if (a.prompt.text != b.prompt.text)
             return "the decision's description differs: '" + a.prompt.text + "' vs '" +
@@ -313,12 +325,16 @@ long makeVariant(const GameState& truth, GameState& variant, PlayerId observer,
                    db.get(others[rng() % others.size()]));
         ++changed;
     }
-    if (!op.rune_deck.empty()) {
+    // One of their runes the observer does not know (a recycled rune is known
+    // at the bottom of the Rune Deck: batch 5d T4).
+    std::vector<GameObjectId> unknown_runes;
+    for (auto id : op.rune_deck) if (unknown(id)) unknown_runes.push_back(id);
+    if (!unknown_runes.empty()) {
         std::vector<CardDefId> runes;
         for (const auto& [id, def] : db.all())
             if (def.card_type == CardType::Rune && !def.isTokenCard()) runes.push_back(id);
         std::sort(runes.begin(), runes.end());
-        becomeCard(variant.getObject(op.rune_deck[rng() % op.rune_deck.size()]),
+        becomeCard(variant.getObject(unknown_runes[rng() % unknown_runes.size()]),
                    db.get(runes[rng() % runes.size()]));
         ++changed;
     }
@@ -355,7 +371,8 @@ long makeVariant(const GameState& truth, GameState& variant, PlayerId observer,
 }
 
 void checkVariants(const GameState& state, const StepResult& step, const CardDB& db,
-                   uint64_t seed, const std::string& where, VariantTally& t) {
+                   const CardRegistry* registry, uint64_t seed, const std::string& where,
+                   VariantTally& t) {
     ++t.decisions;
     const PlayerId decider = step.perspective;
     if (decider == PlayerId::None) return;
@@ -426,8 +443,8 @@ void checkVariants(const GameState& state, const StepResult& step, const CardDB&
     for (const auto& [id, obj] : state.objects)
         if (variant.getObject(id).card_def_id != obj.card_def_id) differs = true;
     if (!differs) t.problem(where + ": the variant is the same position");
-    const Shown a = shownTo(state, step.legal, decider, decider, db, step.prompt);
-    const Shown b = shownTo(variant, step.legal, decider, decider, db, step.prompt);
+    const Shown a = shownTo(state, step.legal, decider, decider, db, step.prompt, registry);
+    const Shown b = shownTo(variant, step.legal, decider, decider, db, step.prompt, registry);
     if (!(a == b)) t.problem(where + ": " + firstDifference(a, b));
 }
 
@@ -444,7 +461,7 @@ TEST_F(HiddenOrderLeak, PositionsTheDeciderCannotTellApartShowItTheSame) {
         engine.beginGame(d1, d2, seed);
         for (int n = 0; n < 4000 && !engine.isStepDone(); ++n) {
             const StepResult step = engine.currentStep();
-            checkVariants(engine.state(), step, *db_, seed * 1000 + n,
+            checkVariants(engine.state(), step, *db_, registry_, seed * 1000 + n,
                           deckName(g) + " seed " + std::to_string(seed) + " decision " +
                               std::to_string(n),
                           t);
@@ -557,15 +574,17 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
         std::mt19937_64 rng_a(seed * 13 + 5), rng_b(seed * 13 + 5);
         const double pass_p = g % 4 < 2 ? -1.0 : 0.2;
         const std::string where = deckName(g) + " seed " + std::to_string(seed);
+        std::string last_choice;   // the decision before, for a divergence report
         for (int n = 0; n < 4000; ++n) {
             if (stateKey(a.state()) != stateKey(b.state())) {
                 if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
                     const std::string ka = stateKey(a.state()), kb = stateKey(b.state());
                     size_t k = 0;
                     while (k < ka.size() && k < kb.size() && ka[k] == kb[k]) ++k;
-                    const size_t from = ka.rfind(';', k) == std::string::npos ? 0 : ka.rfind(';', k);
-                    std::cout << "  diverged: " << where << " decision " << n << ": "
-                              << ka.substr(from, 120) << " | " << kb.substr(from, 120) << "\n";
+                    const size_t from = k > 80 ? k - 80 : 0;
+                    std::cout << "  diverged: " << where << " decision " << n << " after "
+                              << last_choice << ": ..." << ka.substr(from, 140) << " | ..."
+                              << kb.substr(from, 140) << "\n";
                 }
                 ++diverged;   // handled in the table's order: another game now
                 break;
@@ -605,8 +624,10 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                 break;
             }
             for (PlayerId who : {PlayerId::Player1, PlayerId::Player2}) {
-                const Shown va = shownTo(a.state(), sa.legal, sa.perspective, who, *db_, sa.prompt);
-                const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, who, *db_, sb.prompt);
+                const Shown va = shownTo(a.state(), sa.legal, sa.perspective, who, *db_, sa.prompt,
+                                         registry_);
+                const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, who, *db_, sb.prompt,
+                                         registry_);
                 if (!(va == vb)) {
                     if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
                         for (const GameEngine* e : {&a, &b}) {
@@ -647,6 +668,9 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
             // One action id: the decider sees the two options as the same
             // (their descriptions were compared above). They may name
             // different numbers for cards nobody can tell apart.
+            if (std::getenv("RIFTBOUND_LEAK_VERBOSE"))
+                last_choice = std::string(toString(sa.prompt.kind)) + " '" + sa.prompt.question +
+                              "' -> " + sa.legal[ia].describe() + " '" + sa.legal[ia].choice_label + "'";
             a.applyChoice(static_cast<int>(ia));
             b.applyChoice(static_cast<int>(ib));
         }
@@ -753,9 +777,9 @@ TEST_F(HiddenOrderLeak, AnOpponentWhoNeverActsCannotBeToldFromAnother) {
             }
             ++decisions;
             const Shown va = shownTo(a.state(), sa.legal, sa.perspective, PlayerId::Player1, *db_,
-                                     sa.prompt);
+                                     sa.prompt, registry_);
             const Shown vb = shownTo(b.state(), sb.legal, sb.perspective, PlayerId::Player1, *db_,
-                                     sb.prompt);
+                                     sb.prompt, registry_);
             if (!(va == vb)) {
                 problem(where + " decision " + std::to_string(n) + ": " + firstDifference(va, vb));
                 break;

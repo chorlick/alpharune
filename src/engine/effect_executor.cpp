@@ -349,14 +349,28 @@ bool EffectExecutor::deathReplacementsSettled(GameObjectId unit) const {
     return state_.objectExists(unit) && replacementsSettledByBatch(state_.getObject(unit));
 }
 
-bool EffectExecutor::anyDamageIsLethalFor(PlayerId damager) const {
-    for (const auto& [id, obj] : state_.objects.onBoard()) {
+bool anyDamageIsLethalFor(const GameState& state, const CardRegistry* registry, PlayerId damager) {
+    if (!registry) return false;
+    for (const auto& [id, obj] : state.objects.onBoard()) {
         if (!obj.isUnit() || !obj.location.has_value()) continue;
         if (obj.controller != damager || obj.card_def_id == kInvalidId) continue;
-        const Card* card = cardFor(obj.card_def_id);
+        const Card* card = registry->get(obj.card_def_id);
         if (card && card->anyDamageIsLethal()) return true;
     }
     return false;
+}
+
+bool damageKillsIn(const GameState& state, const CardRegistry* registry, const GameObject& unit) {
+    if (!unit.isUnit() || !unit.location.has_value() || unit.damage_marked <= 0) return false;
+    if (unit.hasLethalDamage()) return true;
+    if (unit.controller == PlayerId::None) return false;
+    const PlayerId damager = opponent(unit.controller);
+    if (std::min(unit.damage_marked_by[playerIndex(damager)], unit.damage_marked) <= 0) return false;
+    return anyDamageIsLethalFor(state, registry, damager);
+}
+
+bool EffectExecutor::anyDamageIsLethalFor(PlayerId damager) const {
+    return ::riftbound::anyDamageIsLethalFor(state_, card_registry_, damager);
 }
 
 bool EffectExecutor::damageKills(const GameObject& obj, LethalRule& rule,
@@ -1878,10 +1892,14 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     }
     for (auto cid : rune_ordered) {
         auto& obj = state_.getObject(cid);
+        // From the board a rune is public; from the top of its Rune Deck only
+        // who knew it there can tell (T4).
+        const bool from_board = obj.zone != ZoneType::RuneDeck;
         obj.zone = ZoneType::RuneDeck;
         obj.location = std::nullopt;
         state_.player(obj.owner).rune_deck.insert(
             state_.player(obj.owner).rune_deck.begin(), cid);
+        knowledge::runeToBottom(state_, cid, from_board ? knowledge::everyone() : knowledge::nobody());
     }
     for (const auto& l : left_board)
         events_.emit(LeftBoardEvent{l.id, l.controller, l.type, l.was_at,
@@ -2583,6 +2601,7 @@ void EffectExecutor::lookBeforeReveal(PlayerId player, ZoneType deck) {
         if (!ps.has_reveal_peek || ps.rune_deck.empty() || !agent_query_) return;
         const GameObjectId top = ps.rune_deck.back();
         if (!state_.objectExists(top)) return;
+        knowledge::shown(state_, top, knowledge::only(player));   // the looker knows it (T4)
         RIFT_TRACE_PRIVATE(events_, player, "  PEEKED: " + state_.getObject(top).name + " (id=" +
                          toString(top) + ") on top of the Rune Deck [Void Hatchling]");
         Intent keep;  keep.type  = IntentType::MakeChoice; keep.player  = player; keep.chosen_value  = 0;
@@ -2998,6 +3017,7 @@ bool plainPay(GameState& state, EventBus& events, PlayerId player, const PlainCo
         r.location = std::nullopt;
         r.zone = ZoneType::RuneDeck;
         ps.rune_deck.insert(ps.rune_deck.begin(), rid);
+        knowledge::runeToBottom(state, rid, knowledge::everyone());   // a public rune (T4)
         ps.power_spent_this_turn++;
         events.emit(LeftBoardEvent{rid, player, CardType::Rune, base,
                                    ZoneType::RuneDeck, false});

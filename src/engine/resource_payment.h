@@ -15,6 +15,7 @@
 #include "core/board_state.h"
 #include "core/events.h"
 #include "core/game_state.h"
+#include "engine/knowledge_tracker.h"
 
 #include <algorithm>
 #include <functional>
@@ -173,6 +174,7 @@ inline void recycleRuneForPower(GameState& state, EventBus& events, PlayerId pla
     rune.location = std::nullopt;
     rune.zone = ZoneType::RuneDeck;
     ps.rune_deck.insert(ps.rune_deck.begin(), rid);
+    knowledge::runeToBottom(state, rid, knowledge::everyone());   // a public rune (T4)
     ps.power_spent_this_turn++;
     events.emit(LeftBoardEvent{rid, player, CardType::Rune,
         LocationId{BaseLocation{player}}, ZoneType::RuneDeck, false});

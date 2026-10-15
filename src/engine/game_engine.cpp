@@ -7717,8 +7717,9 @@ void GameEngine::refreshFlowGrants() {
                 }),
             ps.trash_replay_grants.end());
         for (auto cid : ps.trash) {
-            if (!state_.objectExists(cid)) continue;
-            auto& obj = state_.getObject(cid);
+            const auto found = state_.objects.find(cid);   // one lookup, not two
+            if (found == state_.objects.end()) continue;
+            auto& obj = found->second;
             if (obj.card_def_id == kInvalidId) continue;
             const Card* c = card_registry_.get(obj.card_def_id);
             if (!c) continue;

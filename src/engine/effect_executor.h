@@ -451,7 +451,10 @@ public:
     using ActivateNowFn = std::function<void(const Intent&)>;
     /// Whether `check` holds once every listed Add ability of `player` has
     /// been activated — tried on a copy of the game, quietly, and forgotten.
-    using AddProbeFn = std::function<bool(PlayerId, const std::function<bool(const GameState&)>&)>;
+    /// With `first`, that step is taken first on the copy (an Add activated,
+    /// an answer given), and the rest of the Adds after it.
+    using AddProbeFn = std::function<bool(PlayerId, const std::function<bool(const GameState&)>&,
+                                          const std::function<void()>* first)>;
     void setAddAbilities(AddAbilitiesFn list, ActivateNowFn activate, AddProbeFn probe) {
         add_abilities_ = std::move(list);
         activate_now_ = std::move(activate);
@@ -799,6 +802,19 @@ private:
     AddProbeFn add_probe_;
     std::optional<OwedCost> owed_;
     bool adding_for_payment_ = false;   // an [Add] paid for inside addForPayment
+    std::function<bool(const GameState&)> payment_goal_;   // set inside addForPayment
+public:
+    /// While addForPayment activates [Add] abilities: whether the payment it
+    /// serves can be made in a state (GameEngine::resolveAddAbilityNow offers
+    /// only the answers after which it still can, CR 357.3). Empty otherwise.
+    const std::function<bool(const GameState&)>& paymentGoal() const { return payment_goal_; }
+    /// Whether `goal` holds after `first` and then every listed Add ability
+    /// of `player`, tried on a copy (the engine's probe).
+    bool probeAddsAfter(PlayerId player, const std::function<bool(const GameState&)>& goal,
+                        const std::function<void()>& first) {
+        return add_probe_ && add_probe_(player, goal, &first);
+    }
+private:
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

@@ -188,8 +188,9 @@ void GameEngine::initSubsystems() {
     effect_executor_->setAddAbilities(
         [this](PlayerId p) { return addReactionsFor(p); },
         [this](const Intent& i) { (void)payAndQueueAbility(i); },
-        [this](PlayerId p, const std::function<bool(const GameState&)>& check) {
-            return probeAdds(p, check);
+        [this](PlayerId p, const std::function<bool(const GameState&)>& check,
+               const std::function<void()>* first) {
+            return probeAdds(p, check, first);
         });
     trigger_manager_->setResolveAddNow(
         [this](ChainItemId id, OpenClosedState before, bool was_empty) {
@@ -2679,10 +2680,33 @@ void GameEngine::resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state
             if (!effect_executor_->hasPendingChoice()) break;
             auto pending = effect_executor_->consumePendingChoice();
             // A probe (nothing seen, EventBus::quiet) answers with the first
-            // option; a game asks the player.
-            Intent choice = events_.quiet() || pending.legal.size() == 1
-                ? pending.legal.front()
-                : queryAgentForChain(pending.player, pending.legal);
+            // option; a game asks the player. While the Add serves a payment
+            // (EffectExecutor::addForPayment), only the answers after which
+            // that payment can still be made are offered, when any can (CR
+            // 357.3: Ancient Henge's X).
+            std::vector<Intent> options = pending.legal;
+            const auto& goal = effect_executor_->paymentGoal();
+            if (goal && !events_.quiet() && options.size() > 1 && !adds_probing_) {
+                std::vector<Intent> viable;
+                for (const auto& o : options) {
+                    const std::function<void()> step = [this, o]() {
+                        effect_executor_->recordChoice(o);
+                        for (int k = 0; k < 1024 && state_.chain.resuming.has_value(); ++k) {
+                            resolveSpell(*state_.chain.resuming);
+                            if (!effect_executor_->hasPendingChoice()) break;
+                            effect_executor_->recordChoice(
+                                effect_executor_->consumePendingChoice().legal.front());
+                        }
+                        state_.chain.resuming.reset();
+                    };
+                    if (effect_executor_->probeAddsAfter(pending.player, goal, step))
+                        viable.push_back(o);
+                }
+                if (!viable.empty()) options = std::move(viable);
+            }
+            Intent choice = events_.quiet() || options.size() == 1
+                ? options.front()
+                : queryAgentForChain(pending.player, options);
             effect_executor_->recordChoice(std::move(choice));
         }
     } catch (...) {
@@ -2723,7 +2747,8 @@ std::vector<Intent> GameEngine::addReactionsFor(PlayerId player) const {
 // can (each re-listed after the last) — tried on a copy of the game, quietly,
 // and thrown away: the game is moved aside (its objects stay where references
 // up the call stack point) and moved back after (as prePlayProbe does).
-bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check) {
+bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check,
+                           const std::function<void()>* first) {
     if (adds_probing_) return check(state_);
     struct Parked {
         GameState& live;
@@ -2753,14 +2778,34 @@ bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameS
             explicit QuietRun(EventBus& b) : bus(b), q(b.beginQuiet()) {}
             ~QuietRun() { bus.endQuiet(q); }
         } quiet(events_);
-        try {
-            for (int k = 0; k < 32 && !ok; ++k) {
-                if (check(state_)) { ok = true; break; }
-                const auto adds = addReactionsFor(player);
-                if (adds.empty()) break;
-                (void)payAndQueueAbility(adds.front());
+        // Whether SOME order of the Adds reaches `check`: an Add that costs
+        // what the payment needs (Butcher of the Sands' [A][A]) must not hide
+        // one that pays for it. Depth-first over the Adds activatable at each
+        // step, each tried on a copy; the lists are short (a few cards).
+        std::function<bool(int)> search = [&](int depth) -> bool {
+            if (check(state_)) return true;
+            if (depth >= 8) return false;
+            const auto adds = addReactionsFor(player);
+            for (const auto& a : adds) {
+                GameState saved = state_;
+                bool reached = false;
+                try {
+                    (void)payAndQueueAbility(a);
+                    if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
+                    reached = search(depth + 1);
+                } catch (...) {
+                    reached = false;
+                }
+                state_ = std::move(saved);
+                forgetCleanupFacts();
+                if (reached) return true;
             }
-            if (!ok) ok = check(state_);
+            return false;
+        };
+        try {
+            if (first && *first) (*first)();
+            if (effect_executor_->hasPendingChoice()) effect_executor_->consumePendingChoice();
+            ok = search(0);
         } catch (...) {
             ok = false;
         }

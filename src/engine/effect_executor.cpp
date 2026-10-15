@@ -780,7 +780,7 @@ bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
     if (!add_abilities_ || !add_probe_ || add_abilities_(player).empty()) return false;
     return add_probe_(player, [&](const GameState& s) {
         return payableNow(s, player, energy, power, mask, f, extra_any);
-    });
+    }, nullptr);
 }
 
 std::optional<EffectExecutor::OwedCost> EffectExecutor::owedCost(PlayerId player) const {
@@ -814,11 +814,31 @@ bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
         explicit Flag(bool& x) : b(x) { b = true; }
         ~Flag() { b = false; }
     } flag(adding_for_payment_);
+    const auto goal = [player, energy, power, mask, f](const GameState& s) {
+        return payableNow(s, player, energy, power, mask, f, 0);
+    };
+    struct Goal {
+        std::function<bool(const GameState&)>& g;
+        Goal(std::function<bool(const GameState&)>& slot, std::function<bool(const GameState&)> v)
+            : g(slot) { g = std::move(v); }
+        ~Goal() { g = nullptr; }
+    } goal_set(payment_goal_, goal);
     for (int guard = 0; guard < 64; ++guard) {
         if (payableNow(state_, player, energy, power, mask, f, 0)) return true;
         if (!add_abilities_ || !activate_now_) return false;
         std::vector<Intent> adds = add_abilities_(player);
         if (adds.empty()) return false;
+        // CR 357.3: no payment choice that leaves the cost unpayable while
+        // another would not. Offered: the Adds after which (the rest made the
+        // engine's way) the payment can still be made — when any can.
+        if (adds.size() > 1 && add_probe_ && !events_.quiet()) {
+            std::vector<Intent> viable;
+            for (const auto& a : adds) {
+                const std::function<void()> first = [this, a]() { activate_now_(a); };
+                if (add_probe_(player, goal, &first)) viable.push_back(a);
+            }
+            if (!viable.empty()) adds = std::move(viable);
+        }
         Intent pick = adds.front();
         if (adds.size() > 1 && agent_query_ && !events_.quiet()) {
             for (auto& a : adds) {

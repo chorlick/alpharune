@@ -102,6 +102,9 @@ constexpr CardDefId kTemporalBreach = 853;
 constexpr CardDefId kTWinBringsEnemy = 1930;
 constexpr CardDefId kPoroSnax = 369;
 constexpr CardDefId kMesmerize = 839;
+constexpr CardDefId kAlphaStrike = 751;
+constexpr CardDefId kPowerNexus = 528;
+constexpr CardDefId kButcherOfTheSands = 928;
 constexpr CardDefId kScryersBloom = 698;   // test-only: see Batch3Combat
 
 /// The chain's newest item is an ability (a spell lies under it).
@@ -1783,6 +1786,82 @@ TEST_F(Batch3Test, D8_MesmerizeIsNotOfferedWhenItsOnlyChoiceCarriesADeflectItCan
     EXPECT_FALSE(offered(card)) << "the one target needs [A] more (CR 355.8, 809)";
     fund(P1, 0, 1);
     EXPECT_TRUE(offered(card));
+}
+
+// Gate fuzz finding (seeds 12189191434979918645 15622759364381559580
+// 1965438104, random-player): Alpha Strike's split targets were offered on
+// their Deflect alone, not on the Deflect and the spell's cost together, and
+// the spell was left unpayable after its third [Deflect] Bird. The split
+// helper now applies the spell's choice filter as every other helper does.
+TEST_F(Batch3Test, D8_AlphaStrikeOffersASplitTargetOnlyIfItsDeflectAndTheCostArePayable) {
+    auto mine = addUnit(P1, kInvalidId, 4, 0);
+    auto poro1 = addUnit(P2, kPoutyPoro, 2, 0);
+    auto poro2 = addUnit(P2, kPoutyPoro, 2, 0);
+    auto card = addToHand(P1, kAlphaStrike);
+    fund(P1, 3, 2);   // [3] + 1 Power for the spell, and one Deflect
+    EnginePathAgent agent(EnginePathAgent::choosing(poro1));
+    Intent play;
+    play.type = IntentType::PlayCard;
+    play.player = P1;
+    play.card = card;
+    play.targets = {mine};
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); },
+               &agent);
+    ASSERT_GE(agent.prompts.size(), 1u);
+    bool second_offered_after_first = false;   // (with nothing else to offer, no prompt)
+    for (size_t k = 1; k < agent.prompts.size(); ++k)
+        for (const auto& i : agent.prompts[k])
+            if (!i.chosen_objects.empty() && i.chosen_objects[0] == poro2)
+                second_offered_after_first = true;
+    EXPECT_FALSE(second_offered_after_first)
+        << "a second Deflect could not be paid with the spell's cost (CR 356.2.a.2, 809)";
+    EXPECT_FALSE(inHand(P1, card)) << "played and paid";
+    EXPECT_FALSE(onBoard(poro1)) << "all 4 damage to the one target";
+    EXPECT_TRUE(onBoard(poro2));
+}
+
+// Gate fuzz finding (seeds 8869654636025923331 14944985925343503529
+// 2006959607, random-player:pass=0): Power Nexus's "may pay [A][A][A][A]" was
+// offered because the runes and Gold could pay it; while paying, the player
+// activated Butcher of the Sands ([A][A], [E]: [Add] [2] Energy for units) and
+// was left short. CR 357.3: an [Add] that leaves the payment unpayable is not
+// offered while another does not (EffectExecutor::addForPayment).
+TEST_F(Batch3Test, D30_APaymentOffersOnlyAddsAfterWhichItCanStillBeMade) {
+    auto nexus = state.createObject();
+    {
+        auto& b = o(nexus);
+        b.card_def_id = kPowerNexus;
+        b.card_type = CardType::Battlefield;
+        b.name = card_db.get(kPowerNexus).name;
+        b.owner = b.controller = P1;
+        b.zone = ZoneType::BattlefieldZone;
+        state.battlefields[0].card_object_id = nexus;
+        state.battlefields[0].controller = P1;
+    }
+    for (int i = 0; i < 3; ++i) addRune(P1, Domain::Body);
+    auto gold = addGear(P1, kGold564);
+    auto butcher = legendOf(P1, kButcherOfTheSands);
+    struct PrefersButcher : EnginePathAgent {
+        GameObjectId butcher;
+        bool butcher_offered = false;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            const bool add_prompt = std::any_of(legal.begin(), legal.end(), [](const Intent& i) {
+                return i.choice_label.rfind("[Add] for this payment", 0) == 0;
+            });
+            if (add_prompt)
+                for (const auto& i : legal)
+                    if (i.ability_source == butcher) { butcher_offered = true; return i; }
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && i.chosen_value == 1) return i;   // "may": yes
+            return EnginePathAgent::selectAction(st, legal);
+        }
+    } agent;
+    agent.butcher = butcher;
+    const int score_before = ps(P1).score;
+    fireTriggerThroughEngine(nexus, TriggerType::WhenYouHoldHere, &agent);
+    EXPECT_FALSE(agent.butcher_offered) << "its [A][A] would leave the [A][A][A][A] unpayable";
+    EXPECT_EQ(ps(P1).score, score_before + 1) << "paid with the runes and Gold";
+    EXPECT_FALSE(onBoard(gold));
 }
 
 }  // namespace riftbound::test::batch_3

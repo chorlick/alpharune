@@ -886,7 +886,8 @@ private:
     std::vector<Intent> addReactionsFor(PlayerId player) const;
     /// Whether `check` holds after `player` activates every [Add] Reaction
     /// they can, tried on a copy of the game (EffectExecutor::canPayWithAdds).
-    bool probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check);
+    bool probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check,
+                   const std::function<void()>* first = nullptr);
     bool adds_probing_ = false;
     // (An item whose choices are made early — a spell an effect plays — is
     // marked ChainItemStatus::Finalized on the spot, which is what keeps the

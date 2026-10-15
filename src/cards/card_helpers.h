@@ -1006,12 +1006,17 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
 
     // ── Who: the targets (at finalization when there is a finalize pass) ──
     if (data[1] == 0) {
-        // Units not yet targeted whose Deflect the controller can pay.
+        // Units not yet targeted whose Deflect the controller can pay — and,
+        // for a spell choosing before its cost, only those that leave it
+        // payable with that Deflect (EffectExecutor::choiceAllowed, as every
+        // other choice helper: a fuzz finding of batch 3, Alpha Strike).
         auto offered = [&]() {
-            const int payable = ctx.executor.payableAnyPower(ctx.controller);
+            const int payable = ctx.executor.payableAnyPower(
+                ctx.controller, ri.is_spell ? SpendFor::Spell : SpendFor::Other);
             std::vector<GameObjectId> out;
             for (auto t : legal)
-                if (!isTarget(t) && ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
+                if (!isTarget(t) && ctx.executor.choiceAllowed(t) &&
+                    ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
                     out.push_back(t);
             return out;
         };
@@ -1022,12 +1027,17 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             if (t != kInvalidId &&
                 std::find(can_pick.begin(), can_pick.end(), t) != can_pick.end()) {
                 const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
+                // Chosen, then its Deflect paid (a spell paying ahead of its
+                // cost judges what is left with this choice counted, as
+                // commitChoice does), and stamped (CR 359.3.e.4).
+                ri.chosen_objects.push_back(t);
+                ctx.state.stampChosen(ri, t);
                 if (cost > 0) {
-                    ctx.executor.payAnyPower(ctx.controller, cost);
+                    ctx.executor.payAnyPower(ctx.controller, cost,
+                                             ri.is_spell ? SpendFor::Spell : SpendFor::Other);
                     RIFT_TRACE(ctx.events, "DEFLECT: pays " + std::to_string(cost) +
                                         " [A] to choose " + ctx.state.getObject(t).name);
                 }
-                ri.chosen_objects.push_back(t);
                 // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
                 ctx.state.noteChosen(ctx.controller, t, &ri);
                 data.insert(data.begin() + 2 + static_cast<long>(targetCount()),

@@ -789,11 +789,23 @@ void Card::commitChosenObject(CardContext& ctx, GameObjectId chosen) const {
 
 GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                                 const std::vector<GameObjectId>& legal_targets_in) {
+    return pickOneObject(ctx, label, legal_targets_in, /*as_target=*/true);
+}
+
+GameObjectId Card::pickUnseenCard(CardContext& ctx, const std::string& label,
+                                  const std::vector<GameObjectId>& options) {
+    return pickOneObject(ctx, label, options, /*as_target=*/false);
+}
+
+GameObjectId Card::pickOneObject(CardContext& ctx, const std::string& label,
+                                 const std::vector<GameObjectId>& legal_targets_in,
+                                 bool as_target) {
     auto& ri_opt = ctx.state.chain.resuming;
     // Once a choice is locked in the list is not consulted again, so
-    // filtering here can't un-offer an already-paid-for target.
+    // filtering here can't un-offer an already-paid-for target. A pick that
+    // is not a target owes no Deflect (CR 809.1.c).
     const std::vector<GameObjectId> legal_targets =
-        (ri_opt.has_value() && !(choiceState(*ri_opt) & kTgtDone))
+        (as_target && ri_opt.has_value() && !(choiceState(*ri_opt) & kTgtDone))
             ? affordableWithDeflect(ctx, *this, legal_targets_in) : legal_targets_in;
 
     if (!ri_opt.has_value()) {
@@ -890,12 +902,13 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
                 : std::string("?");
         }
         RIFT_TRACE_FOR(ctx.events, promptAudience(ctx, legal_targets),
-                             "TGT_PROMPT: " + label + " [" + label_summary +
+                             std::string(as_target ? "TGT_PROMPT: " : "PICK_PROMPT: ") +
+                             label + " [" + label_summary +
                              "] (agent decides among " +
                              std::to_string(legal_targets.size()) +
-                             " targets)");
+                             (as_target ? " targets)" : " cards)"));
         ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                    "target: " + label);
+                                    (as_target ? "target: " : "pick: ") + label);
         setChoiceState(ri, 0, kTgtAwait);
         ri.resume_point = 7;
         return kInvalidId;
@@ -909,11 +922,14 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     }
     // Only for who may know the card when it is hidden (testing phase D11).
     RIFT_TRACE_FOR(ctx.events, audienceNaming(ctx.state, ctx.controller, {t}),
-                   "TGT_PICKED: " + label + " = " +
+                   std::string(as_target ? "TGT_PICKED: " : "PICKED: ") + label + " = " +
                        (ctx.state.objectExists(t) ? ctx.state.getObject(t).name
                                                   : std::string("?")) +
                        " (id=" + toString(t) + ")");
-    commitChoice(ctx, *this, t);
+    // A target is chosen: recorded on the item, its Deflect paid, "when you
+    // choose" told (commitChoice). A card picked from a hidden zone is not a
+    // target (CR 355.10.a) and none of that applies.
+    if (as_target) commitChoice(ctx, *this, t);
     store(t);
     return t;
 }

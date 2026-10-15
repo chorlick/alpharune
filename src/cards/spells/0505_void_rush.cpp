@@ -66,7 +66,7 @@ public:
         std::optional<LocationId> where_to;
         if (go == 1) {
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-            chosen = pickTarget(ctx, "Void Rush: card to banish and play", playable());
+            chosen = pickUnseenCard(ctx, "Void Rush: card to banish and play", playable());
             if (chosen == kInvalidId) return;   // waiting
             if (ctx.state.getObject(chosen).isUnit()) {
                 const auto where = playLocationsFor(ctx, ctx.controller, chosen);

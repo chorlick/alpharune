@@ -178,3 +178,29 @@ Report: `plans/reports/batch-4b.md`. Tests are in `tests/cards/test_batch_4b.cpp
 
 - [x] **I4** (batch 5) Throughput is still about 12% below the pre-batch-1 rate (batch 2: 520 -> 650 games/s): the card aura hooks (`applyPassiveAura` for every card in play each Cleanup), `refreshFlowGrants` (rebuilt each pass), the two checksums and the StateSettled emission; recovering it needs a per-hook declaration of what an aura reads, or cheaper hooks. Game throughput matters for training (owner) — perf — DONE in part (`plans/reports/batch-5c-perf.md`): ten exact optimisations, every fixed-seed game unchanged (smoke, ISMCTS x2 with its trace, 300,000 optimised and 60,000 checked fuzz games identical row by row to master): a main-phase decision's legal actions generated once (they were generated twice: +7% with the fingerprint fold), the board index re-reading only the objects that moved, the Cleanup's after-pass checksum taken by the aura pass's last fold, the aura pass's (card, controller) list reused (14% of all allocations), and smaller trims. 1,000 games, 1 thread: master with 5b 584.0 -> 657.5 games/s (+12.6%), 166.4k -> 187.4k decisions/s; fuzz +9% to +15%. The per-hook aura declaration was judged and not built: the hooks are ~1.5% of a game and skipping a pass needs write tracking the state does not have (report section 5). test: PerfEngineTable.AnUpdateThatReadsOnlyTheChangedObjectsMatchesAWalk
 - [x] **N4** (batch 5c, with I4) Throughput: -4% to -5% from batch 4b (K3: 668 -> 633 games/s, 1 thread; partly longer games, 275 -> 283 decisions) and about -3.7% more from batch 5b. Measured against the pre-batch-1 783 games/s the engine is now about 20% slower; recover it (I4's per-hook aura declaration, cheaper hooks), measured — perf — DONE in part with I4: measured against both masters in one window (582e857 before 5b 594.1, 363848c with 5b 584.0, final 657.5 games/s). The pre-batch-1 rate per decision is not reached: 187k against 218k decisions/s (-14%); what is left is the Cleanup after every chain step, signals2 dispatch, allocation and per-game setup (report section 5)
+
+## Batch M1 — choices made without a finalize pass (report: `plans/reports/batch-m1.md`, verdicts: `plans/reports/batch-m1-list.md`)
+
+- [x] **M1** (K3 kind, cards) Card files that ask a player something in a callback without a finalize pass — DONE.
+  - **Scope.** The list has 156 files, not 107: `scripts/scan_choices_without_finalize.py` also counts direct `requestChoice` calls and the discard, location and synchronous prompts. Every file was read in full against its printed text, with a verdict for each choice.
+  - **Moved to finalization (24 cards):**
+    - Bottled Constellation: the may and the kill-3 cost.
+    - Glowstone: the player.
+    - Unforgiven, Maduli: the destination.
+    - Convergent Mutation, Icathian Rain, Zenith Blade: their other targets.
+    - Arcane Shift: both units, as a pair.
+    - Morbid Return, The Harrowing: the trash unit.
+    - Call to Battle, Twilight Step, Shadow Dash: the destination.
+    - Stare Down, Bone Skewer: the battlefield.
+    - Tricksy Tentacles, Decree of Discord: the group (CR 355.11.b subset by `chooseFittingSubset`).
+    - Shadows of the Past, Acceleration Gate: up to N.
+    - Disposal Order: mode and cards.
+    - Dr. Mundo: three trash cards.
+    - Fae Dragon: buffed units included, CR 427.1.c.
+    - Iascylla: the delayed ability.
+    - Corrupted Dragon: the may and the units.
+  - **Correctly at resolution.** 89 calls carry a one-line `// At resolution: ... (CR ...)` comment: hidden zones, each player's or another player's choice, "must", effect-play locations (CR 420.3.b.2), a spell's may, a later may, [Add].
+  - **Engine.** `chooseFirstExecution` runs the `kFinalizeActivate` pass after an intent target or an engine-asked target (Unforgiven).
+  - **Judge questions** 14 (Card Sharp), 15 (Dr. Mundo with fewer than three cards) and 16 (a replaced death in "kill X to"), each pinned.
+  - **A fuzz finding of the batch, fixed:** Arcane Shift as a pair, so a Deflect is judged with the cost.
+  - **Tests:** `BatchM1Spells.*` (29), `BatchM1Abilities.*` (16); 40 of the 44 written first failed on the unchanged cards.

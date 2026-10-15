@@ -18,18 +18,24 @@ public:
     // "Banish a friendly unit, then its owner plays it, ignoring its cost. Deal
     //  3 to an enemy unit at a battlefield. Banish this."
     bool isActionAbility() const override { return true; }
+    // Both units are targets (CR 355.5), chosen as the spell is played — in
+    // its finalize pass, before its cost and before anyone can respond — as a
+    // pair: the enemy unit with the friendly one, so a pair is offered only
+    // when its Deflect and the cost can be paid together, and the spell only
+    // when such a pair exists (CR 355.8; the engine's pair gate and probe).
     TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                  .must_be_friendly = true};
+        return TargetRequirements{.count = 2, .must_be_unit = true};
     }
-    // Both units are targets (CR 355.5): the friendly unit is named in the
-    // play intent, the enemy unit is chosen in the finalize pass, before the
-    // cost and before anyone can respond. A spell needs a valid choice for
-    // every target to be played (CR 355.8).
+    bool needsPlayTimeTargetPair() const override { return true; }
     unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
     FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
                                            GameObjectId object) const override {
         return friendlyUnitChoice(state, controller, object);
+    }
+    static std::vector<GameObjectId> friendlyUnits(const GameState& state, PlayerId controller) {
+        return chooseableUnits(state, controller, [&](const GameObject& o) {
+            return o.controller == controller;
+        });
     }
     static std::vector<GameObjectId> enemiesAtBattlefields(const GameState& state,
                                                            PlayerId controller) {
@@ -38,18 +44,21 @@ public:
         });
     }
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
-        return Card::hasLegalTargets(state, controller) &&
+        return !friendlyUnits(state, controller).empty() &&
                !enemiesAtBattlefields(state, controller).empty();
     }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        const GameObjectId unit =
-            (!targets.empty() && ctx.state.objectExists(targets[0])) ? targets[0] : kInvalidId;
-        const auto picked_opt = selectTargetOrNone(*this, ctx, "Arcane Shift: deal 3 to enemy unit",
-                                                   enemiesAtBattlefields(ctx.state, ctx.controller),
-                                                   7, /*allow_none=*/false);
-        if (!picked_opt.has_value()) return;   // waiting for the agent
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto [unit, picked] = pickTargetPair(ctx,
+            "Arcane Shift: banish a friendly unit, then deal 3 to an enemy unit at a battlefield",
+            friendlyUnits(ctx.state, ctx.controller),
+            [&](GameObjectId) { return enemiesAtBattlefields(ctx.state, ctx.controller); });
         if (finalizingChoices(ctx)) return;    // choices end here (CR 355)
-        const GameObjectId picked = *picked_opt;   // kInvalidId: a mistarget
+        if ((unit == kInvalidId || picked == kInvalidId) && ctx.state.chain.resuming.has_value() &&
+            (ctx.state.chain.resuming->resume_point == 10 ||
+             ctx.state.chain.resuming->resume_point == 12))
+            return;                            // waiting for the agent
+        // A target no longer legal comes back as kInvalidId: that instruction
+        // is ignored (CR 359.3.e.5), the other still happens.
         // Where the unit comes back: its owner's base or a battlefield they
         // control (CR 355.2.a), chosen as it is played and finalized, at
         // resolution (CR 420.3.b.2). A token is not played back (CR 183.1).

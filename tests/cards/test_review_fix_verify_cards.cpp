@@ -2703,19 +2703,21 @@ TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedT
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    // Batch M1: "an enemy unit at a battlefield" is the spell's second target,
-    // needed to play it (CR 355.8) and chosen as it is played; the test gave
-    // none and had only the location prompt. It now names one first.
+    // Batch M1: both units are targets chosen as the spell is played, as a
+    // pair (CR 355.5, 355.8): the friendly unit, then "an enemy unit at a
+    // battlefield", which the test now provides; the location prompt follows
+    // as it resolves (it was the only prompt, the unit named in the intent).
     auto enemy = addUnit(P2, kInvalidId, 9, 1);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(enemy.raw()), 1}));
-    playAt(spell, {unit}, &agent);
-    ASSERT_EQ(agent.prompts.size(), 2u);
-    EXPECT_TRUE(promptOffersValue(agent, 1, 0)) << "base";
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(unit.raw()), static_cast<int>(enemy.raw()), 1}));
+    playAt(spell, {}, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
     // Options are numbered over what is offered (playLocations leaves the
     // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
-    EXPECT_TRUE(promptOffersValue(agent, 1, 1)) << "battlefield #1";
-    EXPECT_FALSE(promptOffersValue(agent, 1, 2)) << "units can't be played to battlefield #0";
-    EXPECT_EQ(agent.prompts[1].size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[2].size(), 2u);
     ASSERT_TRUE(onBoard(unit));
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
@@ -3207,15 +3209,17 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     auto warden = addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    // Two prompts, both asked as the spell resolves (the friendly unit is the
-    // play-time target handed to playAt).
+    // Batch M1: the two units are chosen as the spell is played, as a pair
+    // (the friendly unit was the play-time target handed to playAt), then
+    // the location as it resolves.
     EnginePathAgent agent(EnginePathAgent::script({
+        static_cast<int>(unit.raw()),     // the friendly unit
         static_cast<int>(warden.raw()),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
                                     // the only enemy unit
         0,                          // where the banished unit is played: option 0 = base,
                                     // the only place on offer (asserted below)
     }));
-    playAt(spell, {unit}, &agent);
+    playAt(spell, {}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
             if (i.chosen_objects.empty()) {

@@ -299,7 +299,7 @@ All three files place every choice before their marker.
 | 0505 | Void Rush | the may, card and location: RES (a spell's may; hidden; M5) |
 | 0510 | Counter Strike | unit: FIN |
 | 0513 | Arise! | token locations: RES (M5); "ready up to two": FIN (reflexive) |
-| 0515 | Arcane Shift | friendly unit: FIN (intent target); enemy unit at a battlefield: **MOVED** (a second target, CR 355.5); the spell now needs one to be played (CR 355.8); where the unit is played: RES (M5) |
+| 0515 | Arcane Shift | friendly unit (was an intent target) and enemy unit at a battlefield: **MOVED**, chosen together as a pair in the finalize pass (CR 355.5). The spell is now offered only with a payable pair, Deflect included (CR 355.8, 809). Where the unit is played: RES (M5) |
 | 0516 | Hostile Takeover | unit: FIN |
 | 0571 | Upstage Comedy | unit (per [Repeat]): FIN |
 | 0575 | Lotus Trap | unit: FIN |

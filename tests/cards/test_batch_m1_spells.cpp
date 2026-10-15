@@ -251,7 +251,7 @@ TEST_F(BatchM1Spells, ZenithBlade_AFriendlyUnitThatLeftIsNotMoved) {
     EXPECT_TRUE(o(enemy).is_stunned);
 }
 
-// ─── 515 Arcane Shift: "Deal 3 to an enemy unit at a battlefield" ───────────
+// ─── 515 Arcane Shift: the friendly unit and the enemy unit, a pair ─────────
 
 TEST_F(BatchM1Spells, ArcaneShift_TheEnemyUnitIsChosenAsItIsPlayed) {
     auto card = addToHand(P1, kArcaneShift);
@@ -259,12 +259,40 @@ TEST_F(BatchM1Spells, ArcaneShift_TheEnemyUnitIsChosenAsItIsPlayed) {
     addUnit(P2, kInvalidId, 9, 0);
     auto e2 = addUnit(P2, kInvalidId, 9, 1);
     Them them;
-    Me me(EnginePathAgent::script({raw(e2), kRest}));
-    play(card, me, them, {mine});
+    Me me(EnginePathAgent::script({raw(mine), raw(e2), kRest}));
+    play(card, me, them);
     const int k = me.promptOffering(e2);
     ASSERT_GE(k, 0);
     EXPECT_EQ(me.other_priority_at[k], 0);
     EXPECT_EQ(o(e2).damage_marked, 3);
+}
+
+TEST_F(BatchM1Spells, ArcaneShift_IsNotOfferedWhenTheOnlyEnemyUnitsDeflectCannotBePaid) {
+    // A fuzz finding of this batch: the enemy unit, chosen in the finalize
+    // pass, was offered nothing when its Deflect could not be paid with the
+    // cost, and the play threw. As a pair it is offered only with a payable
+    // pair (CR 355.8, 809).
+    constexpr CardDefId kPoutyPoro = 13;   // [Deflect]
+    auto card = addToHand(P1, kArcaneShift);
+    addUnit(P1, kPitRookie, 0, 0);
+    addUnit(P2, kPoutyPoro, 0, 1);
+    const auto& def = card_db.get(kArcaneShift);
+    state.player(P1).rune_pool.energy = def.energy_cost;
+    state.player(P1).rune_pool.universal_power = def.power_cost;
+    bool out = false;
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == card) out = true;
+    });
+    EXPECT_FALSE(out) << "the Deflect's [A] is not there beside the cost";
+    state.player(P1).rune_pool.universal_power += 1;
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == card) out = true;
+    });
+    EXPECT_TRUE(out);
 }
 
 TEST_F(BatchM1Spells, ArcaneShift_IsNotOfferedWithNoEnemyUnitAtABattlefield) {

@@ -18,14 +18,19 @@
 /// tests included, that write `obj.zone` or `obj.location`). Instead the two
 /// fields the index is built from, GameObject::zone and GameObject::location,
 /// are TrackedField / TrackedLocation (tracked_field.h): assigning either one,
-/// by any route, raises the "stale" flag of the table the object lives in, and
-/// the next query rebuilds the lists with one walk over the table. Between
-/// two changes of a zone or a location any number of queries share one walk.
-/// Everything else a query filters on (controller, card type, exhausted, ...)
-/// is read from the object when the query is asked, so it cannot be stale.
+/// by any route, reports the object to the table it lives in (IndexSlot), and
+/// the next query brings the lists up to date. Between two changes of a zone
+/// or a location any number of queries share one update. Everything else a
+/// query filters on (controller, card type, exhausted, ...) is read from the
+/// object when the query is asked, so it cannot be stale.
 ///
 /// The lists are in the table's iteration order, so a query returns what the
-/// walk it replaces returned, in the same order.
+/// walk it replaces returned, in the same order. An update does not walk the
+/// objects (batch 5c-perf: a walk per update was 5% of a game): the index
+/// keeps the table's entries in that order (rebuilt when an object is added
+/// or removed, the only changes that can reorder the table) and, per entry,
+/// which lists it is in; an update reads again only the objects whose zone or
+/// location changed and refills the lists from those per-entry facts.
 ///
 /// Using a range
 /// -------------
@@ -58,6 +63,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <deque>
 #include <iterator>
 #include <atomic>
 #include <memory>
@@ -233,6 +240,17 @@ public:
 private:
     using List = std::vector<value_type*>;
 
+    // Which lists an entry is in (Index::where).
+    static constexpr uint8_t kOnBoard = 1, kInPlay = 2, kOffPiles = 4;
+    static uint8_t whereOf(const GameObject& obj) {
+        const bool located = obj.location.has_value();
+        uint8_t w = 0;
+        if (located) w |= kOnBoard;
+        if (located || obj.zone == ZoneType::LegendZone) w |= kInPlay;
+        if (!inPile(obj)) w |= kOffPiles;
+        return w;
+    }
+
     /// One build of the lists.
     struct Lists {
         std::atomic<int> pins{0}; // BoardRanges viewing these lists
@@ -274,6 +292,29 @@ private:
                 if (!inPile(obj)) off_piles.push_back(entry);
             }
         }
+        /// The lists from the index's per-entry facts (no object is read).
+        template <class Index>
+        void fillFrom(const Index& ix) {
+            board.clear();
+            in_play.clear();
+            off_piles.clear();
+            for (auto& entry : by_location) entry.second.clear();
+            // by_location[k] is the index's locations[k] (both only grow).
+            for (std::size_t k = by_location.size(); k < ix.locations.size(); ++k)
+                by_location.emplace_back(ix.locations[k], List{});
+            const std::size_t n = ix.order.size();
+            for (std::size_t i = 0; i < n; ++i) {
+                const uint8_t w = ix.where[i];
+                if (w == 0) continue;
+                value_type* entry = ix.order[i];
+                if (w & kOnBoard) {
+                    board.push_back(entry);
+                    by_location[ix.at[i]].second.push_back(entry);
+                }
+                if (w & kInPlay) in_play.push_back(entry);
+                if (w & kOffPiles) off_piles.push_back(entry);
+            }
+        }
         bool sameAs(const Lists& o) const {
             if (board != o.board || in_play != o.in_play || off_piles != o.off_piles) return false;
             for (const auto& [loc, list] : by_location)
@@ -285,13 +326,34 @@ private:
     };
 
     struct Index {
-        std::atomic<bool> stale{true};   // TrackedField / TrackedLocation write here
+        std::atomic<bool> stale{true};   // IndexSlot::touch raises it
         std::mutex rebuilding;           // held by the one thread that rebuilds
         std::size_t rebuilds = 0;
         std::unique_ptr<Lists> current;
         // Lists a BoardRange was still iterating when the board changed and
         // was asked again: kept until that range is done.
         std::vector<std::unique_ptr<Lists>> retired;
+
+        // What an update is made from.
+        std::deque<IndexSlot> slots;        // one per object adopted (stable addresses)
+        std::vector<IndexSlot*> changed;    // objects whose zone or location changed since
+        bool reordered = true;              // an object was added or removed since
+        std::vector<value_type*> order;     // the table's entries, in its iteration order
+        std::vector<uint8_t> where;         // per entry (by rank): kOnBoard | kInPlay | kOffPiles
+        std::vector<uint16_t> at;           // per entry on the board: its place in `locations`
+        std::vector<LocationId> locations;  // every location an entry has been listed at
+
+        uint16_t locationIndex(const LocationId& loc) {
+            for (std::size_t k = 0; k < locations.size(); ++k)
+                if (locations[k] == loc) return static_cast<uint16_t>(k);
+            locations.push_back(loc);
+            return static_cast<uint16_t>(locations.size() - 1);
+        }
+        void relist(std::size_t rank) {
+            const GameObject& obj = order[rank]->second;
+            where[rank] = whereOf(obj);
+            if (obj.location.has_value()) at[rank] = locationIndex(*obj.location);
+        }
     };
 
     // The index object exists from the first object on (adopt) and for every
@@ -302,22 +364,57 @@ private:
         if (!index_) index_ = std::make_unique<Index>();
         return *index_;
     }
+    // An object added or removed: the table may have a new order.
     void markStale() {
-        if (index_) index_->stale.store(true, std::memory_order_release);
+        if (!index_) return;
+        index_->reordered = true;
+        index_->stale.store(true, std::memory_order_release);
+    }
+    static void reportTo(Index& ix, GameObject& obj) {
+        IndexSlot& slot = ix.slots.emplace_back();
+        slot.stale = &ix.stale;
+        slot.changed = &ix.changed;
+        obj.zone.reportTo(&slot);
+        obj.location.reportTo(&slot);
     }
     void adopt(GameObject& obj) {
         Index& ix = ensureIndex();
-        obj.zone.reportTo(&ix.stale);
-        obj.location.reportTo(&ix.stale);
+        reportTo(ix, obj);
+        ix.reordered = true;
         ix.stale.store(true, std::memory_order_release);
     }
     void adoptAll() {
         Index& ix = ensureIndex();
-        for (auto& [id, obj] : map_) {
-            obj.zone.reportTo(&ix.stale);
-            obj.location.reportTo(&ix.stale);
-        }
+        // Every object of the table gets a slot of its own; whatever the
+        // assignment that brought them reported to the old slots is moot.
+        ix.changed.clear();
+        ix.slots.clear();
+        for (auto& [id, obj] : map_) reportTo(ix, obj);
+        ix.reordered = true;
         ix.stale.store(true, std::memory_order_release);
+    }
+    /// Brings the per-entry facts up to date: the whole order when an object
+    /// was added or removed, else the objects that changed.
+    void update(Index& ix) const {
+        if (ix.reordered) {
+            ix.order.clear();
+            for (const value_type& centry : map_)
+                ix.order.push_back(const_cast<value_type*>(&centry));
+            ix.where.assign(ix.order.size(), 0);
+            ix.at.assign(ix.order.size(), 0);
+            for (std::size_t i = 0; i < ix.order.size(); ++i) {
+                ix.order[i]->second.location.slot_->rank = static_cast<uint32_t>(i);
+                ix.relist(i);
+            }
+            for (IndexSlot* s : ix.changed) s->queued = false;
+            ix.reordered = false;
+        } else {
+            for (IndexSlot* s : ix.changed) {
+                s->queued = false;
+                ix.relist(s->rank);
+            }
+        }
+        ix.changed.clear();
     }
 
     /// The lists, rebuilt first if an object moved since they were built.
@@ -344,8 +441,18 @@ private:
                                      }),
                                  ix.retired.end());
                 if (!ix.current) ix.current = std::make_unique<Lists>();
-                ix.current->fill(map_);
+                update(ix);
+                ix.current->fillFrom(ix);
                 ++ix.rebuilds;
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+                {
+                    Lists fresh;
+                    fresh.fill(map_);
+                    if (!fresh.sameAs(*ix.current))
+                        throw std::logic_error("ObjectTable: the updated board index differs from "
+                                               "a walk over the table");
+                }
+#endif
                 ix.stale.store(false, std::memory_order_release);
             }
         }
@@ -356,8 +463,11 @@ private:
             Lists fresh;
             fresh.fill(map_);
             bool ok = fresh.sameAs(*ix.current);
-            for (const auto& [id, obj] : map_)
-                ok = ok && obj.zone.reportsTo(&ix.stale) && obj.location.reportsTo(&ix.stale);
+            for (const auto& entry : map_) {
+                const IndexSlot* slot = entry.second.location.slot_;
+                ok = ok && slot && entry.second.zone.reportsTo(slot) && slot->stale == &ix.stale &&
+                     slot->rank < ix.order.size() && ix.order[slot->rank] == &entry;
+            }
             if (!ok)
                 throw std::logic_error("ObjectTable: the board index is stale (an object's zone "
                                        "or location changed without the table being told)");

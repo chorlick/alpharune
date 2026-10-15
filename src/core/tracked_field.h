@@ -4,10 +4,11 @@
 ///
 /// GameObject::zone and GameObject::location are what the board index of
 /// ObjectTable (object_table.h) is built from. They read like the plain
-/// `ZoneType` and `std::optional<LocationId>` they hold; assigning one raises
-/// the "stale" flag of the table the object lives in, so no code that moves an
-/// object can leave the index behind. A GameObject that is in no table (a
-/// local copy, a snapshot) reports to nobody.
+/// `ZoneType` and `std::optional<LocationId>` they hold; assigning one reports
+/// the object to the table it lives in (IndexSlot::touch: the object is put on
+/// the index's list of changed objects and the index's "stale" flag is
+/// raised), so no code that moves an object can leave the index behind. A
+/// GameObject that is in no table (a local copy, a snapshot) reports to nobody.
 ///
 /// Copying a field copies its value only: the copy belongs to no table until a
 /// table adopts the object it is part of (ObjectTable does that for every
@@ -16,7 +17,8 @@
 ///
 /// The flag is atomic because readers of a const table may be on other
 /// threads (object_table.h, "Threads"); a write to a field is still a write
-/// to the state, which needs the state to oneself as any other write does.
+/// to the state, which needs the state to oneself as any other write does
+/// (the list of changed objects is written by the writer only).
 
 #include "types.h"
 
@@ -24,10 +26,31 @@
 #include <cstdint>
 #include <optional>
 #include <utility>
+#include <vector>
 
 namespace riftbound {
 
 class ObjectTable;
+
+/// An object's entry in the board index of the table it lives in
+/// (ObjectTable::Index owns it; its address is stable while the table holds
+/// the object). The object's tracked fields point here.
+struct IndexSlot {
+    std::atomic<bool>* stale = nullptr;           // the index's "rebuild before answering"
+    std::vector<IndexSlot*>* changed = nullptr;   // the index's objects changed since its last build
+    uint32_t rank = 0;                            // the object's place in the table's order
+    bool queued = false;                          // already in *changed
+
+    /// The object's zone or location changed: it is listed again at the
+    /// next query (only it: the other objects' places are kept).
+    void touch() {
+        if (!queued) {
+            queued = true;
+            changed->push_back(this);
+        }
+        stale->store(true, std::memory_order_release);
+    }
+};
 
 /// A value of type T (an enum here) whose assignments are reported.
 template <class T>
@@ -47,13 +70,13 @@ private:
     void set(const T& v) {
         if (value_ == v) return;
         value_ = v;
-        if (stale_) stale_->store(true, std::memory_order_release);
+        if (slot_) slot_->touch();
     }
-    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
-    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
+    void reportTo(IndexSlot* slot) { slot_ = slot; }
+    bool reportsTo(const IndexSlot* slot) const { return slot_ == slot; }
 
     T value_{};
-    std::atomic<bool>* stale_ = nullptr;
+    IndexSlot* slot_ = nullptr;
 };
 
 /// `std::optional<LocationId>` whose assignments are reported. Read access is
@@ -107,13 +130,13 @@ private:
     void set(const Value& v) {
         if (value_ == v) return;
         value_ = v;
-        if (stale_) stale_->store(true, std::memory_order_release);
+        if (slot_) slot_->touch();
     }
-    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
-    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
+    void reportTo(IndexSlot* slot) { slot_ = slot; }
+    bool reportsTo(const IndexSlot* slot) const { return slot_ == slot; }
 
     Value value_;
-    std::atomic<bool>* stale_ = nullptr;
+    IndexSlot* slot_ = nullptr;
 };
 
 /// GameObject::zone: a TrackedField<ZoneType> that also counts the object's
@@ -152,14 +175,14 @@ private:
         if (value_ == v) return;
         if (!(isBoardZone(value_) && isBoardZone(v))) ++incarnation_;
         value_ = v;
-        if (stale_) stale_->store(true, std::memory_order_release);
+        if (slot_) slot_->touch();
     }
-    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
-    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
+    void reportTo(IndexSlot* slot) { slot_ = slot; }
+    bool reportsTo(const IndexSlot* slot) const { return slot_ == slot; }
 
     ZoneType value_{};
     uint32_t incarnation_ = 0;
-    std::atomic<bool>* stale_ = nullptr;
+    IndexSlot* slot_ = nullptr;
 };
 
 }  // namespace riftbound

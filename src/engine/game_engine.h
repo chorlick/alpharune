@@ -735,6 +735,11 @@ private:
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);
+    /// The same, with the legal actions already generated for the state as it
+    /// is now (mainPhaseLoop: advanceMainPhase made the list and nothing ran
+    /// since, so generating it again would give the same list — at the cost of
+    /// a second pass over every play gate, pre-play probes included).
+    Intent queryAgent(PlayerId player, std::vector<Intent> actions);
 
     /// Append the chosen Intent's history token (action_vocab.h) to
     /// GameState::action_history. Called by askAgent, the one selectAction
@@ -1038,6 +1043,19 @@ private:
     // were given a continuous effect by the last aura pass: if one of them
     // is in a pile by the next pass, that pass still clears it.
     std::vector<GameObjectId> aura_outside_play_;
+    // The (card, controller) pairs an aura pass has called the hook of: kept
+    // here between passes so its storage is reused (a fresh vector grew to its
+    // size again on every pass — the most frequent allocation of a game).
+    // recalculateAuras takes it out while it runs, so a nested pass gets one
+    // of its own.
+    std::vector<std::pair<CardDefId, PlayerId>> aura_applied_buffer_;
+    // The Cleanup's checksum of the objects (cleanupObjectWord, over the
+    // objects a Cleanup walks, after objects.size()), taken by the last fold
+    // of the latest aura pass as it visits each object: what the checksum
+    // after a Cleanup pass would read again (cleanup()). Valid only while
+    // nothing has run since that fold that could change those fields.
+    uint64_t fold_checksum_ = 0;
+    bool fold_checksum_valid_ = false;
     // The last Cleanup found nothing to do and announced nothing but
     // StateSettled, to which nothing reacted; `quiet_cleanup_activity_` is
     // EventBus::activity() as it ended and `quiet_cleanup_shape_` what

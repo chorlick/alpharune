@@ -5648,21 +5648,6 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
     for (auto card_id : ps.hand) {
         auto& card = state_.getObject(card_id);
         if (!card.isSpell()) continue;
-        // The play gate (CR 355 -> 356): targets are chosen before the cost
-        // is determined, so a spell is offered with the targets it can be
-        // paid for — a discount from the chosen object ("your spells that
-        // choose me cost [1] or [A] less") can make it playable, and a
-        // Deflect it cannot pay on top of its cost rules a target out.
-        const bool afford_plain = canAfford(player, card_id);
-        auto affordableChoosing = [&](const std::vector<GameObjectId>& tset) {
-            if (afford_plain) {
-                int deflect = 0;
-                for (auto t : tset) deflect += deflectCostFor(state_, player, t);
-                if (deflect == 0) return true;   // nothing the targets add
-            }
-            return canAffordChoosing(player, card_id, tset);
-        };
-
         // Check timing keywords
         bool has_action = card.keywords.has(Keyword::Action);
         bool has_reaction = card.keywords.has(Keyword::Reaction);
@@ -5698,6 +5683,23 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
         if (spell_card && !spell_card->hasLegalTargets(state_, player, card_db_)) {
             continue;
         }
+
+        // The play gate (CR 355 -> 356): targets are chosen before the cost
+        // is determined, so a spell is offered with the targets it can be
+        // paid for — a discount from the chosen object ("your spells that
+        // choose me cost [1] or [A] less") can make it playable, and a
+        // Deflect it cannot pay on top of its cost rules a target out.
+        // (Asked after the timing and target gates, which read only the
+        // state: in a Closed State most spells in hand stop at the first.)
+        const bool afford_plain = canAfford(player, card_id);
+        auto affordableChoosing = [&](const std::vector<GameObjectId>& tset) {
+            if (afford_plain) {
+                int deflect = 0;
+                for (auto t : tset) deflect += deflectCostFor(state_, player, t);
+                if (deflect == 0) return true;   // nothing the targets add
+            }
+            return canAffordChoosing(player, card_id, tset);
+        };
 
         auto legal_targets = spell_card
             ? spell_card->enumerateLegalTargets(state_, player)

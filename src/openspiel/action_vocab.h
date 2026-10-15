@@ -19,16 +19,18 @@
 ///     intents of a decision that share a slot are put in a canonical order
 ///     and numbered 0, 1, 2, ...; the first keeps the plain slot as its id.
 ///
-/// The canonical order compares the intents field by field (objects by their
-/// id, places and numbers by value): it depends only on the intents
-/// themselves, not on the order the generator listed them in, and it reads
-/// nothing from the state. An intent names only what the deciding player is
-/// shown, so the ids of a decision are the same in every deal of the hidden
-/// cards that player cannot tell apart; the slot reads one more thing, the
-/// card id of an object the intent names. What a twin number means beyond
-/// "another action with this description" is fixed for a given set of
-/// objects, not across positions: two units of one card that swap places
-/// swap twin numbers.
+/// The twin order (`compareIntentsAsSeen`) compares what the deciding
+/// player sees of the intents (objects by whose they are, where they are,
+/// their card if the decider knows it, their Might and statuses), then the
+/// public order of the objects named, and object ids only between intents
+/// the decider cannot tell apart. It does not depend on the order the
+/// generator listed them in. The slot reads the card of an object only if
+/// the decider knows which card it is (key 0 otherwise). So the ids of a
+/// decision are the same in every position the decider cannot tell apart
+/// (batch 5b item T2, `HiddenOrderLeak.*`): other hidden cards, another
+/// deck order, other object ids. The order of `StepResult::legal` is the
+/// generator's and may depend on ids: a consumer orders options by action
+/// id, never by their index in the engine's list.
 ///
 /// Verbs collapse timing variants (PlayCard / PlayReaction / PlayActionCard
 /// are Play; the three Activate types are one): the timing is part of the
@@ -42,6 +44,8 @@
 
 #include "core/intent.h"
 #include "core/game_state.h"
+
+namespace riftbound { class CardDB; }
 
 #include <cstdint>
 #include <vector>
@@ -217,10 +221,44 @@ const Intent* decodeAction(int action_id,
                             const std::vector<Intent>& legal_actions,
                             const GameState& state);
 
-/// The canonical order of intents that breaks ties within a slot: negative,
+/// A total order of intents, field by field with objects by id: negative,
 /// zero or positive as `a` comes before, is, or comes after `b`. Zero exactly
-/// when `a == b`.
+/// when `a == b`. The last tie-break of the twin order only.
 int compareIntents(const Intent& a, const Intent& b);
+
+/// What the deciding player (`intent.player`) sees of an intent, as numbers:
+/// every field `Intent::operator==` compares, each object named replaced by
+/// what the decider sees of it (whose it is, its zone and place, its card
+/// only if the decider knows it, and for a permanent its Might, damage,
+/// statuses, buffs, keywords and gear). Never an object id. Two intents of
+/// one decision with equal descriptions are the same choice to the decider.
+std::vector<int64_t> visibleDescription(const Intent& intent, const GameState& state);
+
+/// What `viewer` sees of one object, as numbers (the per-object part of
+/// `visibleDescription`): whose it is, its zone and place, its card only if
+/// the viewer knows it, and for a permanent its Might, damage, statuses,
+/// buffs, keywords and gear. Never its id. For putting objects in an order
+/// that does not follow ids (an "up to N" choice of targets, listed as a set).
+std::vector<int64_t> visibleObjectDescription(const GameState& state, GameObjectId object,
+                                              PlayerId viewer);
+
+/// The twin order (batch 5b item T2): by `visibleDescription`, then by the
+/// public order of the objects named (the order cards entered a hand, a
+/// trash, a banishment), then by `compareIntents` — which decides only
+/// between intents the decider sees as the same, and object ids are dealt
+/// in a random order (GameEngine::setIdLabelSalt). Zero exactly when a == b.
+int compareIntentsAsSeen(const Intent& a, const Intent& b, const GameState& state);
+
+// ─── What a player is shown of a decision ───────────────────────────────────
+
+/// The info-set id of `player` at a decision (RiftboundState::InfoSetId): a
+/// hash of `player`'s observation (ml::extractStateFeatures), `player`'s
+/// seat, who decides and, for the decider, the action ids on offer
+/// (`legal`, ignored for any other player). `decider` is PlayerId::None at
+/// the end of a game. Reads nothing a player may not see (batch 5b item T2,
+/// `HiddenOrderLeak.*`).
+uint64_t infoSetIdFor(const GameState& state, const std::vector<Intent>& legal,
+                      PlayerId decider, PlayerId player, const CardDB& card_db);
 
 // ─── History tokens ─────────────────────────────────────────────────────────
 //

@@ -1,6 +1,9 @@
 #include "ml/feature_extractor.h"
 
+#include "engine/knowledge_tracker.h"
+
 #include <algorithm>
+#include <array>
 #include <stdexcept>
 #include <string>
 
@@ -41,13 +44,59 @@ inline void blockStartsAt(const std::vector<float>& features, int offset,
     }
 }
 
+// A card id the perspective player may see: 0 for an object whose identity
+// it does not know (batch 5b item T2).
+inline float visibleCardId(const GameState& state, GameObjectId id, PlayerId perspective) {
+    if (!state.objectExists(id) || !knowledge::identityVisible(state, id, perspective))
+        return 0.0f;
+    return safeCardId(state.getObject(id).card_def_id);
+}
+
+// The one order of units (and base gear) everywhere in the vector: Might
+// descending, then every other field the vector writes about a unit, so that
+// two units that tie on Might come out in the same order whatever their ids
+// and whatever order the object table holds them in (batch 5b item T2), and
+// one (battlefield, side, position) slot is the same unit in every block.
+struct UnitOrderKey {
+    std::array<int64_t, 18> k{};
+    explicit UnitOrderKey(const GameState& state, const GameObject& u) {
+        CardDefId gear;
+        for (auto aid : u.attachments) {
+            if (state.objectExists(aid)) { gear = state.getObject(aid).card_def_id; break; }
+        }
+        k = {-static_cast<int64_t>(u.current_might),
+             static_cast<int64_t>(safeCardId(u.card_def_id)),
+             u.damage_marked,
+             static_cast<int64_t>(safeCardId(gear)),
+             u.current_might - u.base_might,
+             u.temp_might_bonus,
+             static_cast<int64_t>(u.combat_designation),
+             u.assault_value, u.shield_value, u.deflect_value,
+             u.buff_count, u.temp_buff_count,
+             u.hasKeyword(Keyword::Tank), u.hasKeyword(Keyword::Backline),
+             u.hasKeyword(Keyword::Ganking),
+             u.is_exhausted, u.is_stunned,
+             static_cast<int64_t>((u.keywords | u.aura_keywords).bits)};
+    }
+};
+
+void sortUnits(const GameState& state, std::vector<GameObjectId>& ids) {
+    if (ids.size() < 2) return;
+    std::vector<std::pair<UnitOrderKey, GameObjectId>> keyed;
+    keyed.reserve(ids.size());
+    for (auto id : ids) keyed.emplace_back(UnitOrderKey(state, state.getObject(id)), id);
+    std::stable_sort(keyed.begin(), keyed.end(),
+                     [](const auto& a, const auto& b) { return a.first.k < b.first.k; });
+    for (size_t i = 0; i < ids.size(); ++i) ids[i] = keyed[i].second;
+}
+
 // Where the extractor's board queries land, gathered in ONE pass over
 // `state.objects`. The extractor used to ask the state ~24 separate
 // questions (`unitsAt` per battlefield per player, twice; runes, base units,
 // base gear and ready base units per player), each a full scan of the object
 // map returning a fresh vector. Every list keeps the map's iteration order,
-// which is the order those queries returned — the top-3 sorts below depend
-// on it for ties.
+// which is the order those queries returned; each list is then put in the
+// one unit order (sortUnits).
 struct BoardIndex {
     static constexpr int kBfSlots = 4;
     std::vector<GameObjectId> bf_units[kBfSlots][2];  // [battlefield slot][seat]
@@ -90,6 +139,13 @@ struct BoardIndex {
                     }
                 }
             }
+        }
+        // The walk above is in the table's order, a function of object ids:
+        // put every list in the one unit order (runes are only counted).
+        for (auto& slot : bf_units) for (auto& v : slot) sortUnits(state, v);
+        for (int s = 0; s < 2; ++s) {
+            sortUnits(state, base_units[s]);
+            sortUnits(state, base_gear[s]);
         }
     }
 };
@@ -161,8 +217,9 @@ void extractSideFeatures(const GameState& state,
     out.push_back(static_cast<float>(num_shield));
     out.push_back(static_cast<float>(num_deflect));
 
-    std::sort(unit_infos.begin(), unit_infos.end(),
-              [](auto& a, auto& b) { return a.might > b.might; });
+    // `units` is in the one unit order (Might first): stable, so ties keep it.
+    std::stable_sort(unit_infos.begin(), unit_infos.end(),
+                     [](auto& a, auto& b) { return a.might > b.might; });
 
     for (int i = 0; i < kMaxBfUnitsPerSide; ++i)
         out.push_back(i < static_cast<int>(unit_infos.size())
@@ -229,10 +286,14 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
         out.push_back(static_cast<float>(ps.rune_pool.power[i]));
     out.push_back(static_cast<float>(ps.rune_pool.universal_power));
 
-    // Hand card IDs (10) — self only, opponent's hidden
+    // Hand card IDs (10) — self only, opponent's hidden. Sorted by card
+    // (knowledge::sortedHand; the mulligan slots name these positions), not
+    // in the order the cards were dealt (batch 5b item T2).
+    const std::vector<GameObjectId> hand =
+        is_self ? knowledge::sortedHand(state, player) : std::vector<GameObjectId>{};
     for (int i = 0; i < 10; ++i) {
-        if (is_self && i < static_cast<int>(ps.hand.size())) {
-            out.push_back(safeCardId(state.getObject(ps.hand[i]).card_def_id));
+        if (i < static_cast<int>(hand.size())) {
+            out.push_back(safeCardId(state.getObject(hand[i]).card_def_id));
         } else {
             out.push_back(0.0f);
         }
@@ -240,8 +301,8 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
 
     // Hand card costs (10) — self only
     for (int i = 0; i < 10; ++i) {
-        if (is_self && i < static_cast<int>(ps.hand.size())) {
-            auto& obj = state.getObject(ps.hand[i]);
+        if (i < static_cast<int>(hand.size())) {
+            auto& obj = state.getObject(hand[i]);
             if (obj.card_def_id != kInvalidId) {
                 out.push_back(static_cast<float>(card_db.get(obj.card_def_id).energy_cost));
             } else {
@@ -310,8 +371,8 @@ void extractPlayerFeatures(const GameState& state, PlayerId player,
     out.push_back(static_cast<float>(base_exhausted));
 
     // Base unit IDs top 3 sorted by might desc (3)
-    std::sort(base_unit_infos.begin(), base_unit_infos.end(),
-              [](auto& a, auto& b) { return a.might > b.might; });
+    std::stable_sort(base_unit_infos.begin(), base_unit_infos.end(),
+                     [](auto& a, auto& b) { return a.might > b.might; });
     for (int i = 0; i < 3; ++i)
         out.push_back(i < static_cast<int>(base_unit_infos.size())
                        ? safeCardId(base_unit_infos[i].def_id) : 0.0f);
@@ -407,10 +468,7 @@ void extractStateFeatures(const GameState& state,
     for (int i = 0; i < kMaxChainItems; ++i) {
         if (i < static_cast<int>(state.chain.items.size())) {
             auto& item = state.chain.items[i];
-            CardDefId src_def;  // none: safeCardId gives 0
-            if (state.objectExists(item.source))
-                src_def = state.getObject(item.source).card_def_id;
-            features.push_back(safeCardId(src_def));
+            features.push_back(visibleCardId(state, item.source, perspective));
             features.push_back(item.controller == perspective ? 1.0f : 0.0f);
         } else {
             features.push_back(0.0f);
@@ -498,11 +556,8 @@ void extractStateFeatures(const GameState& state,
         if (slot < static_cast<int>(state.chain.items.size())) {
             auto& item = state.chain.items[slot];
             for (int t = 0; t < 2; ++t) {
-                CardDefId td;  // none: safeCardId gives 0
-                if (t < static_cast<int>(item.targets.size())
-                    && state.objectExists(item.targets[t]))
-                    td = state.getObject(item.targets[t]).card_def_id;
-                features.push_back(safeCardId(td));
+                features.push_back(t < static_cast<int>(item.targets.size())
+                    ? visibleCardId(state, item.targets[t], perspective) : 0.0f);
             }
         } else {
             features.push_back(0.0f);
@@ -613,8 +668,8 @@ void extractStateFeatures(const GameState& state,
                 u.current_might
             });
         }
-        std::sort(infos.begin(), infos.end(),
-                  [](const U& a, const U& b) { return a.might > b.might; });
+        std::stable_sort(infos.begin(), infos.end(),
+                         [](const U& a, const U& b) { return a.might > b.might; });
         for (int i = 0; i < kMaxBfUnitsPerSide; ++i) {
             if (i < static_cast<int>(infos.size())) {
                 const U& u = infos[i];
@@ -781,26 +836,21 @@ std::vector<float> featurizeAction(const Intent& intent,
         features.push_back(i == action_type ? 1.0f : 0.0f);
 
     // Card involved
-    float card_def = 0;
-    if (intent.card != kInvalidId && state.objectExists(intent.card))
-        card_def = safeCardId(state.getObject(intent.card).card_def_id);
-    features.push_back(card_def);
+    // Objects by their card only where the decider sees it (batch 5b T2).
+    const PlayerId who = intent.player;
+    features.push_back(visibleCardId(state, intent.card, who));
 
     // Targets (pad to 2)
     for (int i = 0; i < 2; ++i) {
-        if (i < static_cast<int>(intent.targets.size()) &&
-            state.objectExists(intent.targets[i])) {
-            features.push_back(safeCardId(state.getObject(intent.targets[i]).card_def_id));
+        if (i < static_cast<int>(intent.targets.size())) {
+            features.push_back(visibleCardId(state, intent.targets[i], who));
         } else {
             features.push_back(0.0f);
         }
     }
 
     // Ability source
-    float src_def = 0;
-    if (intent.ability_source != kInvalidId && state.objectExists(intent.ability_source))
-        src_def = safeCardId(state.getObject(intent.ability_source).card_def_id);
-    features.push_back(src_def);
+    features.push_back(visibleCardId(state, intent.ability_source, who));
 
     // Destination BF
     float dest_bf = -1.0f;
@@ -821,21 +871,16 @@ std::vector<float> featurizeAction(const Intent& intent,
 
     // Unit def IDs (pad to 2)
     for (int i = 0; i < 2; ++i) {
-        if (i < static_cast<int>(intent.units_to_move.size()) &&
-            state.objectExists(intent.units_to_move[i])) {
-            features.push_back(safeCardId(state.getObject(intent.units_to_move[i]).card_def_id));
+        if (i < static_cast<int>(intent.units_to_move.size())) {
+            features.push_back(visibleCardId(state, intent.units_to_move[i], who));
         } else {
             features.push_back(0.0f);
         }
     }
 
     // Chosen object def ID
-    float chosen_obj = 0.0f;
-    if (!intent.chosen_objects.empty() &&
-        state.objectExists(intent.chosen_objects[0])) {
-        chosen_obj = safeCardId(state.getObject(intent.chosen_objects[0]).card_def_id);
-    }
-    features.push_back(chosen_obj);
+    features.push_back(intent.chosen_objects.empty()
+        ? 0.0f : visibleCardId(state, intent.chosen_objects[0], who));
 
     // Chosen battlefield: the slot a card is hidden at, or for the setup
     // choice the position in the player's battlefield list (-1 = neither).

@@ -603,6 +603,27 @@ private:
 #define RIFT_DEBUG(bus, ...)          RIFT_LOG_LAZY_(bus, logDebug(__VA_ARGS__), noteUnheardLine)
 #define RIFT_INFO(bus, ...)           RIFT_LOG_LAZY_(bus, logInfo(__VA_ARGS__), noteUnheardLine)
 #define RIFT_WARN(bus, ...)           RIFT_LOG_LAZY_(bus, logWarn(__VA_ARGS__), noteUnheardLine)
+/// (bus, decider, message, for_others): a "DECISION #" header that says
+/// something only the decider may know (how many options it has: that
+/// follows its hand). The decider reads `message`; the other player reads
+/// `for_others`, which must not start with "DECISION #" (one decision is one
+/// decision line) — e.g. "DECISION (P2): chain priority" with no count
+/// (batch 5b item T2). Both are counted as lines when nobody listens.
+#define RIFT_TRACE_DECISION_SPLIT(bus, decider, message, for_others)               \
+    do {                                                                             \
+        ::riftbound::EventBus& rift_log_bus_ = (bus);                                \
+        const ::riftbound::PlayerId rift_decider_ = (decider);                       \
+        if (rift_log_bus_.logging()) {                                               \
+            rift_log_bus_.logTracePrivate(rift_decider_, message);                   \
+            rift_log_bus_.logTraceFor(                                               \
+                ::riftbound::LogAudience{rift_decider_ != ::riftbound::PlayerId::Player1, \
+                                         rift_decider_ != ::riftbound::PlayerId::Player2}, \
+                for_others);                                                         \
+        } else {                                                                     \
+            rift_log_bus_.noteUnheardDecision();                                     \
+            rift_log_bus_.noteUnheardLine();                                         \
+        }                                                                            \
+    } while (0)
 /// (bus, visible_to, message) — see EventBus::logTracePrivate.
 #define RIFT_TRACE_PRIVATE(bus, ...)  RIFT_LOG_LAZY_(bus, logTracePrivate(__VA_ARGS__), noteUnheardLine)
 /// (bus, audience, message) — see EventBus::logTraceFor.

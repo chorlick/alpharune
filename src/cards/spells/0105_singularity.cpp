@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include "cards/card_helpers.h"
+#include "openspiel/action_vocab.h"
 
 namespace riftbound {
 namespace {
@@ -20,12 +21,17 @@ public:
     }
     // "up to two units": no unit at all is always a choice (CR 355.13), not
     // only when the board has none. Then every set of one or two units, in
-    // the order the engine lists them by default.
+    // the order the engine lists them by default: a set in the order of what
+    // the player sees of its units, not of their object ids (batch 5b T2).
     std::optional<std::vector<std::vector<GameObjectId>>>
     enumerateLegalTargetSets(const GameState& state, PlayerId controller) const override {
         std::vector<std::vector<GameObjectId>> sets;
         sets.push_back({});
-        const auto units = enumerateLegalTargets(state, controller);
+        auto units = enumerateLegalTargets(state, controller);
+        std::stable_sort(units.begin(), units.end(), [&](GameObjectId x, GameObjectId y) {
+            return openspiel::visibleObjectDescription(state, x, controller) <
+                   openspiel::visibleObjectDescription(state, y, controller);
+        });
         for (size_t a = 0; a < units.size(); ++a) {
             sets.push_back({units[a]});
             for (size_t b = a + 1; b < units.size(); ++b)

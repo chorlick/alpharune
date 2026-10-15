@@ -330,6 +330,13 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
                 const ChainItem* item = nullptr;
                 for (const auto& ci : engine.state().chain.items)
                     if (ci.id == e.item) { item = &ci; break; }
+                // An [Add] ability (CR 430.2) is taken off the chain and
+                // finalized as the item being resolved
+                // (GameEngine::resolveAddAbilityNow): it is announced from
+                // `chain.resuming`, not from `chain.items`.
+                if (!item && engine.state().chain.resuming.has_value() &&
+                    engine.state().chain.resuming->id == e.item)
+                    item = &*engine.state().chain.resuming;
                 if (!item) return;
                 detail::ItemNote note;
                 if (item->keyword_ability.has_value()) {

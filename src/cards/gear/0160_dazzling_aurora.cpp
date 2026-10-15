@@ -28,7 +28,8 @@ public:
             std::vector<GameObjectId> rest;
             for (size_t i = kRestSlot; i < ri.resume_data.size(); ++i)
                 rest.push_back(GameObjectId::fromRaw(ri.resume_data[i]));
-            ri.resume_data.resize(std::min(ri.resume_data.size(), kRestSlot));
+            if (ri.resume_data.size() > kRestSlot)   // only ever shrinks
+                ri.resume_data.erase(ri.resume_data.begin() + kRestSlot, ri.resume_data.end());
             if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
         };
 

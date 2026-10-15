@@ -356,7 +356,6 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/card_helpers.h", 12},   // +1: chooseFittingSubset's members, written plain by its record (batch M1)
         {"src/cards/gear/0412_the_zero_drive.cpp", 1},
         {"src/cards/gear/0698_scryer_s_bloom.cpp", 1},
-        {"src/cards/gear/0854_bottled_constellation.cpp", 1},
         {"src/cards/gear/0924_shady_spectacles.cpp", 1},
         {"src/cards/legends/0553_void_burrower.cpp", 3},
         {"src/cards/legends/0756_deceiver.cpp", 1},
@@ -382,7 +381,6 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0876_wild_claw.cpp", 3},
         {"src/cards/spells/0894_decree_of_discord.cpp", 1},   // the picks, written plain (batch M1)
         {"src/cards/spells/0943_lightning_rush.cpp", 4},   // +1: the look's replacement filter (D71)
-        {"src/cards/units/0109_dr_mundo_expert.cpp", 1},
         {"src/cards/units/0141_kinkou_monk.cpp", 2},
         {"src/cards/units/0347_rell_magnetic.cpp", 1},
         {"src/cards/units/0449_overzealous_fan.cpp", 1},

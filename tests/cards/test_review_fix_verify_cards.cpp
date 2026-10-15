@@ -4401,9 +4401,11 @@ TEST_F(VerifyCardsTest, CorruptedDragon_DoesNotOfferAnEnemyUnitItCannotMoveToBas
     auto rooted = addUnit(P2, kInvalidId, 2, 0);
     o(rooted).cant_move_to_base = true;                  // as Determined Sentry sets it
     auto free_unit = addUnit(P2, kInvalidId, 2, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(free_unit));
+    // Batch M1: the leading "you may" is a prompt of its own (CR 383.3.a):
+    // yes, then the unit (was one prompt).
+    EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &agent);
-    EXPECT_EQ(agent.prompts.size(), 1u) << "once the free unit is gone nothing is left to offer";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "once the free unit is chosen nothing is left to offer";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
     EXPECT_FALSE(agent.wasOffered(rooted)) << "can't move to base";
     EXPECT_TRUE(agent.wasOffered(free_unit));
@@ -6272,12 +6274,17 @@ TEST_F(VerifyCardsTest, Pin_FaeDragon_NoneOnTheFirstPrompt_AndFewerThanFour) {
     EXPECT_EQ(o(dragon).buff_count, 0);
 }
 
-TEST_F(VerifyCardsTest, Pin_FaeDragon_NoUnbuffedFriendlyUnit_NothingAsked) {
+// Batch M1: was Pin_FaeDragon_NoUnbuffedFriendlyUnit_NothingAsked (only
+// unbuffed units were offered). The units are targets chosen as the ability
+// is finalized, and a unit with a buff can still be chosen for an action that
+// buffs; it is just not buffed again (CR 427.1.c).
+TEST_F(VerifyCardsTest, Pin_FaeDragon_ABuffedUnitIsOfferedAndNotBuffedAgain) {
     auto dragon = addUnit(P1, kFaeDragon, 0);
     o(dragon).buff_count = 1;
-    EnginePathAgent agent(EnginePathAgent::script({}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(dragon.raw())}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
-    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(agent.wasOffered(dragon));
     EXPECT_EQ(o(dragon).buff_count, 1);
 }
 
@@ -6571,14 +6578,18 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
 
     auto small1 = addUnit(P2, kInvalidId, 2, 0);
     auto small2 = addUnit(P2, kInvalidId, 3, 0);
+    // Batch M1: the leading "you may" is a prompt of its own (CR 383.3.a):
+    // yes, then "stop" on the first unit prompt (was one prompt).
     EnginePathAgent stop([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label.rfind("Yes", 0) == 0) return i;
         for (const auto& i : legal)
             if (i.chosen_objects.empty()) return i;
         ADD_FAILURE() << "no 'stop' option";
         return legal.front();
     });
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &stop);
-    EXPECT_EQ(stop.prompts.size(), 1u);
+    EXPECT_EQ(stop.prompts.size(), 2u);
     EXPECT_TRUE(stop.wasOffered(small1));
     EXPECT_TRUE(stop.wasOffered(small2));
     EXPECT_FALSE(stop.wasOffered(big));

@@ -1119,7 +1119,13 @@ TEST_F(VerifyEngineTest, CorruptedDragon_MovesMoreThanTwelveUnits) {
     auto dragon = addUnit(P1, kCorruptedDragon, 0, 0);
     std::vector<GameObjectId> small;
     for (int i = 0; i < kMany; ++i) small.push_back(addVanilla(P2, 2, 0));
-    EnginePathAgent agent(firstObjectOption);
+    // Batch M1: the leading "you may" is a prompt of its own (CR 383.3.a),
+    // answered yes; then the first unit each time (was firstObjectOption).
+    EnginePathAgent agent([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label.rfind("Yes", 0) == 0) return i;
+        return firstObjectOption(legal);
+    });
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &agent);
     for (auto id : small) EXPECT_TRUE(o(id).isAtBase());
 }

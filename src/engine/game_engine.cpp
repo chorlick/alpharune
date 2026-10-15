@@ -1671,11 +1671,20 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
         runFinalizePass(item);
         return;
     }
+    // An activated ability whose target the intent names, or the engine has
+    // just asked for, may have other choices the rules place at activation
+    // too (a move destination, CR 355.4, 403.2: Unforgiven): its callback
+    // makes them then. An Equip has none (Card::attachByEquip).
+    const bool activation_pass = !item.is_spell && item.is_activated_ability &&
+                                 !item.is_equip &&
+                                 (card->choicesAtFinalization() & Card::kFinalizeActivate);
     if (!item.targets.empty()) {
         // Its targets were locked in as it was played. A spell may still have
         // other choices the rules place at finalization — the units a split is
         // divided among (CR 355.14.b), a "may": its callback makes them now.
         if (item.is_spell && (card->choicesAtFinalization() & Card::kFinalizeResolve))
+            runFinalizePass(item);
+        else if (activation_pass)
             runFinalizePass(item);
         return;
     }
@@ -1776,7 +1785,8 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
                        " -> " + state_.getObject(t).name);
 
     commitEngineChosenTarget(*card, chooser, t, item_id);
-    if (one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve))
+    if ((one_from_intent && (card->choicesAtFinalization() & Card::kFinalizeResolve)) ||
+        activation_pass)
         for (auto& ci : state_.chain.items)
             if (ci.id == item_id) { runFinalizePass(ci); break; }
 }

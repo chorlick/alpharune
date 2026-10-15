@@ -18,15 +18,19 @@ public:
     // Only WhenIHold is declared as a static trigger. The deferred
     // "next Main Phase" move is delivered through a DelayedAbility
     // (checkDelayedAbilities fires it independently of triggerTypes()),
-    // which resolves through onTrigger with firing_trigger == None — so
-    // we MUST NOT also declare AtStartOfMain here, or the engine's
+    // which resolves through onTrigger with firing_trigger AtStartOfMain —
+    // so we MUST NOT also declare AtStartOfMain here, or the engine's
     // per-object AtStartOfMain scan would (double-)fire it every turn.
+    // The delayed ability's "you may" and its enemy unit are chosen as it is
+    // finalized (CR 383.3.a, 403.2; a delayed trigger's choices are made then,
+    // CR 355.5.b). The hold ability has nothing to choose.
     TriggerType triggerType() const override { return TriggerType::WhenIHold; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-
         if (ctx.firing_trigger == TriggerType::WhenIHold) {
+            if (finalizingChoices(ctx)) return;   // nothing to choose
+            if (!ctx.state.objectExists(ctx.source)) return;
+            auto& self = ctx.state.getObject(ctx.source);
             // Schedule the deferred move for the controller's next Main
             // Phase. Record which battlefield "this" is, so the deferred
             // fire pulls the enemy to the correct BF even if Iascylla moves.
@@ -45,35 +49,40 @@ public:
             return;
         }
 
-        // AtStartOfMain (deferred fire). Only act if a pull was scheduled.
-        // IMPORTANT: do NOT erase the stash up front — confirmOptional /
-        // pickTarget suspend resolution and the chain re-enters this onTrigger;
-        // the stash must survive those re-entries. Erase only once the decision
-        // definitively commits (no legal target / declined / moved).
-        auto it = self.card_counters.find("__iascylla_pull_bf");
-        if (it == self.card_counters.end()) return;
-        BattlefieldId bf = BattlefieldId::fromRaw(it->second);
-
+        // AtStartOfMain (deferred fire): "this battlefield" is the one stashed
+        // at hold time; none if no pull was scheduled, and then there is
+        // nothing to move (the "may" is not offered).
+        std::optional<BattlefieldId> bf;
+        if (ctx.state.objectExists(ctx.source)) {
+            const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+            const auto it = counters.find("__iascylla_pull_bf");
+            if (it != counters.end()) bf = BattlefieldId::fromRaw(it->second);
+        }
         // "an enemy unit": anywhere on the board (a base included) other
-        // than this battlefield, and one that may be chosen.
-        const auto legal = chooseableUnits(ctx.state, ctx.controller,
-            [&](const GameObject& u) {
-                return u.controller != ctx.controller && u.battlefieldId() != bf;
-            });
-        auto still_legal = [&legal]() { return !legal.empty(); };
-        if (!still_legal()) { self.card_counters.erase("__iascylla_pull_bf"); return; }
-        auto conf = confirmOptional(ctx, "Iascylla: move enemy unit here?",
-                                      still_legal);
-        if (conf == -1) return;  // suspended for agent input — keep the stash
-        if (conf < 1) { self.card_counters.erase("__iascylla_pull_bf"); return; }
-        GameObjectId picked = pickTarget(ctx, "Iascylla: pick enemy", legal);
-        if (picked == kInvalidId) return;  // suspended (legal non-empty) — keep stash
-        self.card_counters.erase("__iascylla_pull_bf");  // committing now
-        if (!ctx.state.objectExists(picked)) return;
-        ctx.executor.moveToBattlefield(picked, bf);
+        // than this battlefield, one that may be chosen and moved by me.
+        const auto legal = !bf.has_value() ? std::vector<GameObjectId>{}
+            : chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+                  return u.controller != ctx.controller && u.battlefieldId() != bf &&
+                         !u.cant_be_moved_by_enemy;
+              });
+        const int conf = confirmOptional(ctx, "Iascylla: move enemy unit here?",
+                                         [&legal]() { return !legal.empty(); });
+        if (conf == -1) return;   // waiting for the agent
+        GameObjectId picked = kInvalidId;
+        if (conf == 1) {
+            picked = pickTarget(ctx, "Iascylla: pick enemy", legal);
+            if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
+                ctx.state.chain.resuming->resume_point == 7)
+                return;   // waiting for the agent
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
+        if (ctx.state.objectExists(ctx.source))
+            ctx.state.getObject(ctx.source).card_counters.erase("__iascylla_pull_bf");
+        if (conf != 1 || picked == kInvalidId || !bf.has_value()) return;
+        ctx.executor.moveToBattlefield(picked, *bf);
         RIFT_TRACE(ctx.events, "IASCYLLA: pulled " +
                              ctx.state.getObject(picked).name +
-                             " to BF" + toString(bf));
+                             " to BF" + toString(*bf));
     }
 private:
     const CardDef def_ = [] {

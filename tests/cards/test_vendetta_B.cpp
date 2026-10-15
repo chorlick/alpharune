@@ -949,9 +949,13 @@ TEST_F(VendettaB, Vendetta_CorruptedDragon_MovesChosenSmallEnemiesToBase) {
     auto mine   = addUnit(P1, kInvalidId, 1, 0);
 
     // Take every unit offered: only the two <=5 [M] enemies here are offered.
+    // (Batch M1: the leading "you may" is a prompt of its own, CR 383.3.a —
+    // answered yes here.)
     bool offered_illegal = false;
     driveResumableTrigger(kCorruptedDragon, P1, dragon,
         [&](const std::vector<Intent>& legal) {
+            for (const auto& i : legal)
+                if (i.choice_label.rfind("Yes", 0) == 0) return i;
             for (const auto& i : legal)
                 if (!i.chosen_objects.empty() &&
                     i.chosen_objects[0] != small1 && i.chosen_objects[0] != small2)
@@ -973,18 +977,21 @@ TEST_F(VendettaB, Vendetta_CorruptedDragon_MayStopEarly) {
     auto small1 = addUnit(P2, kInvalidId, 3, 0);
     auto small2 = addUnit(P2, kInvalidId, 2, 0);
 
-    // "done" is the trailing choice with no chosen object.
+    // "done" is the trailing choice with no chosen object. (Batch M1: the
+    // leading "you may" is a prompt of its own, CR 383.3.a: [No, Yes], so
+    // the last option is yes; then the trailing "None".)
     driveResumableTrigger(kCorruptedDragon, P1, dragon,
         [](const std::vector<Intent>& legal) { return legal.back(); },
         exec, TriggerType::WhenIAttack);
     EXPECT_TRUE(state.getObject(small1).isAtBattlefield());
     EXPECT_TRUE(state.getObject(small2).isAtBattlefield());
 
-    // Move exactly one, then stop.
+    // Move exactly one, then stop: yes, the first unit, then "None".
     int calls = 0;
     driveResumableTrigger(kCorruptedDragon, P1, dragon,
         [&](const std::vector<Intent>& legal) {
-            return ++calls == 1 ? legal.front() : legal.back();
+            ++calls;
+            return calls == 2 ? legal.front() : legal.back();
         }, exec, TriggerType::WhenIAttack);
     const int at_base = static_cast<int>(state.getObject(small1).isAtBase()) +
                         static_cast<int>(state.getObject(small2).isAtBase());

@@ -297,6 +297,35 @@ TEST_F(DamageAllocationTest, PoolExceedsSumOfLethals_LastTargetOverAssigned) {
     }
 }
 
+TEST_F(DamageAllocationTest, PoolExceedsSumOfLethals_AnyUnitMayTakeTheExcessWhateverTheTargetOrder) {
+    // Three units of 2, 3 and 4 Might and 12 damage: every unit is dealt
+    // lethal and the 3 left over go to the unit named last (CR 460.2.c.4),
+    // which may be any of them (460.2.c.6). The set of options must not
+    // depend on the order the targets come in, which is the object table's
+    // (batch 5b: only the first order the walk met was kept, so which unit
+    // could take the excess followed object ids).
+    makeEngine();
+    auto a = placeDefender(2);
+    auto b = placeDefender(3);
+    auto c = placeDefender(4);
+    auto outcomes = [&](const std::vector<GameObjectId>& targets) {
+        std::set<std::vector<std::pair<GameObjectId, int>>> out;
+        auto adv = engine_->testHook_advanceCombatDamage(P1, 12, targets);
+        for (const auto& intent : adv.legal) {
+            verifyCascadeInvariants(*eng_state(), 12, targets, intent.damage_assignments);
+            std::vector<std::pair<GameObjectId, int>> kv;
+            for (auto& da : intent.damage_assignments) kv.emplace_back(da.target_unit, da.damage);
+            std::sort(kv.begin(), kv.end());
+            out.insert(kv);
+        }
+        return out;
+    };
+    const auto abc = outcomes({a, b, c});
+    EXPECT_EQ(abc.size(), 3u) << "each unit can be the one that takes the excess";
+    EXPECT_EQ(outcomes({c, b, a}), abc);
+    EXPECT_EQ(outcomes({b, c, a}), abc);
+}
+
 // ─── Dedup: identical-outcome cascades collapse to one option ──────────────
 
 TEST_F(DamageAllocationTest, DistinctOptionsHaveDistinctOutcomes) {

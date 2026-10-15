@@ -37,6 +37,9 @@ struct MiniState {
         o.card_def_id = def_id;
         o.owner = owner;
         o.controller = owner;
+        // In play: a slot names an object's card only if the decider can see
+        // it (batch 5b item L2), and a default object is in a Main Deck.
+        o.zone = ZoneType::Base;
         return id;
     }
 
@@ -416,9 +419,12 @@ struct VocabTable : MiniState {
     GameObjectId h[4];
     BattlefieldId bf0, bf1;
     VocabTable() {
-        const CardDefId defs[4] = {700, 701, 700, 702};
+        // In card order: a mulligan slot names positions in the hand sorted
+        // by card (knowledge::sortedHand, batch 5b item T2).
+        const CardDefId defs[4] = {700, 700, 701, 702};
         for (int i = 0; i < 4; ++i) {
             h[i] = addObject(defs[i]);
+            state.getObject(h[i]).zone = ZoneType::Hand;
             state.player(PlayerId::Player1).hand.push_back(h[i]);
         }
         bf0 = addBattlefield();
@@ -463,7 +469,21 @@ TEST(ActionVocab, MulliganSlotsSayWhichCards) {
     EXPECT_EQ(actionSlot(legal[10], t.state), base + 9 + 7 + 6 + 0) // positions (2, 3)
         << "pairs are numbered row by row over 8 hand positions";
     // Two copies of one card in hand are two choices (it was "how many").
-    EXPECT_NE(actionSlot(legal[1], t.state), actionSlot(legal[3], t.state));
+    EXPECT_NE(actionSlot(legal[1], t.state), actionSlot(legal[2], t.state));
+    // The hand as dealt does not matter: the same hand in another order has
+    // the same slots (positions are in the hand sorted by card; the two
+    // copies of card 700 may trade places, which nobody can tell apart).
+    {
+        GameState dealt = t.state;
+        dealt.player(PlayerId::Player1).hand = {t.h[3], t.h[1], t.h[0], t.h[2]};
+        std::multiset<int> before, after;
+        for (const auto& i : legal) {
+            before.insert(actionSlot(i, t.state));
+            after.insert(actionSlot(i, dealt));
+        }
+        EXPECT_EQ(before, after);
+        EXPECT_EQ(actionSlot(legal[4], dealt), actionSlot(legal[4], t.state));   // card 702
+    }
     expectAllIdsDistinct(legal, t.state);
     // The slot is the unordered pair.
     EXPECT_EQ(actionSlot(Intent::mulligan(PlayerId::Player1, {t.h[2], t.h[0]}), t.state),
@@ -735,7 +755,7 @@ TEST(ActionVocab, PastTheTwinPlanesAnIntentHasNoId) {
 
 TEST(ActionVocab, AHistoryTokenFindsItsIntentAmongTwins) {
     VocabTable t;
-    auto c1 = t.h[0], c2 = t.h[1], c3 = t.h[2];   // c3: second copy of c1's card
+    auto c1 = t.h[0], c2 = t.h[2], c3 = t.h[1];   // c3: second copy of c1's card
     Intent play1; play1.type = IntentType::PlayCard;
     play1.player = PlayerId::Player1; play1.card = c1;
     Intent play3 = play1; play3.card = c3;               // other copy, same slot
@@ -785,4 +805,45 @@ TEST(ActionVocab, HistoryTokenIgnoresTheDisplayLabel) {
     // "no value" and "value 0" are different answers.
     Intent none = yes; none.chosen_value.reset();
     EXPECT_NE(historyToken(none, ms.state), historyToken(no, ms.state));
+}
+
+// ── Batch 5b items L2 / T2: a slot names only a card the decider can see ────
+
+TEST(ActionVocab, APromptNamesAHiddenCardByNoCard) {
+    MiniState ms;
+    const BattlefieldId bf = ms.addBattlefield();
+    // Player 2's facedown card at the battlefield and a card in their hand.
+    const GameObjectId facedown = ms.addObject(/*def_id=*/321, PlayerId::Player2);
+    ms.state.getObject(facedown).zone = ZoneType::FacedownZone;
+    ms.state.battlefields[bf].facedown.push_back(facedown);
+    const GameObjectId in_hand = ms.addObject(/*def_id=*/322, PlayerId::Player2);
+    ms.state.getObject(in_hand).zone = ZoneType::Hand;
+    ms.state.player(PlayerId::Player2).hand.push_back(in_hand);
+
+    auto prompt = [](PlayerId who, GameObjectId obj) {
+        Intent i;
+        i.type = IntentType::MakeChoice;
+        i.player = who;
+        i.chosen_objects = {obj};
+        return i;
+    };
+    const int opposing = verbOffset(ActionVerb::ChooseOpposingObject);
+    const int own = verbOffset(ActionVerb::ChooseOwnObject);
+    for (GameObjectId hidden : {facedown, in_hand}) {
+        // Player 1 cannot see it: key 0, whichever card it is.
+        const Intent p1 = prompt(PlayerId::Player1, hidden);
+        EXPECT_EQ(actionSlot(p1, ms.state), opposing + 0);
+        const auto seen_before = visibleDescription(p1, ms.state);
+        const int64_t token_before = historyToken(p1, ms.state) & kHistorySlotMask;
+        ms.state.getObject(hidden).card_def_id = CardDefId::fromRaw(777);
+        EXPECT_EQ(actionSlot(p1, ms.state), opposing + 0);
+        EXPECT_EQ(visibleDescription(p1, ms.state), seen_before);
+        EXPECT_EQ(historyToken(p1, ms.state) & kHistorySlotMask, token_before);
+        // Its owner can: the card is in the slot.
+        EXPECT_EQ(actionSlot(prompt(PlayerId::Player2, hidden), ms.state), own + 777);
+    }
+    // The same card face up is named to everyone.
+    ms.state.getObject(facedown).zone = ZoneType::Trash;
+    ms.state.battlefields[bf].facedown.clear();
+    EXPECT_EQ(actionSlot(prompt(PlayerId::Player1, facedown), ms.state), opposing + 777);
 }

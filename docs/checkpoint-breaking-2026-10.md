@@ -363,3 +363,44 @@ Five and eight games say nothing about strength.
 6. `Intent::chooseBattlefield` takes a `BattlefieldPoolIndex`.
 7. `tools/collision_census.cpp` compiles against the new API and should now
    report 0 collisions for any deck.
+
+## 8. Batch 5b (testing phase T2 / L2, 2026-10-15): nothing shown follows hidden order
+
+A second break, after the 2026-10 one: the layout and the id range are the same
+(`kStateFeatureDim` 10944, `kNumActions` 130,174,976), but the meaning of some
+values changed, so vectors, action ids, history tokens and `InfoSetId`s recorded
+before it are not comparable with those after. No trainer checkpoint existed.
+
+**Why.** Object ids were handed out in deck-list order, and the deck lists are
+grouped by card: the id of a hidden card nearly named it. Several things a
+player is shown were functions of ids (below). Now ids carry no information and
+nothing a player is shown is a function of them.
+
+| What | Before | After |
+|---|---|---|
+| Object ids of Main Deck / Rune Deck cards | deck-list order (1, 2, 3, ... per list line) | a random order per game (`GameEngine::setIdLabelSalt`; a stream of its own, so the deal is unchanged) |
+| Action slot of an object the decider cannot see (opponent's hand / facedown card, a deck card it was not shown) | its card id (L2) | key 0 ("no card the decider can see") |
+| Twin number (`actionIds`, `actionIdOf`) | intents of one slot ordered field by field, objects by id | ordered by `compareIntentsAsSeen`: what the decider sees (`visibleDescription`, which includes which pending chain items name an object), then the public order of the objects named (hand / trash / banishment entry order), ids only between intents the decider sees as identical |
+| A prompt answer of several objects (`MakeChoice`, e.g. "choose 2 runes to keep") | slot keyed by the first object listed | keyed by the object the decider sees first; the objects are a set |
+| Mulligan slot positions | positions in the hand as dealt | positions in the hand sorted by card (`knowledge::sortedHand`) |
+| Self hand cards and costs (`kSelfPlayer` hand block, 10 + 10) | hand order (as dealt / drawn) | sorted by card id (`knowledge::sortedHand`) |
+| Units in the battlefield side blocks, the extended and Tier-2 unit blocks, base units | Might descending, ties in object-table (id) order; the Tier-2 block sorted separately, so with a tie one slot could describe two different units | one total order (`UnitOrderKey`: Might descending, then every field written), shared by all three blocks |
+| Base gear ("top 2") | object-table order | the same total order |
+| Chain item source / target card ids | always written | 0 for an object the perspective player cannot see |
+| `featurizeAction` object card ids | always written | 0 for an object the decider cannot see |
+| A simultaneous trigger batch on the chain and its order prompt | queued in object-table order; option value k = k-th queued | the batch is put in an order of what both players see (source card where both may see it, the trigger, the keyword ability) before it is ordered; option value k = k-th in that order |
+| "Up to N" target sets (generic generator, Singularity) | listed in ascending id order | each set listed in the order of `visibleObjectDescription` |
+
+`InfoSetId` is now computed by one function, `openspiel::infoSetIdFor`, which
+`RiftboundState::InfoSetId` calls (same hash as before over the new vector).
+
+**For the trainer.** Order the options of a decision by action id
+(`RiftboundState::LegalActions`, or `actionIds`), never by the index in
+`StepResult::legal`: the engine's list is the generator's order, which may
+still follow object ids. Do not feed object ids, history-token fingerprints
+or the numbers in log lines (`id=N`, `chain_item=N`) to a model.
+
+Tests: `HiddenOrderLeak.*` (`tests/test_hidden_order_leak.cpp`),
+`ActionVocab.APromptNamesAHiddenCardByNoCard`,
+`ActionVocab.MulliganSlotsSayWhichCards` (hand order), and the seat-swap test
+(its mirror now swaps the knowledge tracker's facts too).

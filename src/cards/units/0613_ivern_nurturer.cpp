@@ -31,6 +31,10 @@ public:
         for (auto id : top3)
             if (ctx.state.objectExists(id) && ctx.state.getObject(id).isUnit())
                 units.push_back(id);
+        // The look (knowledge tracker): the controller now knows these three,
+        // so the prompt below names them to it (batch 5b item L2: a deck card
+        // the decider was not shown has no card in its action slot).
+        for (auto id : top3) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
         // "You may reveal a unit from among them and draw it." — which one, or
         // none. Asked as this resolves: the cards are only looked at now.
         const auto answer = selectObject(ctx, "Ivern, Nurturer: reveal a unit and draw it",

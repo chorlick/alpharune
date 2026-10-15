@@ -39,9 +39,7 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 ## Batch 5 — Trainer-facing engine work (owner, 2026-10-14: settled before v6 starts; trainer plan `../riftbound-trainer/plans/README.md` section 0)
 
 - [ ] **T1** What a decision asks: every prompt carries a description — who asks, which card and ability (`ChainItem` / source), the kind of question (may / mode / X / target / cost / order / rune / location ...), and what each option means — exposed on `StepResult` and the decision API; a `MakeChoice` is no longer a bare integer to an observer. Covers every helper (`confirmOptional`, `pickMode`, `pickXAmount`, `pickTarget`, `pickTargetPair`, `selectSeveral`, `splitDamageAmong`, `confirmNow`, `chooseObjectNow`, engine prompts). Test: every prompt of every decision of a few hundred random and `random-player` games has a description, and two prompts with different meaning never share one — serious (trainer item 8)
-- [ ] **T2** Hidden order must not reach a player: check how object ids are assigned (deck order? shuffle order?) and whether anything a player is shown — legal-action lists, option order, twin numbers, observation, log — depends on hidden order. Test: two positions that differ only in hidden order (deck order, hand order, id assignment of hidden cards) give identical observations, identical legal-action lists and identical option order — trainer item 11
 - [ ] **T4** Completeness of the observation: list every fact a player may know (trainer plan section 2) and check each reaches the observation (knowledge tracker, known top/bottom runes per observer, revealed cards still in a hand, public zones up to a whole deck); the reverse of the leak test: two states that differ in a fact the observer may know give different observations — trainer items 10, 14
-- [ ] **T5** First-player edge and deck balance on the fixed engine (after G1): random, `random-player` and ISMCTS over the deck lists and random decks, by seat and by who went first; report only — trainer item 7
 
 ## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
 
@@ -51,12 +49,10 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 ## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
 
 - [ ] **K2** (after the owner's answer to G4) If an engine game is a Match game (CR 488.5), `GameRunner` / `BatchRunner` need series support so games two and three exclude battlefields already used (488.5, 488.6) — waits on G4
-- [ ] **K3** (orchestrator) Throughput of master after batch 4b not measured (the run lane was busy): 1,000 games, 1 thread, fiora vs yi_rebuild, three alternating runs, master before and after 4b, on an idle machine — perf
 
 ## Found by batch 5 / T3 (2026-10-14, `plans/reports/batch-5-t3.md` section 7)
 
 - [ ] **L1** (agents, before ISMCTS teaches) Honest ISMCTS barely gains from its budget: head to head 100 v 50 51%, 200 v 100 55%, 400 v 200 47%, 400 v 50 61% (400 to 600 games each), and the clairvoyant variant at 100 simulations is no better than the honest one (49%, 50%). The score-difference leaf value is flat for most of a turn, so UCT spreads visits; a better leaf evaluation (or rollouts to the end of the turn) is what more simulations would need. Overlaps G28 — agents
-- [ ] **L2** (T2) An action slot keys a prompt's object by its card (`cardKey` in `openspiel/action_vocab.cpp`) whether or not the decider can see that object; a prompt that offered the opponent's facedown or hand card would put its identity into the action id and the InfoSetId. Not seen in a game; the T3 search does not depend on it (its root is keyed by the live options) — check with T2's leak test
 - [ ] **L3** (owner, with G4) The setup battlefield choice is not searched by ISMCTS: the second player's search would see the first player's pick, held in a local of `setupBattlefields`, which a world cannot redraw; answered at random (CR 487.5). If engine games become Match games (CR 488.5) the pick must be made hidden-information-safe (state, not a local) before a search can make it — agents
 
 ## Found by batch 5b (2026-10-15, `plans/reports/batch-5b.md` section 7; N2, N3 are T1's)

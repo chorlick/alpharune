@@ -79,9 +79,11 @@ TEST(PerfEngineLog, AMessageNobodyReadsIsNotBuilt) {
     RIFT_TRACE(bus, msg("four"));
     EXPECT_EQ(msg.built, 1);
     ASSERT_EQ(heard.lines.size(), 1u);
-    // The three unread lines were counted: this is the fourth of decision 0,
-    // exactly what a listener attached from the start would have been handed.
-    EXPECT_EQ(heard.lines[0].message, "[D:000.04] four");
+    // The unread lines were counted: this is the third line of decision 0
+    // that both players read (the private "three" is not numbered for them,
+    // batch 5b item T2), exactly what a listener attached from the start
+    // would have been handed.
+    EXPECT_EQ(heard.lines[0].message, "[D:000.03] four");
 }
 
 TEST(PerfEngineLog, EveryMacroDeliversWhatItsFunctionDelivers) {
@@ -123,7 +125,10 @@ TEST(PerfEngineLog, EveryMacroDeliversWhatItsFunctionDelivers) {
     EXPECT_EQ(a.lines[2].level, LogLevel::Info);
     EXPECT_EQ(a.lines[3].level, LogLevel::Warning);
     EXPECT_EQ(a.lines[4].message, "[D:001.00] DECISION #1 (P1): 3 legal actions");
-    EXPECT_EQ(a.lines[5].message, "[D:001.01] private");
+    // A line one player reads carries the number of the last line both read
+    // (batch 5b item T2: the number would otherwise count the lines the other
+    // player missed).
+    EXPECT_EQ(a.lines[5].message, "[D:001.00] private");
     EXPECT_FALSE(a.lines[5].visibleTo(PlayerId::Player1));
     EXPECT_TRUE(a.lines[5].visibleTo(PlayerId::Player2));
     EXPECT_TRUE(a.lines[6].audience.isNeither());
@@ -196,6 +201,7 @@ TEST(PerfEngineLog, AQuietStretchBuildsNothingAndIsStillCounted) {
         bus.on_unit_readied.connect([&](const UnitReadiedEvent&) { ++moved; });
     Counted msg;
     RIFT_TRACE(bus, msg("before"));
+    const uint64_t stamp_before = bus.lineStamp();
     const auto quiet = bus.beginQuiet();
     EXPECT_FALSE(bus.logging());
     EXPECT_TRUE(bus.holding());
@@ -210,7 +216,12 @@ TEST(PerfEngineLog, AQuietStretchBuildsNothingAndIsStillCounted) {
     EXPECT_EQ(moved, 0);
     ASSERT_EQ(heard.lines.size(), 2u);
     EXPECT_EQ(heard.lines[0].message, "[D:000.01] before");
-    EXPECT_EQ(heard.lines[1].message, "[D:000.04] after");
+    // The quiet lines are counted (lineStamp, what the chain's "a finalization
+    // that logged nothing" reads) but not numbered: how many lines a probe
+    // wrote follows cards a player cannot see (batch 5b item T2; was
+    // "[D:000.04] after").
+    EXPECT_EQ(heard.lines[1].message, "[D:000.02] after");
+    EXPECT_EQ(bus.lineStamp(), stamp_before + 3);
 }
 
 std::string deckFile(const char* name) {

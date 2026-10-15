@@ -59,9 +59,9 @@ std::optional<LocationId> flipped(const std::optional<LocationId>& loc) {
 
 /// The position with every Player1 thing given to Player2 and back: the two
 /// player states change places, and every field that names a player names the
-/// other one. Object ids, battlefield slots and all numbers stay. (The
-/// knowledge tracker's per-observer facts are not swapped: the feature
-/// extractor does not read them.)
+/// other one. Object ids, battlefield slots and all numbers stay. The
+/// knowledge tracker's per-observer facts change places too: the extractor
+/// reads them to tell whether a player may see a card (batch 5b item T2).
 GameState mirrorSeats(const GameState& in) {
     GameState s = in;
     std::swap(s.players[0], s.players[1]);
@@ -116,6 +116,9 @@ GameState mirrorSeats(const GameState& in) {
     }
     flip(s.winner);
     if (s.cost_cursor) flip(s.cost_cursor->player);
+    std::swap(s.knowledge.facts[0], s.knowledge.facts[1]);
+    std::swap(s.knowledge.deck[0], s.knowledge.deck[1]);
+    for (auto& [n, g] : s.knowledge.groups) flip(g.owner);
     return s;
 }
 

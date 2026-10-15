@@ -616,6 +616,34 @@ bool GameKnowledgeView::position(const HiddenCardFact& fact, PlayerId owner,
     return true;
 }
 
+bool identityVisible(const GameState& state, GameObjectId object, PlayerId observer) {
+    const auto it = state.objects.find(object);
+    if (it == state.objects.end()) return false;
+    const GameObject& obj = it->second;
+    switch (obj.zone.get()) {
+        case ZoneType::Hand:
+        case ZoneType::FacedownZone:
+            // An owner knows its own hand and facedown cards (as `about`).
+            if (obj.owner == observer) return true;
+            break;
+        case ZoneType::MainDeck:
+        case ZoneType::RuneDeck:
+            break;   // hidden zones: ask the tracker
+        default:
+            return true;
+    }
+    if (observer != PlayerId::Player1 && observer != PlayerId::Player2) return false;
+    return GameKnowledgeView(state, observer).about(object).identity_known;
+}
+
+std::vector<GameObjectId> sortedHand(const GameState& state, PlayerId player) {
+    std::vector<GameObjectId> hand = state.player(player).hand;
+    std::stable_sort(hand.begin(), hand.end(), [&](GameObjectId a, GameObjectId b) {
+        return state.getObject(a).card_def_id.raw() < state.getObject(b).card_def_id.raw();
+    });
+    return hand;
+}
+
 CardKnowledge GameKnowledgeView::about(GameObjectId object) const {
     CardKnowledge k;
     k.object = object;

@@ -18,17 +18,16 @@ public:
     // "Starting with the next player, each player may return a unit to its
     // owner's hand." Next player (opponent) chooses first, then the controller.
     // Each choice is optional ("may"): a decline option (empty chosen_objects)
-    // is offered alongside every unit. Each player is the one choosing their
-    // unit: "can't be chosen by enemy spells and abilities" and Deflect are
-    // judged, and Deflect is paid, from that player's side.
+    // is offered alongside every unit. The units are not targets: a set
+    // chosen in part by other players (CR 355.10.e). So "can't be chosen by
+    // enemy spells and abilities" (untargetable: Vendetta core rules patch
+    // notes) does not keep a unit out, and no [Deflect] is owed (CR 809.1.c:
+    // "spells and abilities ... that target"; testing phase R9).
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
         PlayerId opp = opponent(ctx.controller);
-        auto units_for = [&](PlayerId p) {
-            CardContext as_p{ctx.state, ctx.events, ctx.executor, p, ctx.source};
-            auto out = chooseableUnits(ctx.state, p, [](const GameObject&) { return true; });
-            std::sort(out.begin(), out.end());
-            return offerableChoices(as_p, out);
+        auto units_for = [&](PlayerId) {
+            return boardObjects(ctx.state, [](const GameObject& o) { return o.isUnit(); });
         };
         auto prompt = [&](PlayerId p) {
             std::vector<Intent> choices;
@@ -46,8 +45,6 @@ public:
             const GameObjectId unit = takenObject(ctx);
             const auto units = units_for(p);
             if (std::find(units.begin(), units.end(), unit) == units.end()) return;
-            CardContext as_p{ctx.state, ctx.events, ctx.executor, p, ctx.source};
-            commitChosenObject(as_p, unit);
             ctx.executor.bounceToHand(unit);
         };
         switch (ri.resume_point) {

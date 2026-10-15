@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -14,33 +15,32 @@ namespace {
 class Firestorm : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Deal 3 to all enemy units at A battlefield." (one chosen BF)
-    // Choose an enemy unit at a battlefield to identify the target BF, then
-    // hit ALL enemy units there.
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                  .must_be_enemy = true, .must_be_at_battlefield = true};
+    // "Deal 3 to all enemy units at a battlefield." The battlefield is the
+    // target, not the units (CR 355.10.b, 355.10.d: "Kill all units at a
+    // battlefield" targets a battlefield), chosen as the spell is played (CR
+    // 355.5), in its finalize pass before its cost: no unit's [Deflect] is
+    // owed, and the enemy units there as it resolves are dealt 3 (testing
+    // phase R8: a unit stood for the battlefield).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // a battlefield, not a unit
     }
-    bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId anchor;
-        if (!targets.empty()) {
-            anchor = targets[0];
-        } else {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            anchor = pickTarget(ctx, "Firestorm (enemy unit at a battlefield)", legal);
-        }
-        if (anchor == kInvalidId || !ctx.state.objectExists(anchor)) return;
-        auto bf = ctx.state.getObject(anchor).battlefieldId();
-        if (!bf) return;
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const int mode = pickBattlefield(*this, ctx, "Firestorm: choose a battlefield");
+        if (mode == -1) return;               // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (mode < 0 || static_cast<size_t>(mode) >= ctx.state.battlefields.size()) return;
+        const BattlefieldId bf = ctx.state.battlefields[static_cast<size_t>(mode)].id;
 
         // Collect all enemy units at the chosen battlefield, then deal-then-kill.
         std::vector<GameObjectId> to_damage;
         for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller == ctx.controller) continue;
-            if (obj.battlefieldId() != bf) continue;
+            if (obj.battlefieldId() != std::optional<BattlefieldId>{bf}) continue;
             to_damage.push_back(id);
         }
+        std::sort(to_damage.begin(), to_damage.end());
         for (auto id : to_damage)
             ctx.executor.dealDamage(id, 3, ctx.source);
         {   // the batch is for these kills only

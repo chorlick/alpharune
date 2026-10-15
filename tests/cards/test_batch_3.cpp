@@ -101,6 +101,7 @@ constexpr CardDefId kAmateurRecital = 763;
 constexpr CardDefId kTemporalBreach = 853;
 constexpr CardDefId kTWinBringsEnemy = 1930;
 constexpr CardDefId kPoroSnax = 369;
+constexpr CardDefId kMesmerize = 839;
 constexpr CardDefId kScryersBloom = 698;   // test-only: see Batch3Combat
 
 /// The chain's newest item is an ability (a spell lies under it).
@@ -1767,6 +1768,21 @@ TEST_F(Batch3Test, G15_KillThisGearsLeaveNoBoardStateOnTheCardInTheTrash) {
         EXPECT_FALSE(onBoard(gear)) << "killed as the cost";
         EXPECT_FALSE(o(gear).is_exhausted) << "no board state off the board (CR 124.1)";
     }
+}
+
+// Checked-fuzz finding of the gate (seeds 10504008303540193269
+// 12080827235072555083 463353416, random-player): a finalize-pass spell
+// payable on its own was offered although each of its complete choices
+// carried a Deflect it could not pay as well. Mesmerize ("Return a friendly
+// unit to its owner's hand. / Give an enemy unit -2 [M] this turn.") with no
+// friendly unit and only an enemy [Deflect] unit.
+TEST_F(Batch3Test, D8_MesmerizeIsNotOfferedWhenItsOnlyChoiceCarriesADeflectItCannotPay) {
+    auto card = addToHand(P1, kMesmerize);
+    addUnit(P2, kPoutyPoro, 2, 0);
+    fund(P1, 1, 1);
+    EXPECT_FALSE(offered(card)) << "the one target needs [A] more (CR 355.8, 809)";
+    fund(P1, 0, 1);
+    EXPECT_TRUE(offered(card));
 }
 
 }  // namespace riftbound::test::batch_3

@@ -5623,6 +5623,16 @@ void GameEngine::generateSpellActions(PlayerId player, bool action_ok,
             // would make it payable.
             if (!afford_plain && !payableThroughAFinalizeChoice(player, card_id, nullptr))
                 continue;
+            // Payable on its own, but every complete set of its choices may
+            // carry a Deflect it cannot pay as well (a fuzz finding of batch 3:
+            // Mesmerize with no friendly unit and only an enemy [Deflect] unit):
+            // with a Deflect on the board its choices are made on the side
+            // (CR 355.8: valid choices for all targets).
+            if (afford_plain && spell_card &&
+                (spell_card->choicesAtFinalization() & Card::kFinalizeResolve) &&
+                !spell_card->needsPlayTimeTarget() && anyDeflectFor(player) &&
+                !payableThroughAFinalizeChoice(player, card_id, nullptr, true))
+                continue;
             Intent play;
             play.type = intent_type;
             play.player = player;
@@ -5884,8 +5894,15 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
                 any = payableThroughAFinalizeChoice(player, card_id, grant, true);
             if (any) make(intent_type, {}, std::nullopt);
         } else if (req.count == 0 || (req.optional && legal_targets.empty())) {
-            if (affordable({}) || payableThroughAFinalizeChoice(player, card_id, grant))
-                make(intent_type, {}, std::nullopt);
+            const bool plain = affordable({});
+            bool ok = plain || payableThroughAFinalizeChoice(player, card_id, grant);
+            // As from hand: with a Deflect on the board, a finalize-pass spell
+            // is offered only if a complete payable set of its choices exists.
+            if (ok && plain && spell_card &&
+                (spell_card->choicesAtFinalization() & Card::kFinalizeResolve) &&
+                !spell_card->needsPlayTimeTarget() && anyDeflectFor(player))
+                ok = payableThroughAFinalizeChoice(player, card_id, grant, true);
+            if (ok) make(intent_type, {}, std::nullopt);
         } else {
             for (auto& tset : spellTargetSets(spell_card, state_, player, req, legal_targets))
                 if (affordable(tset)) make(intent_type, std::move(tset), std::nullopt);

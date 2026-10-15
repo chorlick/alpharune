@@ -17,16 +17,18 @@ public:
     const CardDef& def() const override { return def_; }
     bool hasActivatedAbility() const override { return true; }
     bool isReactionAbility() const override { return true; }
+    // "Kill this, [E]": both are the cost, paid as it is activated (testing
+    // phase G27 / D38); the [Add] resolves at once (CR 430.2; D2).
     ActivationCost getActivationCost() const override {
-        return ActivationCost{.exhaust = true};
+        return ActivationCost{.exhaust = true, .kill_self = true};
     }
+    bool abilityAddsResources() const override { return true; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 0};
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
-        // Pay the "kill this" part of the cost — the engine has already
-        // exhausted us. CR 183.1: tokens cease to exist on leaving the
-        // board, handled by killObject's super_type=Token branch.
+        // "Kill this, [E]" were paid as it was activated (the gear is gone;
+        // CR 183.1: a token ceases to exist). The [Add]:
         ctx.executor.addFloatingUniversalPower(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "GOLD: kill+[E] -> +1 [A]");
         // "Your Gold [ADD] an additional [1]" (Chem-Baroness): a legend that
@@ -44,7 +46,6 @@ public:
                                     " Energy (legend bonus)");
             }
         }
-        ctx.executor.killObject(ctx.source);
     }
 private:
     const CardDef def_ = [] {

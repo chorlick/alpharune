@@ -35,12 +35,13 @@ public:
         return units;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto can_do = [&]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 2 && !stunnable(ctx).empty();
-        };
+        // The [2] is owed after the unit is chosen: a unit is on offer only if
+        // its Deflect and the [2] can be paid together (testing phase F5).
+        auto can_do = [&]() { return !choosablePaying(ctx, stunnable(ctx), 2).empty(); };
         int conf = confirmOptional(ctx, "Kennen, Keeper of Balance: pay [2] to stun a unit?",
                                    can_do);
         if (conf < 1) return;
+        owesAfterChoices(ctx, 2);
         GameObjectId picked = pickTarget(ctx, "Kennen, Keeper of Balance: stun", stunnable(ctx));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         // Pay only once the unit is chosen (this branch runs exactly once).

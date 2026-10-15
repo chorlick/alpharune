@@ -1,5 +1,6 @@
 #include "core/board_state.h"
 #include "effect_executor.h"
+#include "engine/chain_manager.h"
 
 #include "cards/card.h"
 #include "cards/card_registry.h"
@@ -763,8 +764,99 @@ resource::RuneChooser EffectExecutor::runeChooser() const {
     return c;
 }
 
+namespace {
+bool payableNow(const GameState& s, PlayerId player, int energy, int power,
+                resource::DomainMask mask, SpendFor f, int extra_any) {
+    return resource::payableEnergy(s, player, f) >= std::max(0, energy) &&
+           resource::payablePowerIn(s, player, mask, f) >= std::max(0, power) &&
+           resource::payablePowerIn(s, player, resource::kAnyDomain, f) >=
+               std::max(0, power) + std::max(0, extra_any);
+}
+}  // namespace
+
+bool EffectExecutor::canPayWithAdds(PlayerId player, int energy, int power,
+                                    resource::DomainMask mask, SpendFor f, int extra_any) {
+    if (payableNow(state_, player, energy, power, mask, f, extra_any)) return true;
+    if (!add_abilities_ || !add_probe_ || add_abilities_(player).empty()) return false;
+    return add_probe_(player, [&](const GameState& s) {
+        return payableNow(s, player, energy, power, mask, f, extra_any);
+    }, nullptr);
+}
+
+std::optional<EffectExecutor::OwedCost> EffectExecutor::owedCost(PlayerId player) const {
+    if (owed_.has_value() && owed_->player == player &&
+        (owed_->energy > 0 || owed_->power > 0)) return owed_;
+    if (const auto& r = state_.chain.resuming;
+        r.has_value() && r->controller == player && (r->owed_energy > 0 || r->owed_power > 0)) {
+        OwedCost c;
+        c.player = player;
+        c.energy = r->owed_energy;
+        c.power = r->owed_power;
+        c.mask = r->owed_power_mask;
+        return c;
+    }
+    return std::nullopt;
+}
+
+std::optional<ChainItem> EffectExecutor::removeChainItem(ChainItemId id) {
+    return ChainManager::removeItemFrom(state_, id);
+}
+
+bool EffectExecutor::addForPayment(PlayerId player, int energy, int power,
+                                   resource::DomainMask mask, SpendFor f) {
+    // CR 430.3 / 445.2.c: while a cost is being paid, the payer may activate
+    // [Reaction] abilities that [Add]. Asked only when the pool and runes are
+    // short; the payer names the ability (one at a time), and each finalizes
+    // and resolves at once (CR 430.2).
+    if (adding_for_payment_) return payableNow(state_, player, energy, power, mask, f, 0);
+    struct Flag {
+        bool& b;
+        explicit Flag(bool& x) : b(x) { b = true; }
+        ~Flag() { b = false; }
+    } flag(adding_for_payment_);
+    const auto goal = [player, energy, power, mask, f](const GameState& s) {
+        return payableNow(s, player, energy, power, mask, f, 0);
+    };
+    struct Goal {
+        std::function<bool(const GameState&)>& g;
+        Goal(std::function<bool(const GameState&)>& slot, std::function<bool(const GameState&)> v)
+            : g(slot) { g = std::move(v); }
+        ~Goal() { g = nullptr; }
+    } goal_set(payment_goal_, goal);
+    for (int guard = 0; guard < 64; ++guard) {
+        if (payableNow(state_, player, energy, power, mask, f, 0)) return true;
+        if (!add_abilities_ || !activate_now_) return false;
+        std::vector<Intent> adds = add_abilities_(player);
+        if (adds.empty()) return false;
+        // CR 357.3: no payment choice that leaves the cost unpayable while
+        // another would not. Offered: the Adds after which (the rest made the
+        // engine's way) the payment can still be made — when any can.
+        if (adds.size() > 1 && add_probe_ && !events_.quiet()) {
+            std::vector<Intent> viable;
+            for (const auto& a : adds) {
+                const std::function<void()> first = [this, a]() { activate_now_(a); };
+                if (add_probe_(player, goal, &first)) viable.push_back(a);
+            }
+            if (!viable.empty()) adds = std::move(viable);
+        }
+        Intent pick = adds.front();
+        if (adds.size() > 1 && agent_query_ && !events_.quiet()) {
+            for (auto& a : adds) {
+                const GameObjectId src = a.ability_source;
+                a.choice_label = "[Add] for this payment: " +
+                    (state_.objectExists(src) ? state_.getObject(src).name.get()
+                                              : std::string("?"));
+            }
+            pick = ask(player, adds, "activate an [Add] ability to pay");
+        }
+        activate_now_(pick);
+    }
+    return payableNow(state_, player, energy, power, mask, f, 0);
+}
+
 bool EffectExecutor::payResources(PlayerId player, int energy, int power,
                                   resource::DomainMask mask, SpendFor f) {
+    addForPayment(player, energy, power, mask, f);
     const auto chooser = runeChooser();
     return resource::payIn(state_, events_, player, energy, power, mask, f, &chooser);
 }
@@ -786,6 +878,21 @@ bool EffectExecutor::payAnyPower(PlayerId player, int amount, SpendFor f) {
                 state_, events_, player, amount, resource::maskOf(card_db_.get(def).domains),
                 SpendFor::Spell, &chooser, ahead_of_cost_check_ ? &ahead_of_cost_check_ : nullptr);
         }
+    }
+    // A cost the resolving item still owes after its choices (Card::
+    // owesAfterChoices; testing phase F5): this Power — a Deflect — is paid
+    // from what that cost cannot use first, and a ready rune gives its Energy
+    // before it is recycled, so the cost stays payable.
+    if (const auto owing = owedCost(player)) {
+        const int e = owing->energy, p = owing->power;
+        const resource::DomainMask m = owing->mask;
+        addForPayment(player, e, p + amount, resource::kAnyDomain, f);
+        const auto chooser = runeChooser();
+        const std::function<bool()> still = [this, player, e, p, m, f]() {
+            return payableNow(state_, player, e, p, m, f, 0);
+        };
+        return resource::payAnyPowerAheadOfCost(state_, events_, player, amount, m, f,
+                                                &chooser, &still);
     }
     // The one payment rule (engine/resource_payment.h): floating Power, then
     // runes recycled from the base, the payer naming them.
@@ -2886,6 +2993,10 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return false;
+    // A new play: what an earlier play of this card paid is forgotten here,
+    // as it begins (Card::forgetPlayPayments) — not after this play's own
+    // additional cost has set its flags (testing phase K1).
+    Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     // "As you play me" choices come before the cost (CR 355.1 -> 356); only
     // for a play that is going to be paid for.
     if (!can_afford_ || can_afford_(player, card)) makeAsYouPlayChoices(player, card);
@@ -2914,6 +3025,9 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return playIgnoringCostDecided(player, card, location, -1);   // not played
+    // A new play, and nothing is paid for it: what an earlier play of this
+    // card paid is forgotten (Card::forgetPlayPayments).
+    Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     makeAsYouPlayChoices(player, card);   // CR 355.1
     return playIgnoringCostDecided(player, card, location, -1);
 }
@@ -2938,9 +3052,9 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     bool accelerated = accelerate == 2;
     if (accelerate < 0 && obj.isUnit() && offer_accelerate_)
         accelerated = offer_accelerate_(player, card, obj.zone == ZoneType::Hand);
-    // A new play, and nothing is paid for it: what an earlier play of this
-    // card paid is forgotten (Card::forgetPlayPayments).
-    Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
+    // (What an earlier play of this card paid was forgotten as this play
+    // began: playIgnoringCost / playPayingCost. Not here — this play's own
+    // additional cost and [Accelerate] are already recorded; testing phase K1.)
 
     // A played card leaves the zone it is played from. Done here so no caller
     // can leave it listed in a hand, trash, banishment or deck while it is

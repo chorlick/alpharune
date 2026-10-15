@@ -1635,6 +1635,7 @@ TEST_F(RulesCards2Test, RulesCards2_CR426_Repulse_CountersAnAbility) {
     auto enemy_source = addUnit(P2, kInvalidId, 3, /*at_bf=*/0);
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;   // what a counter may choose (CR 355.9.a.2)
     ability.source = enemy_source;
     ability.controller = P2;
     ability.is_ability = true;
@@ -1659,6 +1660,7 @@ TEST_F(RulesCards2Test, RulesCards2_CR426_Repulse_UncounterableAbilityStays) {
     state.player(P2).spells_cant_be_countered = true;       // "Your spells and abilities ..."
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;   // what a counter may choose (CR 355.9.a.2)
     ability.source = enemy_source;
     ability.controller = P2;
     ability.is_ability = true;
@@ -1679,6 +1681,7 @@ TEST_F(RulesCards2Test, RulesCards2_CR426_NotSoFast_CountersAnAbilityChoosingFri
     auto enemy_source = addUnit(P2, kInvalidId, 3, /*at_bf=*/0);
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;   // what a counter may choose (CR 355.9.a.2)
     ability.source = enemy_source;
     ability.controller = P2;
     ability.is_ability = true;

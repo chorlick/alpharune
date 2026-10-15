@@ -90,7 +90,7 @@ public:
         // "Its controller may play this spell again for [A]."
         if (!ri.has_value()) return;
         slot(kPhaseSlot) = 2;
-        if (ctx.executor.payableAnyPower(unit_controller) < 1) return;
+        if (!ctx.executor.canPayAnyPower(unit_controller, 1)) return;
         if (enumerateLegalTargets(ctx.state, unit_controller).empty()) return;
         slot(kPhaseSlot) = 1;
         slot(kPlayerSlot) = static_cast<int32_t>(unit_controller);

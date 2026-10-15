@@ -25,12 +25,18 @@ public:
                 .cost = {.exhaust = true},
                 .targets = {},
                 .is_action = false, .is_reaction = true,
+                .needs_activation_time_target = false,
+                .is_empower = false,
+                .adds_resources = true,   // resolves as it is activated (CR 430.2; D2)
             },
             // Ability 1: [Level 6] [Reaction] [E]: [Add] [1][A].
             {
                 .cost = {.exhaust = true},
                 .targets = {},
                 .is_action = false, .is_reaction = true,
+                .needs_activation_time_target = false,
+                .is_empower = false,
+                .adds_resources = true,   // resolves as it is activated (CR 430.2; D2)
             },
         };
     }

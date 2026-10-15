@@ -333,8 +333,11 @@ TEST_F(Batch1TriggerConditions, EdgeOfNight_PlayedFromFaceDownAttachesToAUnitHer
         static_cast<int>(state.battlefields[0].id.raw()) + 1;   // "here"
     EXPECT_TRUE(fire(edge, TriggerType::WhenYouPlayThis));
     EXPECT_TRUE(o(edge).attached_to == std::optional<GameObjectId>{unit});
-    EXPECT_EQ(o(edge).card_counters["__played_from_facedown"], 0)
-        << "the mark covers that play only";
+    // The mark covers that play only: the next play of the card drops it
+    // (Card::forgetPlayPayments; testing phase B2 — the card used to clear it
+    // itself as it resolved).
+    Card::forgetPlayPayments(state, card_registry.get(kEdgeOfNight), P1, edge);
+    EXPECT_FALSE(triggersNow(kEdgeOfNight, P1, edge, TriggerType::WhenYouPlayThis));
 }
 
 TEST_F(Batch1TriggerConditions, EdgeOfNight_AMarkFromAnEarlierTurnIsNotThisPlay) {

@@ -19,6 +19,12 @@ public:
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIRevealedFromTop};
     }
+    // "As I'm revealed ..., [Add] [2]" resolves as it triggers, inside the
+    // effect that revealed it (CR 430.2; testing phase D64): the Energy can
+    // pay for a card that effect lets its controller play.
+    bool triggeredAbilityAdds(TriggerType t) const override {
+        return t == TriggerType::WhenIRevealedFromTop;
+    }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenIRevealedFromTop) {
             ctx.executor.addFloatingEnergy(ctx.controller, 2);

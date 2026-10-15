@@ -18,6 +18,9 @@ public:
     // "[Reaction][>] [A][A], [E]: [Add] [2]. Spend this Energy only to play units
     // or activated abilities of units."
     bool hasActivatedAbility() const override { return true; }
+    // [Add]: it resolves as it is activated — no chain item, no priority,
+    // Focus stays (CR 430.2, 401.2; testing phase D2).
+    bool abilityAddsResources() const override { return true; }
     ActivationCost getActivationCost() const override {
         ActivationCost c;
         c.exhaust = true;

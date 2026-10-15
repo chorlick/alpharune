@@ -19,68 +19,57 @@ public:
     // "Choose a spell with Energy cost no more than [4]. You may pay [A]. If
     //  you do, gain control of it and you may make new choices for it.
     //  Otherwise, counter it."
-    // Peek-and-pop: Rebuttal has already been popped by FEPR, so the spell it
-    // answers is the top of the chain. It never scans or flags the chain.
-    // Playable only against what it can act on: the item on top of the chain
-    // (the one Rebuttal would be played above) must be a spell, as onResolve
-    // requires — not an ability sitting above a spell.
-    // "Energy cost no more than [4]" is the spell's printed cost, read from
-    // the card table the engine hands the gate (as Defy does); checked again
-    // as Rebuttal resolves.
+    // The spell is a target (CR 355.9.a.2), chosen as Rebuttal is played (CR
+    // 355.5) among the finalized spells on the chain whose printed Energy cost
+    // is [4] or less. The [A] is decided as it resolves.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
+    static bool qualifies(const ChainItem& ci, const CardDB& db) {
+        return ci.is_spell &&
+               (ci.card_def_id == kInvalidId || db.get(ci.card_def_id).energy_cost <= 4);
+    }
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/,
                          const CardDB& db) const override {
-        if (state.chain.items.empty()) return false;
-        const auto& top = state.chain.items.back();
-        if (!top.is_spell) return false;
-        return top.card_def_id == kInvalidId || db.get(top.card_def_id).energy_cost <= 4;
+        return anyChainItem(state, [&](const ChainItem& ci) { return qualifies(ci, db); });
     }
-    // Without the card table only the half the state shows can be answered:
-    // the item on top must be a spell.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        return !state.chain.items.empty() && state.chain.items.back().is_spell;
+        return anyChainItem(state, [](const ChainItem& ci) { return ci.is_spell; });
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        // The chosen spell must still be on top and cost no more than [4]
-        // (printed Energy cost, as Defy reads it).
-        auto top_ok = [&]() {
-            if (ctx.state.chain.items.empty()) return false;
-            const auto& top = ctx.state.chain.items.back();
-            if (!top.is_spell) return false;
-            const int cost = top.card_def_id != kInvalidId
-                ? ctx.executor.cardDB().get(top.card_def_id).energy_cost : 0;
-            return cost <= 4;
-        };
-        if (!top_ok()) {
-            RIFT_TRACE(ctx.events, "REBUTTAL: no spell costing [4] or less on top of the chain");
-            return;
-        }
+        const CardDB& db = ctx.executor.cardDB();
+        const auto spell = pickChainItem(
+            ctx, "Rebuttal: choose a spell with Energy cost no more than [4]",
+            chainItemChoices(ctx, [&](const ChainItem& ci) { return qualifies(ci, db); }));
+        if (!spell.has_value()) return;
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (*spell == kInvalidId) return;     // a mistarget: nothing is done
+        auto still_there = [&]() { return chainItem(ctx.state, *spell) != nullptr; };
         const int pay = confirmOptional(ctx, "Rebuttal: pay [A] to gain control of the spell",
-            [&]() { return top_ok() && ctx.executor.payableAnyPower(ctx.controller) >= 1; });
+            [&]() { return still_there() && ctx.executor.canPayAnyPower(ctx.controller, 1); });
         if (pay == -1) return;   // waiting on the agent
-        if (!top_ok()) return;
-        auto& top = ctx.state.chain.items.back();
-        // [A]: floating power, else a recycled rune (CR 164.2.b).
+        if (!still_there()) return;
         if (pay == 1 && ctx.executor.payAnyPower(ctx.controller, 1)) {
-            // Gain control: the spell now resolves for Rebuttal's controller.
-            top.controller = ctx.controller;
             std::string name = "spell";
-            if (ctx.state.objectExists(top.source)) {
-                auto& obj = ctx.state.getObject(top.source);
-                obj.controller = ctx.controller;
-                name = obj.name;
+            for (auto& ci : ctx.state.chain.items) {
+                if (ci.id != *spell) continue;
+                ci.controller = ctx.controller;
+                if (ctx.state.objectExists(ci.source)) {
+                    auto& obj = ctx.state.getObject(ci.source);
+                    obj.controller = ctx.controller;
+                    name = obj.name;
+                }
+                break;
             }
             RIFT_TRACE(ctx.events, "REBUTTAL: paid [A] - gained control of " + name);
-            // "You may make new choices for it" (CR 750-755): its new
-            // controller re-chooses its targets. `top` may dangle afterwards.
-            ctx.executor.makeNewChoices(top.id);
+            // "You may make new choices for it" (CR 750-755).
+            ctx.executor.makeNewChoices(*spell);
             return;
         }
         // "Otherwise, counter it."
-        if (ctx.state.player(top.controller).spells_cant_be_countered) {
-            RIFT_TRACE(ctx.events, "REBUTTAL: that spell can't be countered");
-            return;
-        }
-        counterChainTop(ctx);
+        counterChosenItem(ctx, *spell);
     }
 private:
     const CardDef def_ = [] {

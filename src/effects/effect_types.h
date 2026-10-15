@@ -317,6 +317,9 @@ struct ActivationCost {
     // ability is activated, so it is gone before anyone can respond. A source
     // that is not on the board cannot pay it.
     bool banish_self = false;
+    // "Kill this" as a cost (Gold, Divining Shells): the source is killed as
+    // the ability is activated (CR 405.1), before anyone can respond.
+    bool kill_self = false;
 };
 
 // ─── Complete effect script ─────────────────────────────────────────────────
@@ -378,6 +381,11 @@ struct ActivatedAbility {
     // Play only if not Empowered." The generator gates it on the source's
     // Empowered state and resolution empowers the source.
     bool is_empower = false;
+    // The ability [Add]s resources (CR 430.2, 401.2): it is finalized and
+    // resolves at once as it is activated — no chain item, no priority, and
+    // Priority / Focus do not pass (430.2.a). With [Reaction] it may also be
+    // activated while a cost is being paid (430.3, 445.2.c).
+    bool adds_resources = false;
 };
 
 } // namespace riftbound

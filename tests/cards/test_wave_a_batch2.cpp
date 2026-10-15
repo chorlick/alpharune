@@ -190,9 +190,14 @@ TEST_F(Gold564Test, KillSelfAddsOneUniversalPower) {
     }
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
 
-    EffectExecutor exec(state, events, card_db, &card_registry);
-    CardContext ctx{state, events, exec, P1, gold};
-    card_registry.get(kGold564)->onActivate(ctx, {});
+    // Activated through the engine: "Kill this, [E]" is the cost, paid as it
+    // is activated (testing phase G27 / D38: the card used to kill itself as
+    // the ability resolved), and the [Add] resolves at once (CR 430.2).
+    Intent act;
+    act.type = IntentType::ActivateReactionAbility;
+    act.player = P1;
+    act.ability_source = gold;
+    withEngine([&](GameEngine& e) { e.testHook_executeIntent(act); });
 
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1)
         << "[Add] [A] floats 1 universal power";

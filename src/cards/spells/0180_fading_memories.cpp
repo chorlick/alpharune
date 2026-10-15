@@ -37,6 +37,10 @@ public:
         const GameState& state, PlayerId controller) const override {
         return legalTargets(state, controller);
     }
+    // CR 355.8: playable only with something to give [Temporary] (D8).
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !legalTargets(state, controller).empty();
+    }
 
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         GameObjectId picked = kInvalidId;

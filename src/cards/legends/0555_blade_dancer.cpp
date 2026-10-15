@@ -33,7 +33,7 @@ public:
                 if (!ctx.state.objectExists(ctx.source)) return false;
                 if (!ctx.state.getObject(ctx.source).is_exhausted) return false;
                 // CR 445.2 / 164.2.a: floating Energy or a ready rune can pay.
-                return payableEnergy(ctx.state, ctx.controller) >= 1;
+                return canPayEnergy(ctx, ctx.controller, 1);
             };
             int conf = confirmOptional(ctx, "Blade Dancer: pay [1] to ready me?",
                                        still_legal);
@@ -65,7 +65,7 @@ public:
                 // whatever the unit's state is (CR 383.3.b, 445.2).
                 // [A] = power of any Domain: floating power, or a rune recycled
                 // for it (CR 164.2.b) — not only what already floats.
-                return ctx.executor.payableAnyPower(ctx.controller) >= 1;
+                return ctx.executor.canPayAnyPower(ctx.controller, 1);
             };
             int conf = confirmOptional(ctx,
                 "Blade Dancer: exhaust me + pay [A] to ready the chosen unit?", still_legal);

@@ -48,19 +48,18 @@ public:
         const GameState& state, PlayerId controller) const override {
         return teemoUnits(state, controller);
     }
-
-    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId picked;
-        if (!targets.empty()) {
-            picked = targets[0];
-        } else {
-            auto legal = teemoUnits(ctx.state, ctx.controller);
-            picked = pickTarget(ctx, "Swift Scout (Teemo unit to hand)", legal);
-            if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-                ctx.state.chain.resuming->resume_point == 7) {
-                return;  // suspended for agent decision
-            }
-        }
+    // CR 403.3: no Teemo unit to put in hand, no activation (testing phase D67).
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !teemoUnits(state, controller).empty();
+    }
+    // The unit (a target: the board and the Champion Zone are public, CR
+    // 355.10.a.1) is chosen as the ability is activated, before its cost is
+    // paid and before anyone responds (CR 403.2; D67).
+    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId picked = pickTarget(ctx, "Swift Scout (Teemo unit to hand)",
+                                               teemoUnits(ctx.state, ctx.controller));
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto& ps = ctx.state.player(ctx.controller);
         if (picked == ps.champion_zone) {

@@ -34,14 +34,7 @@ public:
     // card (and the turn) before the play is announced.
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
-        if (!state.objectExists(source)) return false;
-        const auto& c = state.getObject(source).card_counters;
-        const auto played = c.find("__played_from_facedown");
-        if (played == c.end() || played->second != 1) return false;
-        // The mark is turn-stamped by the engine: one left over from a play
-        // on an earlier turn is not this play.
-        const auto turn = c.find("__facedown_play_turn");
-        return turn == c.end() || turn->second == state.turn.turn_number;
+        return playedFromFacedown(state, source);
     }
     void onTrigger(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
@@ -65,10 +58,6 @@ public:
         std::sort(here.begin(), here.end());
         const GameObjectId unit = pickTarget(ctx, "Edge of Night: attach to which unit here?", here);
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
-        // The mark covers this play only: a later play from hand must not
-        // find it.
-        if (ctx.state.objectExists(ctx.source))
-            ctx.state.getObject(ctx.source).card_counters["__played_from_facedown"] = 0;
         if (unit == kInvalidId) return;       // none / mistarget / waiting
         // Both ends must still be on the board (EffectExecutor::attachGear
         // checks it too; this is the early out before the attached_to read).

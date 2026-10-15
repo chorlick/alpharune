@@ -18,91 +18,48 @@ public:
     // [vendetta-E]
     // "Deal 2 to up to one enemy unit at a battlefield, then move a friendly
     //  unit."
-    // Resumable: (1) optional enemy target ("No damage" declines), (2) the
-    // friendly unit to move, (3) its destination. The picks are built by hand,
-    // so each goes through offerableChoices / commitChosenObject.
+    // All three choices are made as it is played (CR 355.4, 355.5, 355.13;
+    // testing phase D16): up to one enemy unit ("None" is a choice), the
+    // friendly unit to move and where. It needs a friendly unit it can move
+    // (CR 355.8; D17); the enemy may be none.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return !moveDests(state, u).empty();
+        });
+    }
+    static std::vector<GameObjectId> movable(const GameState& state, PlayerId controller) {
+        return chooseableUnits(state, controller, [&](const GameObject& o) {
+            return o.controller == controller && !moveDests(state, o).empty();
+        });
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !movable(state, controller).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        auto enemies = [&]() {
-            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.controller != ctx.controller && o.isAtBattlefield();
-            });
-            std::sort(out.begin(), out.end());
-            // Deflect (CR 809): only units whose cost the controller can pay.
-            return offerableChoices(ctx, out);
-        };
-        auto movable = [&]() {
-            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                return o.controller == ctx.controller && !moveDests(ctx.state, o).empty();
-            });
-            std::sort(out.begin(), out.end());
-            return out;
-        };
-        auto promptMove = [&]() {
-            auto mine = movable();
-            if (mine.empty()) { ri.resume_point = 4; return; }
-            std::vector<Intent> opts;
-            for (auto u : mine) opts.push_back(objChoice(ctx.controller, u));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Shuriken Flip: move a friendly unit");
-            ri.resume_point = 2;
-        };
-        switch (ri.resume_point) {
-        case 0: {
-            auto foes = enemies();
-            if (foes.empty()) { promptMove(); return; }
-            std::vector<Intent> opts;
-            for (auto u : foes) opts.push_back(objChoice(ctx.controller, u));
-            // "up to one" includes none (CR 355.13); the move happens either way.
-            opts.push_back(valChoice(ctx.controller, 0, "No damage"));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Shuriken Flip: deal 2 to up to one enemy unit");
-            ri.resume_point = 1;
-            return;
+        const auto enemies = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+            return o.controller != ctx.controller && o.isAtBattlefield();
+        });
+        const auto enemy = selectTargetOrNone(*this, ctx,
+            "Shuriken Flip: deal 2 to up to one enemy unit", enemies);
+        if (!enemy.has_value()) return;          // waiting for the agent
+        const GameObjectId mover = pickTarget(ctx, "Shuriken Flip: move a friendly unit",
+                                              movable(ctx.state, ctx.controller));
+        if (mover == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;                              // waiting for the agent
+        int dest = -2;
+        if (mover != kInvalidId && ctx.state.getObject(mover).location.has_value()) {
+            dest = pickMoveDest(*this, ctx, "Shuriken Flip: move it where?",
+                                ctx.state.getObject(mover));
+            if (dest == -1) return;
         }
-        case 1: {
-            GameObjectId t = takenObject(ctx);
-            auto foes = enemies();
-            if (std::find(foes.begin(), foes.end(), t) != foes.end()) {
-                // The unit is chosen: Deflect is paid and the choice recorded,
-                // as Card::pickTarget would.
-                commitChosenObject(ctx, t);
-                ctx.executor.dealDamage(t, 2, ctx.source);
-            }
-            promptMove();
-            return;
-        }
-        case 2: {
-            GameObjectId u = takenObject(ctx);
-            auto mine = movable();
-            if (mine.empty()) { ri.resume_point = 4; return; }
-            if (std::find(mine.begin(), mine.end(), u) == mine.end()) u = mine.front();
-            commitChosenObject(ctx, u);   // "when you choose a friendly unit"
-            ri.resume_data = {static_cast<int32_t>(u.raw())};
-            std::vector<Intent> opts;
-            for (int d : moveDests(ctx.state, ctx.state.getObject(u)))
-                opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Shuriken Flip: move it where?");
-            ri.resume_point = 3;
-            return;
-        }
-        case 3: {
-            ri.resume_point = 4;
-            if (ri.resume_data.empty()) return;
-            auto u = GameObjectId::fromRaw(ri.resume_data[0]);
-            if (!ctx.state.objectExists(u)) return;
-            auto dests = moveDests(ctx.state, ctx.state.getObject(u));
-            if (dests.empty()) return;
-            int d = takenValue(ctx, dests.front());
-            if (std::find(dests.begin(), dests.end(), d) == dests.end()) d = dests.front();
-            moveTo(ctx, u, d);
-            return;
-        }
-        default:
-            return;
-        }
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        if (*enemy != kInvalidId && ctx.state.getObject(*enemy).location.has_value())
+            ctx.executor.dealDamage(*enemy, 2, ctx.source);
+        if (mover != kInvalidId && dest >= 0 && ctx.state.getObject(mover).location.has_value())
+            moveTo(ctx, mover, dest);
     }
     // "[Flow] [3][A]"
     FlowCost flowCost() const override { return flow(3, 1, Domain::Fury, /*any_domain=*/true); }

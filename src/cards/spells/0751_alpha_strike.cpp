@@ -30,6 +30,14 @@ public:
                                            GameObjectId object) const override {
         return friendlyUnitChoice(state, controller, object);
     }
+    // Both are required (CR 355.8; testing phase D8): a friendly unit, and an
+    // enemy unit at a battlefield to split the damage among.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !Card::enumerateLegalTargets(state, controller).empty() &&
+               !chooseableUnits(state, controller, [&](const GameObject& o) {
+                    return o.controller != controller && o.isAtBattlefield();
+                }).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         // "Choose a friendly unit." From hand it is locked in by the play
         // intent; for a play by an effect (Blind Fury, Promising Future) or

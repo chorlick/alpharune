@@ -16,55 +16,36 @@ class EvelynnEntrancing : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    // "from face down on your turn" is part of the trigger condition: a play
-    // from hand, or a play from face down on an opponent's turn, puts nothing
-    // on the chain. GameEngine::executePlayFromHidden marks the card (and the
-    // turn, so a mark left by a play on an earlier turn is not this play)
-    // before the play is announced.
+    // "When you play me from face down on your turn, you may move an enemy
+    // unit at a different location to my battlefield." The "may" and the unit
+    // are chosen as the ability is finalized (CR 403.1-403.2; testing phase
+    // D54). "from face down on your turn" is the trigger condition
+    // (playedFromFacedown: this play's stamp, testing phase B2).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
-        if (state.turn.turn_player != controller || !state.objectExists(source)) return false;
-        const auto& c = state.getObject(source).card_counters;
-        const auto played = c.find("__played_from_facedown");
-        if (played == c.end() || played->second != 1) return false;
-        const auto turn = c.find("__facedown_play_turn");
-        return turn == c.end() || turn->second == state.turn.turn_number;
+        return state.turn.turn_player == controller && playedFromFacedown(state, source);
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        // "When you play me FROM FACE DOWN ON YOUR TURN": WhenYouPlayMe fires
-        // for every play, so gate on the marker GameEngine::executePlayFromHidden
-        // stamps. Latch and consume it on the first entry (as Tornado Warrior
-        // does) so a later play from hand does not see a stale marker.
-        const auto& ri = ctx.state.chain.resuming;
-        if (!ri.has_value() || ri->resume_point == 0) {
-            auto& from_facedown = self.card_counters["__played_from_facedown"];
-            self.card_counters["__evelynn_from_facedown"] =
-                (from_facedown == 1 && ctx.state.turn.turn_player == ctx.controller) ? 1 : 0;
-            from_facedown = 0;
-        }
-        if (self.card_counters["__evelynn_from_facedown"] != 1) return;
-        if (!self.isAtBattlefield()) return;      // need a destination battlefield
-        auto my_bf = self.battlefieldId();
-        if (!my_bf) return;
-
         // Enemy units at a different location; chooseableUnits drops the ones
-        // that can't be chosen by enemy spells and abilities.
-        auto legal = chooseableUnits(ctx.state, ctx.controller,
-            [&](const GameObject& obj) {
+        // that can't be chosen by enemy spells and abilities. "My battlefield":
+        // none once I have left it, and then nothing can be chosen.
+        std::optional<BattlefieldId> my_bf;
+        if (ctx.state.objectExists(ctx.source))
+            my_bf = ctx.state.getObject(ctx.source).battlefieldId();
+        std::vector<GameObjectId> legal;
+        if (my_bf.has_value())
+            legal = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& obj) {
                 if (obj.controller == ctx.controller) return false;
                 auto obf = obj.battlefieldId();
                 return !(obf && *obf == *my_bf);
             });
-        auto still_legal = [&legal]() { return !legal.empty(); };
-        if (!still_legal()) return;
-
-        int conf = confirmOptional(ctx, "Evelynn: move an enemy unit to my battlefield?",
-                                    still_legal);
-        if (conf < 1) return;
-        GameObjectId picked = pickTarget(ctx, "Evelynn: pick enemy unit", legal);
-        if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
+        const int conf = confirmOptional(ctx, "Evelynn: move an enemy unit to my battlefield?",
+                                         [&legal]() { return !legal.empty(); });
+        if (conf < 1) return;   // waiting, declined or nothing to move
+        const GameObjectId picked = pickTarget(ctx, "Evelynn: pick enemy unit", legal);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
+        if (picked == kInvalidId || !ctx.state.objectExists(picked) || !my_bf.has_value()) return;
         ctx.executor.moveToBattlefield(picked, *my_bf);
         RIFT_TRACE(ctx.events, "EVELYNN: pulled " + ctx.state.getObject(picked).name +
                             " to my battlefield BF" + toString(*my_bf));

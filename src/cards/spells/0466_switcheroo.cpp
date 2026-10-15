@@ -34,6 +34,15 @@ public:
                                    .must_be_at_battlefield = true};
     }
     bool needsPlayTimeTargetPair() const override { return true; }
+    // CR 355.8: two units it can choose at one battlefield (D8).
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        for (const auto& bf : state.battlefields)
+            if (chooseableUnits(state, controller, [&](const GameObject& o) {
+                    return o.battlefieldId() == std::optional<BattlefieldId>{bf.id};
+                }).size() >= 2)
+                return true;
+        return false;
+    }
     // From facedown both units are chosen at the battlefield it was hidden at
     // (CR 811.1.d.2): playable only with two units there it can choose.
     bool hasLegalChoicesHiddenAt(const GameState& state, PlayerId controller, const CardDB&,

@@ -668,6 +668,9 @@ protected:
 
         ChainItem item;
         item.id = state.chain.allocateId();
+        // A spell on the chain that a player could respond to is finalized
+        // (CR 359.3.a): what a counter may choose (CR 355.9.a.2).
+        item.status = ChainItemStatus::Finalized;
         item.source = src;
         item.controller = controller;
         item.is_spell = true;

@@ -21,7 +21,9 @@ public:
 
     std::vector<ActivatedAbility> activatedAbilities() const override {
         return {{
-            .cost = {.exhaust = true},
+            // "Kill this, [E]": both are the cost, paid as it is activated —
+            // the gear is gone before anyone can respond (testing phase D38).
+            .cost = {.exhaust = true, .kill_self = true},
             .targets = TargetRequirements{.count = 1, .must_be_unit = true},
             .is_action = true, .is_reaction = false,
             .needs_activation_time_target = true,
@@ -46,8 +48,6 @@ public:
         else picked = pickTarget(ctx, "Divining Shells: give a unit +2 [M]",
                                  enumerateLegalTargets(ctx.state, ctx.controller, 0));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
-        // Additional cost: "Kill this."
-        if (ctx.state.objectExists(ctx.source)) ctx.executor.killObject(ctx.source);
         ctx.executor.giveTemporaryMight(picked, 2);
         RIFT_TRACE(ctx.events, "DIVINING SHELLS: killed self -> +2 [M] this turn");
     }

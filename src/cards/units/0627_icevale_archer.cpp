@@ -37,13 +37,16 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         // CR 445.2 / 164.2.a: the [1] may come from floating Energy or from
         // exhausting a ready rune (payableEnergy / payEnergy).
+        // The [1] is owed after the unit is chosen: a unit is on offer only if
+        // its Deflect and the [1] can be paid together (testing phase F5).
         auto still_legal = [&]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 1 && !unitsHere(ctx).empty();
+            return !choosablePaying(ctx, unitsHere(ctx), 1).empty();
         };
         int conf = confirmOptional(ctx, "Icevale Archer: pay [1] to give a unit here -1 [M]?",
                                    still_legal);
         if (conf == -1) return;  // waiting for agent
         if (conf < 1) return;    // declined / can't
+        owesAfterChoices(ctx, 1);
         GameObjectId tgt = pickTarget(ctx, "Icevale Archer: choose a unit here",
                                       unitsHere(ctx));
         // pickTarget returns kInvalidId while it waits on the agent and this

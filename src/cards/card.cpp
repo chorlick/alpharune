@@ -58,6 +58,13 @@ bool Card::costDueNow(CardContext& ctx) {
     if (!r.has_value()) return true;
     if (r->finalizing) {
         if (r->finalize_costs_paid) return false;   // paid earlier in this pass
+        // A spell choosing before its cost is paid (CR 355 -> 357): the
+        // cost is paid in the cost step, with the Energy and Power (CR
+        // 357.2), by a run of this callback after them.
+        if (r->pre_play_choices) {
+            r->cost_deferred = true;
+            return false;
+        }
         if (!(r->finalize_checked & 32)) {
             // First "due" of this run: remember the state, so the engine can
             // tell whether the card went on to pay before asking a question.
@@ -227,6 +234,7 @@ enum : uint32_t {
     kTgtAwait = 1u << 4,   kTgtDone = 1u << 5,
     kPairAwaitA = 1u << 6, kPairAwaitB = 1u << 7, kPairDone = 1u << 8,
     kCostUnpaid = 1u << 9,   // Card::markCostUnpaid
+    kItemAwait = 1u << 10,  kItemDone = 1u << 11,   // Card::pickChainItem
 };
 uint32_t choiceState(const ChainItem& ri) {
     return ri.resume_data.size() > Card::kChoiceStateSlot
@@ -605,13 +613,26 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
     const int payable = ctx.executor.payableAnyPower(
         ctx.controller, by_spell ? SpendFor::Spell : SpendFor::Other);
     const bool ignores = card.ignoresDeflect();
+    // A cost the item still owes after its choices (Card::owesAfterChoices):
+    // a choice is offered only if its Deflect and that cost can be paid
+    // together (testing phase F5).
+    const auto owing = ctx.executor.owedCost(ctx.controller);
     std::vector<GameObjectId> out;
     out.reserve(in.size());
     for (auto t : in) {
         // A spell choosing before it is paid for: only what leaves it payable.
         if (!ctx.executor.choiceAllowed(t)) continue;
-        if (ignores || ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
-            out.push_back(t);
+        int deflect = ignores ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        if (!ignores)
+            for (auto h : ctx.executor.hypotheticallyUnpaid())
+                deflect += ctx.executor.deflectCostFor(ctx.controller, h);
+        if (owing) {
+            if (ctx.executor.canPayWithAdds(ctx.controller, owing->energy, owing->power,
+                                            owing->mask, owing->spend_for, deflect))
+                out.push_back(t);
+            continue;
+        }
+        if (deflect <= payable) out.push_back(t);
     }
     return out;
 }
@@ -622,8 +643,10 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
     if (t == kInvalidId || !ctx.state.objectExists(t)) return;
     // Chosen, then its Deflect paid: a spell paying ahead of its cost judges
     // what is left with this choice counted (EffectExecutor::payAnyPower).
-    if (ctx.state.chain.resuming.has_value())
+    if (ctx.state.chain.resuming.has_value()) {
         ctx.state.chain.resuming->chosen_objects.push_back(t);
+        ctx.state.stampChosen(*ctx.state.chain.resuming, t);   // CR 359.3.e.4
+    }
     if (!card.ignoresDeflect()) {
         const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
         if (cost > 0) {
@@ -653,6 +676,107 @@ void commitChoice(CardContext& ctx, const Card& card, GameObjectId t) {
         ctx.events.emit(ObjectStateChangedEvent{t, "chosen_by_controller"});
 }
 }  // namespace
+
+void Card::owesAfterChoices(CardContext& ctx, int energy, int power, uint32_t power_mask) {
+    auto& r = ctx.state.chain.resuming;
+    if (!r.has_value()) return;
+    r->owed_energy = std::max(0, energy);
+    r->owed_power = std::max(0, power);
+    r->owed_power_mask = power_mask == ~0u ? resource::kAnyDomain : power_mask;
+}
+
+std::vector<GameObjectId> Card::choosablePaying(const CardContext& ctx,
+                                                const std::vector<GameObjectId>& candidates,
+                                                int energy, int power,
+                                                uint32_t power_mask) const {
+    const resource::DomainMask mask = power_mask == ~0u ? resource::kAnyDomain : power_mask;
+    std::vector<GameObjectId> out;
+    for (auto t : candidates) {
+        const int deflect = ignoresDeflect() ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        if (ctx.executor.canPayWithAdds(ctx.controller, energy, power, mask, SpendFor::Other,
+                                        deflect))
+            out.push_back(t);
+    }
+    return out;
+}
+
+std::optional<ChainItemId> Card::pickChainItem(CardContext& ctx, const std::string& label,
+                                               const std::vector<ChainItemId>& candidates) {
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value())
+        return candidates.empty() ? kInvalidId : candidates.front();
+    auto& ri = *ri_opt;
+    const uint32_t st = choiceState(ri);
+    auto onChain = [&](ChainItemId id) {
+        for (const auto& ci : ctx.state.chain.items) if (ci.id == id) return true;
+        return false;
+    };
+    if (st & kItemDone) {
+        // Chosen as the item was finalized: checked once as it resolves. One
+        // that left the chain, or no longer meets the requirement, is a
+        // mistarget (CR 359.3.e.5) — nothing else is taken instead.
+        if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 2) &&
+            ri.chosen_item != kInvalidId) {
+            ri.finalize_checked |= 2;
+            if (!onChain(ri.chosen_item) ||
+                std::find(candidates.begin(), candidates.end(), ri.chosen_item) ==
+                    candidates.end()) {
+                RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label +
+                                    " — the chosen spell or ability is no longer a legal choice");
+                ri.chosen_item = kInvalidId;
+            }
+        }
+        return ri.chosen_item;
+    }
+    auto sourceOf = [&](ChainItemId id) {
+        for (const auto& ci : ctx.state.chain.items) if (ci.id == id) return ci.source;
+        return GameObjectId{kInvalidId};
+    };
+    auto nameOf = [&](ChainItemId id) {
+        const GameObjectId src = sourceOf(id);
+        return ctx.state.objectExists(src) ? ctx.state.getObject(src).name.get()
+                                           : std::string("?");
+    };
+    if (!(st & kItemAwait)) {
+        if (candidates.empty()) {
+            RIFT_TRACE(ctx.events, "TGT_NOT_OFFERED: " + label + " (no spell or ability to choose)");
+            ri.chosen_item = kInvalidId;
+            setChoiceState(ri, 0, kItemDone);
+            nothingToDecide(ri);
+            requiredChoiceMissing(ri);
+            return kInvalidId;
+        }
+        std::vector<Intent> options;
+        std::string names;
+        for (auto id : candidates) {
+            Intent i;
+            i.type = IntentType::MakeChoice;
+            i.player = ctx.controller;
+            const GameObjectId src = sourceOf(id);
+            if (src != kInvalidId) i.chosen_objects = {src};
+            i.chosen_value = static_cast<int>(id.raw());
+            options.push_back(std::move(i));
+            if (ctx.events.logging()) names += (names.empty() ? "" : "/") + nameOf(id);
+        }
+        RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + names + "] (agent decides among " +
+                            std::to_string(candidates.size()) + " spells / abilities)");
+        ctx.executor.requestChoice(ctx.controller, std::move(options), "target: " + label);
+        setChoiceState(ri, 0, kItemAwait);
+        return std::nullopt;
+    }
+    auto picked = ctx.executor.takeChoice();
+    ChainItemId chosen = candidates.empty() ? ChainItemId{kInvalidId} : candidates.front();
+    if (picked.has_value() && picked->chosen_value.has_value()) {
+        const auto want = ChainItemId::fromRaw(*picked->chosen_value);
+        if (std::find(candidates.begin(), candidates.end(), want) != candidates.end())
+            chosen = want;
+    }
+    ri.chosen_item = chosen;
+    setChoiceState(ri, kItemAwait, kItemDone);
+    RIFT_TRACE(ctx.events, "TGT_PICKED: " + label + " = " + nameOf(chosen) +
+                        " (chain_item=" + toString(chosen) + ")");
+    return chosen;
+}
 
 std::vector<GameObjectId> Card::offerableChoices(
     CardContext& ctx, const std::vector<GameObjectId>& candidates) const {
@@ -700,8 +824,10 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
         if (ri.choices_finalized && !ri.finalizing && !(ri.finalize_checked & 1)) {
             ri.finalize_checked |= 1;
             const auto t = GameObjectId::fromRaw(ri.resume_data[2]);
+            // (Still the object chosen: CR 359.3.e.4, testing phase G14.)
             if (t != kInvalidId &&
-                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end()) {
+                (std::find(legal_targets_in.begin(), legal_targets_in.end(), t) == legal_targets_in.end() ||
+                 !ctx.state.stillTheChosenObject(ri, t))) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 ri.resume_data[2] = static_cast<int32_t>(kInvalidId.raw());
             }
@@ -718,7 +844,8 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
             ri.resume_data[5] = 0;
             GameObjectId t = ri.targets.front();
             const bool still_legal =
-                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end();
+                std::find(legal_targets_in.begin(), legal_targets_in.end(), t) != legal_targets_in.end() &&
+                ctx.state.stillTheChosenObject(ri, t);   // CR 359.3.e.4 (G14)
             if (!still_legal) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
                 t = kInvalidId;
@@ -799,12 +926,32 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     auto& ri_opt = ctx.state.chain.resuming;
     // Deflect (CR 809): see affordableWithDeflect / commitChoice above.
     const bool choosing = ri_opt.has_value();
-    const std::vector<GameObjectId> legal_a =
-        choosing ? affordableWithDeflect(ctx, *this, legal_a_in) : legal_a_in;
     auto legal_b_fn = [&](GameObjectId a) {
         auto v = legal_b_in_fn(a);
         return choosing ? affordableWithDeflect(ctx, *this, v) : v;
     };
+    // CR 355.16: "A player may not make choices during this step that will
+    // deterministically result in illegal choices ... later": a first target
+    // is offered only if a second can then be chosen with it (CR 355.8 —
+    // valid choices for all targets; testing phase D8). The second list is
+    // judged as it would be with `a` chosen (its Deflect and discounts).
+    std::vector<GameObjectId> legal_a;
+    {
+        const auto first = choosing ? affordableWithDeflect(ctx, *this, legal_a_in) : legal_a_in;
+        const bool asking_a = choosing && !(choiceState(*ri_opt) & (kPairAwaitB | kPairDone));
+        for (auto a : first) {
+            if (!asking_a) { legal_a.push_back(a); continue; }
+            // As if `a` were chosen, its Deflect still owed with the second's.
+            ri_opt->chosen_objects.push_back(a);
+            bool completes;
+            {
+                const EffectExecutor::HypotheticallyUnpaid owed(ctx.executor, {a});
+                completes = !legal_b_fn(a).empty();
+            }
+            ri_opt->chosen_objects.pop_back();
+            if (completes) legal_a.push_back(a);
+        }
+    }
     if (!ri_opt.has_value()) {
         // Direct invocation (test / no chain). Default to first
         // legal pair or kInvalidId-pair.
@@ -864,13 +1011,15 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
             const auto b = GameObjectId::fromRaw(ri.resume_data[4]);
             if (b != kInvalidId) {
                 const auto lb = legal_b_in_fn(a);
-                if (std::find(lb.begin(), lb.end(), b) == lb.end()) {
+                if (std::find(lb.begin(), lb.end(), b) == lb.end() ||
+                    !ctx.state.stillTheChosenObject(ri, b)) {   // CR 359.3.e.4 (G14)
                     RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the second target is no longer legal");
                     ri.resume_data[4] = static_cast<int32_t>(kInvalidId.raw());
                 }
             }
             if (a != kInvalidId &&
-                std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end()) {
+                (std::find(legal_a_in.begin(), legal_a_in.end(), a) == legal_a_in.end() ||
+                 !ctx.state.stillTheChosenObject(ri, a))) {
                 RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the first target is no longer legal");
                 ri.resume_data[3] = static_cast<int32_t>(kInvalidId.raw());
             }
@@ -913,6 +1062,7 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         if (legal_b.empty()) {
             RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
                                  " (no legal second targets after A picked)");
+            requiredChoiceMissing(ri);   // CR 403.4
             return finish(a, kInvalidId);
         }
         // Always publish a choice, even with a single legal second
@@ -1151,6 +1301,32 @@ bool Card::payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTer
     return true;
 }
 
+bool Card::payEquip(CardContext& ctx, GameObjectId unit, const EquipTerms& terms) {
+    if (!canPayEquip(ctx.state, ctx.controller, ctx.source, unit, terms)) return false;
+    const EquipCost cost = netEquipCost(ctx.state, ctx.controller, ctx.source, unit, terms);
+    if (!ctx.executor.payResources(ctx.controller, cost.energy, cost.power,
+                                   resource::maskOf(cost.power_any_domain ? Domain::Count
+                                                                          : cost.power_domain),
+                                   SpendFor::Gear))
+        return false;
+    return payEquipExtraCost(ctx, unit);
+}
+
+bool Card::attachByEquip(CardContext& ctx, GameObjectId unit) {
+    // Both must still be on the board, the unit still one its controller
+    // controls (the Equip's target, CR 818.1.b.1); otherwise a mistarget.
+    if (!equipEndsOnBoard(ctx.state, ctx.source, unit)) return false;
+    if (ctx.state.getObject(unit).controller != ctx.controller) return false;
+    if (ctx.state.chain.resuming.has_value() &&
+        !ctx.state.stillTheChosenObject(*ctx.state.chain.resuming, unit))
+        return false;
+    // EffectExecutor::attachGear takes an attached Equipment off its old
+    // bearer first (unattachGear) and checks both ends are on the board.
+    if (!ctx.executor.attachGear(ctx.source, unit)) return false;
+    onEquipped(ctx, unit);
+    return true;
+}
+
 bool Card::canPayEquip(const GameState& state, PlayerId controller, GameObjectId gear,
                        GameObjectId unit) const {
     return canPayEquip(state, controller, gear, unit, EquipTerms{});
@@ -1239,6 +1415,8 @@ std::vector<ActivatedAbility> Card::activatedAbilities() const {
         // Single-ability cards don't use the multi-ability target-defer
         // hook today; opt in by overriding activatedAbilities() directly.
         .needs_activation_time_target = false,
+        .is_empower = false,
+        .adds_resources = abilityAddsResources(),
     } };
     appendEmpowerAbilities(out);
     return out;

@@ -670,8 +670,9 @@ TEST_F(VendettaE, Vendetta_Rebuttal_CountersWhenUnableToPay) {
     auto target = pushSpellOnChain(P2, kDredgeUp);
     auto spell = addToHand(P1, kRebuttal);
     EXPECT_TRUE(card_registry.get(kRebuttal)->hasLegalTargets(state, P1));
-    // No runes / power: the [A] option is never offered.
-    driveResumable(kRebuttal, P1, spell, script({}), exec);
+    // The spell is chosen (CR 355.9.a.2; D21). No runes / power: the [A]
+    // option is never offered.
+    driveResumable(kRebuttal, P1, spell, script({O(target)}), exec);
     EXPECT_TRUE(state.chain.items.empty());
     EXPECT_TRUE(inTrash(P2, target));
 }
@@ -681,7 +682,7 @@ TEST_F(VendettaE, Vendetta_Rebuttal_PayToGainControl) {
     auto target = pushSpellOnChain(P2, kDredgeUp);
     auto rune = addRune(P1, Domain::Mind);
     auto spell = addToHand(P1, kRebuttal);
-    driveResumable(kRebuttal, P1, spell, script({V(1)}), exec);
+    driveResumable(kRebuttal, P1, spell, script({O(target), V(1)}), exec);
 
     ASSERT_EQ(state.chain.items.size(), 1u) << "not countered";
     EXPECT_EQ(state.chain.items.back().controller, P1);
@@ -696,7 +697,7 @@ TEST_F(VendettaE, Vendetta_Rebuttal_DeclineCounters) {
     auto target = pushSpellOnChain(P2, kDredgeUp);
     auto rune = addRune(P1, Domain::Mind);
     auto spell = addToHand(P1, kRebuttal);
-    driveResumable(kRebuttal, P1, spell, script({V(0)}), exec);
+    driveResumable(kRebuttal, P1, spell, script({O(target), V(0)}), exec);
     EXPECT_TRUE(state.chain.items.empty());
     EXPECT_TRUE(inTrash(P2, target));
     EXPECT_TRUE(onBoard(rune));

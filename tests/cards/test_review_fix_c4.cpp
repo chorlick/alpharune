@@ -547,7 +547,10 @@ TEST_F(C4Test, Heimerdinger_HasOnlyTheExhaustAbilities) {
         << "\"[E]: Buff me.\" is granted, once";
 }
 
-TEST_F(C4Test, Rebuttal_IsNotPlayableAgainstAnAbilityOnTopOfASpell) {
+TEST_F(C4Test, Rebuttal_ChoosesASpellUnderAnAbilityOnTheChain) {
+    // "Choose a spell": a finalized spell anywhere on the chain (CR
+    // 355.9.a.2; testing phase D21 — this pinned the old peek-and-pop rule,
+    // under which an ability on top made Rebuttal unplayable).
     Card* rebuttal = card_registry.get(kRebuttal);
     ASSERT_NE(rebuttal, nullptr);
     EXPECT_FALSE(rebuttal->hasLegalTargets(state, P1)) << "empty chain";
@@ -555,11 +558,12 @@ TEST_F(C4Test, Rebuttal_IsNotPlayableAgainstAnAbilityOnTopOfASpell) {
     EXPECT_TRUE(rebuttal->hasLegalTargets(state, P1));
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;
     ability.controller = P2;
     ability.is_ability = true;
     state.chain.items.push_back(ability);
-    EXPECT_FALSE(rebuttal->hasLegalTargets(state, P1))
-        << "Rebuttal acts on the top of the chain, and that is an ability";
+    EXPECT_TRUE(rebuttal->hasLegalTargets(state, P1))
+        << "the spell under the ability can still be chosen";
 }
 
 // ─── S5: the player chooses ─────────────────────────────────────────────────

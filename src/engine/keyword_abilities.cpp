@@ -66,16 +66,47 @@ private:
     const CardDef def_ = keywordDef("Temporary");
 };
 
+/// [Quick-Draw] — CR 819.1.a "a Triggered Ability keyword"; 819.1.d
+/// "functionally short for [Reaction] and 'When you play this, attach it to a
+/// Unit you control.'" The unit is chosen as the ability is finalized (CR
+/// 383.3, 403.2): the opponent may respond before the gear attaches, and a
+/// unit gone by then is a mistarget (testing phase D14). With no unit to
+/// choose the ability is removed (CR 403.4).
+class QuickDrawAbility : public Card {
+public:
+    const CardDef& def() const override { return def_; }
+    TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
+        const auto units = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& u) {
+            return u.controller == ctx.controller;
+        });
+        const GameObjectId unit = pickTarget(ctx, "Quick-Draw: attach it to a unit you control",
+                                             units);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
+        if (unit == kInvalidId) return;       // a mistarget
+        if (!ctx.state.objectExists(ctx.source) ||
+            !ctx.state.getObject(ctx.source).location.has_value()) return;
+        RIFT_TRACE(ctx.events, "QUICK_DRAW: attaching " + ctx.state.getObject(ctx.source).name +
+                            " to " + ctx.state.getObject(unit).name);
+        ctx.executor.attachGear(ctx.source, unit);
+    }
+private:
+    const CardDef def_ = keywordDef("Quick-Draw");
+};
+
 }  // namespace
 
 Card* keywordAbilityCard(Keyword keyword) {
     static VisionAbility vision;
     static WeaponmasterAbility weaponmaster;
     static TemporaryAbility temporary;
+    static QuickDrawAbility quick_draw;
     switch (keyword) {
         case Keyword::Vision:       return &vision;
         case Keyword::Weaponmaster: return &weaponmaster;
         case Keyword::Temporary:    return &temporary;
+        case Keyword::QuickDraw:    return &quick_draw;
         default:                    return nullptr;
     }
 }
@@ -85,6 +116,8 @@ int keywordAbilityInstances(const GameObject& object, Keyword keyword, bool own_
     if (object.keywords.has(keyword) && !own_card_fires) ++n;
     for (const auto& ae : object.aura_effects)
         if (ae.keyword == keyword) ++n;
+    // CR 819.2: "Multiple instances of Quick-Draw do not trigger separately".
+    if (keyword == Keyword::QuickDraw) n = std::min(n, 1);
     return n;
 }
 

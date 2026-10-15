@@ -112,6 +112,15 @@ inline int payableEnergy(const GameState& state, PlayerId player) {
     return resource::payableEnergy(state, player);
 }
 
+/// Whether `player` can pay [amount] now — floating Energy, ready runes, or
+/// the Energy their [Reaction] [Add] abilities would add while paying (CR
+/// 430.3, 445.2.c; testing phase D30). What a "you may pay [N]" asks before
+/// it offers the "may".
+inline bool canPayEnergy(CardContext& ctx, PlayerId player, int amount) {
+    if (amount <= 0) return true;
+    return ctx.executor.canPayWithAdds(player, amount, 0, resource::kAnyDomain);
+}
+
 /// Pay `amount` Energy: floating pool first, then exhaust ready runes in the
 /// player's base (lowest id first). Returns false (paying nothing) if it can't
 /// be covered.
@@ -325,19 +334,61 @@ inline bool isUncounterable(const CardContext& ctx, const ChainItem& item) {
     return false;
 }
 
-inline void counterChainTop(CardContext& ctx) {
-    if (ctx.state.chain.items.empty()) return;
-    auto& top = ctx.state.chain.items.back();
-    if (!top.is_spell) return;
-    if (isUncounterable(ctx, top)) return;
-    auto countered = top.source;
-    revertCounteredPlay(ctx, top);  // CR 425.1.b
-    ctx.state.chain.items.pop_back();
-    if (ctx.state.objectExists(countered)) {
-        RIFT_TRACE(ctx.events, "COUNTER: " + ctx.state.getObject(countered).name + " countered");
-        disposeCounteredCard(ctx, countered);
+/// The finalized spells and abilities on the chain `ctx`'s item may choose
+/// (CR 355.9.a.2) and that meet `pred`: never the item itself (CR 355.9.c),
+/// newest first — the order Card::pickChainItem offers them in.
+template <typename Pred>
+inline std::vector<ChainItemId> chainItemChoices(const CardContext& ctx, Pred&& pred) {
+    std::vector<ChainItemId> out;
+    const auto& items = ctx.state.chain.items;
+    const ChainItemId self = ctx.state.chain.resuming.has_value()
+        ? ctx.state.chain.resuming->id : ChainItemId{kInvalidId};
+    for (auto it = items.rbegin(); it != items.rend(); ++it) {
+        if (it->status != ChainItemStatus::Finalized) continue;
+        if (it->id == self) continue;
+        if (it->is_spell && it->source == ctx.source) continue;
+        if (pred(*it)) out.push_back(it->id);
     }
+    return out;
 }
+/// The same over a bare state, for a play gate (hasLegalTargets): whether any
+/// finalized item on the chain meets `pred`.
+template <typename Pred>
+inline bool anyChainItem(const GameState& state, Pred&& pred) {
+    for (const auto& ci : state.chain.items)
+        if (ci.status == ChainItemStatus::Finalized && pred(ci)) return true;
+    return false;
+}
+/// The chain item `id`, or null if it is not on the chain.
+inline const ChainItem* chainItem(const GameState& state, ChainItemId id) {
+    for (const auto& ci : state.chain.items) if (ci.id == id) return &ci;
+    return nullptr;
+}
+/// Counter the chosen chain item `id` (CR 426): a spell goes to its owner's
+/// trash (or `dest`), an ability is removed; one that "can't be countered"
+/// stays. Through EffectExecutor::removeChainItem — the one way a card takes
+/// an item off the chain. Returns true if it was countered.
+inline bool counterChosenItem(CardContext& ctx, ChainItemId id, ZoneType dest = ZoneType::Trash) {
+    const ChainItem* item = chainItem(ctx.state, id);
+    if (!item) return false;
+    if (isUncounterable(ctx, *item)) {
+        RIFT_TRACE(ctx.events, "COUNTER: that spell or ability can't be countered");
+        return false;
+    }
+    revertCounteredPlay(ctx, *item);  // CR 425.1.b
+    auto removed = ctx.executor.removeChainItem(id);
+    if (!removed.has_value()) return false;
+    const std::string name = ctx.state.objectExists(removed->source)
+        ? ctx.state.getObject(removed->source).name.get() : std::string("?");
+    if (removed->is_spell) {
+        RIFT_TRACE(ctx.events, "COUNTER: " + name + " countered");
+        disposeCounteredCard(ctx, removed->source, dest);
+    } else {
+        RIFT_TRACE(ctx.events, "COUNTER: ability of " + name + " countered");
+    }
+    return true;
+}
+
 
 // ── Gold tokens ──
 inline void createGoldToken(CardContext& ctx) {
@@ -769,6 +820,87 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     return std::nullopt;
 }
 
+// ── "When you play me from face down" ───────────────────────────────────────
+/// Whether `source`'s current play is a play from face down, this turn: the
+/// stamps GameEngine::executePlayFromHidden writes as it plays a hidden card
+/// (`__played_from_facedown`, `__facedown_play_turn`). They belong to one play:
+/// Card::forgetPlayPayments drops them as every play begins, so a card played
+/// from face down, returned and played from hand reads false (testing phase
+/// B2). The one test for Edge of Night, Evelynn, Entrancing and Tornado
+/// Warrior's trigger conditions; nothing else needs to clear it.
+inline bool playedFromFacedown(const GameState& state, GameObjectId source) {
+    if (!state.objectExists(source)) return false;
+    const auto& c = state.getObject(source).card_counters;
+    const auto played = c.find("__played_from_facedown");
+    if (played == c.end() || played->second != 1) return false;
+    const auto turn = c.find("__facedown_play_turn");
+    return turn == c.end() || turn->second == state.turn.turn_number;
+}
+
+// ── Up to one target ("deal 2 to up to one enemy unit") ─────────────────────
+/// A target that may be none (CR 355.13) — or, with `allow_none` false, a
+/// second required target of an instruction of its own, where pickTarget is
+/// already used — chosen like any target: an object
+/// whose Deflect can't be paid is not offered, and choosing one pays its
+/// Deflect and counts as choosing it (Card::commitChosenObject). Asked in a
+/// finalize pass (the item's choices), with "None" offered after the objects.
+/// Returns nullopt while the agent is being asked; kInvalidId for none (also
+/// when nothing can be chosen — stored, so nothing is asked later); else the
+/// object. As the item resolves, a chosen object no longer in `options`, or no
+/// longer the same object (CR 359.3.e.4), comes back as kInvalidId: a
+/// mistarget. Progress lives in resume_data[slot] and [slot + 1] (`slot` 7 or
+/// more, as selectObject).
+inline std::optional<GameObjectId> selectTargetOrNone(Card& card, CardContext& ctx,
+                                                      const std::string& label,
+                                                      std::vector<GameObjectId> options,
+                                                      size_t slot = 7, bool allow_none = true) {
+    std::sort(options.begin(), options.end());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return options.empty() ? kInvalidId : options.front();
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto store = [&ri, slot](GameObjectId id) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = static_cast<int32_t>(id.raw());
+        if (id == kInvalidId) Card::nothingToDecide(ri);
+        return id;
+    };
+    if (ri.resume_data[slot] == 2) {
+        const auto id = GameObjectId::fromRaw(ri.resume_data[slot + 1]);
+        if (id != kInvalidId && !ri.finalizing &&
+            (std::find(options.begin(), options.end(), id) == options.end() ||
+             !ctx.state.stillTheChosenObject(ri, id))) {
+            RIFT_TRACE(ctx.events, "TGT_MISTARGET: " + label + " — the chosen target is no longer legal");
+            return GameObjectId{kInvalidId};
+        }
+        return id;
+    }
+    const auto offered = card.offerableChoices(ctx, options);
+    if (ri.resume_data[slot] == 1) {
+        auto picked = ctx.executor.takeChoice();
+        if (picked.has_value() && !picked->chosen_objects.empty() &&
+            std::find(offered.begin(), offered.end(), picked->chosen_objects.front()) !=
+                offered.end()) {
+            const GameObjectId t = picked->chosen_objects.front();
+            card.commitChosenObject(ctx, t);
+            return store(t);
+        }
+        return store(kInvalidId);
+    }
+    if (offered.empty()) {
+        if (!allow_none) Card::requiredChoiceMissing(ri);   // CR 403.4
+        return store(kInvalidId);
+    }
+    std::vector<Intent> choices;
+    for (auto id : offered) choices.push_back(objChoice(ctx.controller, id));
+    if (allow_none) choices.push_back(valChoice(ctx.controller, 0, "None — " + label));
+    RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + std::to_string(offered.size()) +
+                        " options, or none]");
+    ctx.executor.requestChoice(ctx.controller, std::move(choices), "target: " + label);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
+}
+
 // ── Split damage (CR 355.14) ────────────────────────────────────────────────
 // "Deal N damage split among <units>". Two separate decisions, at the two
 // moments the rules give them:
@@ -874,12 +1006,17 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
 
     // ── Who: the targets (at finalization when there is a finalize pass) ──
     if (data[1] == 0) {
-        // Units not yet targeted whose Deflect the controller can pay.
+        // Units not yet targeted whose Deflect the controller can pay — and,
+        // for a spell choosing before its cost, only those that leave it
+        // payable with that Deflect (EffectExecutor::choiceAllowed, as every
+        // other choice helper: a fuzz finding of batch 3, Alpha Strike).
         auto offered = [&]() {
-            const int payable = ctx.executor.payableAnyPower(ctx.controller);
+            const int payable = ctx.executor.payableAnyPower(
+                ctx.controller, ri.is_spell ? SpendFor::Spell : SpendFor::Other);
             std::vector<GameObjectId> out;
             for (auto t : legal)
-                if (!isTarget(t) && ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
+                if (!isTarget(t) && ctx.executor.choiceAllowed(t) &&
+                    ctx.executor.deflectCostFor(ctx.controller, t) <= payable)
                     out.push_back(t);
             return out;
         };
@@ -890,12 +1027,17 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             if (t != kInvalidId &&
                 std::find(can_pick.begin(), can_pick.end(), t) != can_pick.end()) {
                 const int cost = ctx.executor.deflectCostFor(ctx.controller, t);
+                // Chosen, then its Deflect paid (a spell paying ahead of its
+                // cost judges what is left with this choice counted, as
+                // commitChoice does), and stamped (CR 359.3.e.4).
+                ri.chosen_objects.push_back(t);
+                ctx.state.stampChosen(ri, t);
                 if (cost > 0) {
-                    ctx.executor.payAnyPower(ctx.controller, cost);
+                    ctx.executor.payAnyPower(ctx.controller, cost,
+                                             ri.is_spell ? SpendFor::Spell : SpendFor::Other);
                     RIFT_TRACE(ctx.events, "DEFLECT: pays " + std::to_string(cost) +
                                         " [A] to choose " + ctx.state.getObject(t).name);
                 }
-                ri.chosen_objects.push_back(t);
                 // "If you've chosen an enemy unit this turn" (as Card::pickTarget).
                 ctx.state.noteChosen(ctx.controller, t, &ri);
                 data.insert(data.begin() + 2 + static_cast<long>(targetCount()),
@@ -1458,6 +1600,52 @@ inline std::optional<std::vector<GameObjectId>> selectSeveral(
         if (*one == kInvalidId) break;
         picked.push_back(*one);
         options.erase(std::find(options.begin(), options.end(), *one));   // one instance
+    }
+    return picked;
+}
+
+/// selectSeveral for objects that are CHOSEN in the rules sense — targets
+/// ("move any number of friendly units at a battlefield", "return up to two
+/// cards from your trash": CR 355.5, 355.13): each one is offered only if it
+/// can be chosen (Card::offerableChoices: its Deflect payable, and while a
+/// spell chooses before its cost only what leaves it payable) and choosing it
+/// pays its Deflect and counts as choosing it (Card::commitChosenObject:
+/// "when you choose a friendly unit", "your spells that choose me cost
+/// less"). Same slots and re-entry contract as selectSeveral.
+inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
+        Card& card, CardContext& ctx, const std::string& label,
+        std::vector<GameObjectId> options, int max_picks = -1, size_t first_slot = 7) {
+    std::sort(options.begin(), options.end());
+    std::vector<GameObjectId> picked;
+    const auto& item = ctx.state.chain.resuming;
+    for (int k = 0; max_picks < 0 || k < max_picks; ++k) {
+        const size_t slot = first_slot + 2 * static_cast<size_t>(k);
+        if (item.has_value() && item->resume_data.size() > slot + 1 &&
+            item->resume_data[slot] == 2) {
+            const auto stored = GameObjectId::fromRaw(item->resume_data[slot + 1]);
+            if (stored == kInvalidId) break;
+            auto it = std::find(options.begin(), options.end(), stored);
+            if (it == options.end() || !ctx.state.stillTheChosenObject(*item, stored))
+                continue;                                  // no longer legal: dropped
+            picked.push_back(stored);
+            options.erase(it);
+            continue;
+        }
+        std::vector<GameObjectId> offer = options;
+        offer.erase(std::unique(offer.begin(), offer.end()), offer.end());
+        const bool answering = item.has_value() && item->resume_data.size() > slot &&
+                               item->resume_data[slot] == 1;
+        if (!answering) offer = card.offerableChoices(ctx, offer);
+        if (offer.empty()) {
+            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true);
+            break;
+        }
+        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true);
+        if (!one.has_value()) return std::nullopt;
+        if (*one == kInvalidId) break;
+        if (answering) card.commitChosenObject(ctx, *one);   // chosen now: Deflect, "chosen"
+        picked.push_back(*one);
+        options.erase(std::find(options.begin(), options.end(), *one));
     }
     return picked;
 }

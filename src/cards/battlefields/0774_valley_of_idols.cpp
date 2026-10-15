@@ -34,7 +34,7 @@ public:
         // stores the "no" on the chain item, so the resolution asks nothing
         // if the unit is on the board again by then.
         int decision = confirmOptional(ctx, "Valley of Idols: pay [1] to [Buff] the unit?",
-            [&]() { return still_there() && payableEnergy(ctx.state, ctx.controller) >= 1; });
+            [&]() { return still_there() && canPayEnergy(ctx, ctx.controller, 1); });
         if (decision < 1) return;   // waiting on the agent, declined or not legal
 
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;

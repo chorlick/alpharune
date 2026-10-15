@@ -20,6 +20,9 @@ public:
     // only on playing a spell.
     TriggerType triggerType() const override { return TriggerType::Activated; }
     bool hasActivatedAbility() const override { return true; }
+    // [Add]: it resolves as it is activated — no chain item, no priority,
+    // Focus stays (CR 430.2, 401.2; testing phase D2).
+    bool abilityAddsResources() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
     bool isReactionAbility() const override { return true; }  // [Reaction], not [Action]
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {

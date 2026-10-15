@@ -19,21 +19,16 @@ public:
     // [Hidden] is engine-handled.
     // "When you play me from face down, you may empower something here.
     //  Disempower it at end of turn."
-    // GameEngine::executePlayFromHidden stamps
-    // card_counters["__played_from_facedown"] = 1; it is consumed here so a
-    // later replay from hand does not re-trigger.
+    // The "may" and the object are chosen as the ability is finalized, before
+    // anyone can respond (CR 403.1-403.2; testing phase D54).
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }
-    // "from face down" is part of the trigger condition: a play from hand
-    // puts nothing on the chain. The mark is turn-stamped by the engine, so
-    // one left by a play on an earlier turn is not this play.
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    // "from face down" is part of the trigger condition (playedFromFacedown:
+    // this play's stamp, testing phase B2): a play from hand puts nothing on
+    // the chain.
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
-        if (!state.objectExists(source)) return false;
-        const auto& c = state.getObject(source).card_counters;
-        const auto played = c.find("__played_from_facedown");
-        if (played == c.end() || played->second != 1) return false;
-        const auto turn = c.find("__facedown_play_turn");
-        return turn == c.end() || turn->second == state.turn.turn_number;
+        return playedFromFacedown(state, source);
     }
     std::vector<GameObjectId> empowerableHere(CardContext& ctx) const {
         std::vector<GameObjectId> out;
@@ -50,11 +45,13 @@ public:
             if (obj.empowered >= cap) continue;   // empowering it would do nothing
             out.push_back(id);
         }
+        std::sort(out.begin(), out.end());
         return out;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::AtEndOfTurn) {
             // "Disempower it at end of turn": the delayed ability (finding G13).
+            if (finalizingChoices(ctx)) return;   // nothing to choose
             const auto& ri = ctx.state.chain.resuming;
             const GameObjectId it = ri.has_value() ? ri->triggering_subject : kInvalidId;
             if (it == kInvalidId || !ctx.state.objectExists(it)) return;
@@ -63,20 +60,11 @@ public:
                                 ctx.state.getObject(it).name);
             return;
         }
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto& self = ctx.state.getObject(ctx.source);
-        const auto& ri = ctx.state.chain.resuming;
-        if (!ri.has_value() || ri->resume_point == 0) {
-            // First entry: latch (and consume) the played-from-face-down marker.
-            auto& from_facedown = self.card_counters["__played_from_facedown"];
-            self.card_counters["__tornado_from_facedown"] = from_facedown == 1 ? 1 : 0;
-            from_facedown = 0;
-        }
-        if (self.card_counters["__tornado_from_facedown"] != 1) return;
-        int conf = confirmOptional(ctx, "Tornado Warrior: empower something here?",
-                                   [&]() { return !empowerableHere(ctx).empty(); });
-        if (conf < 1) return;
-        GameObjectId picked = pickTarget(ctx, "Tornado Warrior: empower", empowerableHere(ctx));
+        const int conf = confirmOptional(ctx, "Tornado Warrior: empower something here?",
+                                         [&]() { return !empowerableHere(ctx).empty(); });
+        if (conf < 1) return;   // waiting, declined or nothing to empower
+        const GameObjectId picked = pickTarget(ctx, "Tornado Warrior: empower", empowerableHere(ctx));
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         ctx.executor.empower(picked);
         atEndOfTurnAbout(ctx, cardDefId(), picked);   // "Disempower it at end of turn."

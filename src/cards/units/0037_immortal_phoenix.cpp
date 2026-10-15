@@ -37,7 +37,7 @@ public:
         // pool or a recycled Fury rune (CR 164.2). One ready Fury rune covers
         // both: exhausted for the Energy, then recycled for the Power.
         auto can_pay = [&]() {
-            return in_trash() && payableEnergy(ctx.state, ctx.controller) >= 1 &&
+            return in_trash() && canPayEnergy(ctx, ctx.controller, 1) &&
                    payableOnePower(ctx.state, ctx.controller, Domain::Fury);
         };
         // No return ahead of the "may": with [1][R] unpayable confirmOptional

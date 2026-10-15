@@ -17,6 +17,8 @@ public:
     const CardDef& def() const override { return def_; }
     // "When combat starts here, the attacker and defender each [Add] [1]."
     TriggerType triggerType() const override { return TriggerType::WhenCombatStartsHere; }
+    // "... each [Add] [1]" resolves as it triggers (CR 430.2; D2).
+    bool triggeredAbilityAdds(TriggerType) const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         for (const auto& bf : ctx.state.battlefields) {
             if (bf.card_object_id != ctx.source) continue;

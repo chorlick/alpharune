@@ -26,7 +26,7 @@ public:
         // CR 445.2 / 164.2.a: the [1] may come from floating Energy or from
         // exhausting a ready rune (payableEnergy / payEnergy).
         auto still_legal = [&ctx]() {
-            return payableEnergy(ctx.state, ctx.controller) >= 1;
+            return canPayEnergy(ctx, ctx.controller, 1);
         };
         // No return ahead of the "may": with [1] unpayable confirmOptional
         // stores the "no" on the chain item, so the resolution asks nothing

@@ -20,10 +20,14 @@ class AzirSovereign : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIAttack; }
+    // "you may move any number of your token units": which ones (zero allowed)
+    // are fixed as the ability is finalized, before anyone can respond (CR
+    // 403.2, 355.13; testing phase D24).
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.objectExists(ctx.source)) return;
-        auto my_bf = ctx.state.getObject(ctx.source).battlefieldId();
-        if (!my_bf) return;
+        std::optional<BattlefieldId> my_bf;
+        if (ctx.state.objectExists(ctx.source))
+            my_bf = ctx.state.getObject(ctx.source).battlefieldId();
         auto movable = [&](GameObjectId id) {
             if (id == ctx.source || !ctx.state.objectExists(id)) return false;
             const auto& obj = ctx.state.getObject(id);
@@ -31,11 +35,15 @@ public:
                    obj.location.has_value() && obj.battlefieldId() != my_bf;
         };
         std::vector<GameObjectId> tokens;
-        for (auto& [id, obj] : ctx.state.objects.onBoard())
-            if (movable(id)) tokens.push_back(id);
+        if (my_bf.has_value())
+            for (auto& [id, obj] : ctx.state.objects.onBoard())
+                if (movable(id)) tokens.push_back(id);
         // "you may move any number": the controller names them one at a time.
-        auto picked = selectSeveral(ctx, "Azir, Sovereign: move a token unit here", tokens);
+        auto picked = selectSeveralTargets(*this, ctx, "Azir, Sovereign: move a token unit here",
+                                           tokens);
         if (!picked.has_value()) return;   // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
+        if (!my_bf.has_value()) return;       // Azir left the battlefield
         int moved = 0;
         for (auto id : *picked) {
             if (!movable(id)) continue;

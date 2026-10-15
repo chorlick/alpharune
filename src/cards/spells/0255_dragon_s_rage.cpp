@@ -22,21 +22,32 @@ public:
     // been moved it goes on the chain as an item of its own, and which other
     // enemy unit it fights is chosen as that item is finalized.
     bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId mover;
-        if (!targets.empty()) {
-            mover = targets[0];
-        } else {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            mover = pickTarget(ctx, "Dragon's Rage (enemy unit to move)", legal);
+    // The unit and its destination (CR 355.4, 355.5) are chosen as the spell
+    // is played, before its cost (testing phase D3).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // an enemy unit
+    }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        std::vector<GameObjectId> legal;
+        for (auto id : enumerateLegalTargets(ctx.state, ctx.controller))
+            if (!moveDests(ctx.state, ctx.state.getObject(id)).empty()) legal.push_back(id);
+        const GameObjectId mover = pickTarget(ctx, "Dragon's Rage (enemy unit to move)", legal);
+        if (mover == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;                               // waiting for the agent
+        int dest = -2;
+        if (mover != kInvalidId && ctx.state.getObject(mover).location.has_value()) {
+            dest = pickMoveDest(*this, ctx, "Dragon's Rage: move it to", ctx.state.getObject(mover));
+            if (dest == -1) return;               // waiting for the destination
         }
-        if (mover == kInvalidId || !ctx.state.chain.resuming.has_value()) return;
+        if (finalizingChoices(ctx)) return;       // choices end here (CR 355)
+        if (mover == kInvalidId || dest < 0 || !ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == kDone) return;
+        if (ri.resume_point == kDone) return;   // moved once already
         const auto& u = ctx.state.getObject(mover);
         if (!u.isUnit() || !u.location.has_value()) return;
-        const int dest = pickMoveDest(*this, ctx, "Dragon's Rage: move it to", u);
-        if (dest < 0) return;   // waiting, or nowhere to move it
         moveTo(ctx, mover, dest);
         ri.resume_point = kDone;
         RIFT_TRACE(ctx.events, "DRAGON'S RAGE: moved an enemy unit");

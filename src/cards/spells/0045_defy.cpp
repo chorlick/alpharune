@@ -15,51 +15,36 @@ namespace {
 class Defy : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
     // "Counter a spell that costs no more than [4] and no more than [A]."
     // Both caps are on the spell's printed cost: at most 4 Energy and at most
-    // one Power. Defy counters the item directly beneath it, so that item is
-    // what has to qualify.
-    static bool counterable(const GameState& state, const CardDB& db) {
-        if (state.chain.items.empty()) return false;
-        const auto& top = state.chain.items.back();
-        if (!top.is_spell || top.card_def_id == kInvalidId) return false;
-        const auto& d = db.get(top.card_def_id);
+    // one Power. The spell is a target (CR 355.9.a.2), chosen as Defy is
+    // played (CR 355.5) among the finalized spells on the chain that qualify.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;
+    }
+    static bool qualifies(const ChainItem& ci, const CardDB& db) {
+        if (!ci.is_spell || ci.card_def_id == kInvalidId) return false;
+        const auto& d = db.get(ci.card_def_id);
         return d.energy_cost <= 4 && d.power_cost <= 1;
     }
-    // Not playable unless the spell it would counter qualifies (the printed
-    // costs come from the card table the engine hands the gate). Checked
-    // again as Defy resolves: the chain may have changed.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/,
                          const CardDB& db) const override {
-        return counterable(state, db);
+        return anyChainItem(state, [&](const ChainItem& ci) { return qualifies(ci, db); });
     }
-    // Without the card table only the half the state shows can be answered:
-    // there must be a spell directly beneath.
+    // Without the card table only the half the state shows: a spell is there.
     bool hasLegalTargets(const GameState& state, PlayerId /*controller*/) const override {
-        return !state.chain.items.empty() && state.chain.items.back().is_spell;
+        return anyChainItem(state, [](const ChainItem& ci) { return ci.is_spell; });
     }
-
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (ctx.state.chain.items.empty()) return;
-        auto& top = ctx.state.chain.items.back();
-        if (!top.is_spell) return;
-        if (isUncounterable(ctx, top)) return;
-
-        if (!counterable(ctx.state, ctx.executor.cardDB())) {
-            RIFT_TRACE(ctx.events, "DEFY: cannot counter — the spell costs more than [4] "
-                                "or more than [A]");
-            return;  // illegal target; spell resolves normally
-        }
-
-        auto countered = top.source;
-        revertCounteredPlay(ctx, top);  // CR 425.1.b
-        ctx.state.chain.items.pop_back();
-        if (ctx.state.objectExists(countered)) {
-            auto& obj = ctx.state.getObject(countered);
-            RIFT_TRACE(ctx.events, "COUNTER: " + obj.name + " countered by Defy -> trash");
-            disposeCounteredCard(ctx, countered);
-        }
+        const CardDB& db = ctx.executor.cardDB();
+        const auto spell = pickChainItem(
+            ctx, "Defy: counter a spell that costs no more than [4] and [A]",
+            chainItemChoices(ctx, [&](const ChainItem& ci) { return qualifies(ci, db); }));
+        if (!spell.has_value()) return;
+        if (finalizingChoices(ctx)) return;
+        if (*spell != kInvalidId) counterChosenItem(ctx, *spell);
     }
 private:
     const CardDef def_ = [] {

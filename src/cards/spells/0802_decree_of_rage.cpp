@@ -17,7 +17,7 @@ public:
     const CardDef& def() const override { return def_; }
     // "This can't be countered. Deal 4 to an enemy Calm ([G]) unit."
     // Every counter effect asks card_helpers.h isUncounterable() before it
-    // removes a chain item (counterChainTop, Defy, Hard Bargain, Flurry of
+    // removes a chain item (counterChosenItem, Defy, Hard Bargain, Flurry of
     // Feathers, Abandon, Rebuttal).
     bool cantBeCountered() const override { return true; }
     static bool hasDomain(const GameObject& obj, Domain d) {

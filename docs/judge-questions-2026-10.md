@@ -267,3 +267,41 @@ Which rule wins when both apply?
 - For "nobody": 468.5 names "the player with Units remaining here", which is not one player when both have units; staging is decided only at 468.3.d.1, and a battlefield with opposing units that its controller does not control is Contested by the next Cleanup (323.10.a), which stages a Combat (323.8).
 
 **What the engine does.** Nobody establishes control: the battlefield keeps its controller, there is no conquer, and the Cleanup after the combat stages the next combat with the same attacker (`Batch3Combat.J3_Pin_AUnitThatArrivesAfterAWinLeadsToANewCombatNotAConquer`, testing phase J3). No "When I win a combat" ability of a registered card brings an opposing unit; the situation arises when the defender answers in that chain with a [Reaction] that moves or plays one of their units there.
+
+---
+
+## 14. Card Sharp: is "you and each opponent may" a leading "you may"?
+
+**Card**
+
+- Card Sharp: "When you play me, you and each opponent may play a Gold gear token exhausted. For each opponent who did, you play a Gold gear token exhausted."
+
+**Situation.** Card Sharp is played and its ability triggers.
+
+**Question.** Is the controller's "may" decided as the ability is finalized, as the leading "you may" of a triggered ability (383.3.a)? If so, does declining it remove the whole ability, so the opponent is never asked and nobody gets a Gold? Or is each player's "may" decided as the ability resolves, with the ability performed either way?
+
+**Rules found**
+
+- For "decided at finalization": 383.3.a, "If a Triggered Ability says 'you may' or 'they may' as the first part of its Effect, the controller of its source will choose whether or not to perform the Triggered Ability during finalization", and 403.1. The effect does begin with a "may".
+- For "decided as it resolves": 383.3.a.1 says that decision is "solely whether or not to perform said triggered ability". Here the controller's "may" covers only the controller's own Gold. The opponent's "may" and the "for each opponent who did" instruction do not depend on it. 355.10.e: a set of objects chosen in part by other players is chosen as the ability resolves. Under 383.3.a.3, a "may" that is not the whole first part of the effect is decided on resolution.
+
+**What the engine does.** Both players decide as the ability resolves, and declining one's own Gold does not remove the ability (`BatchM1Abilities.CardSharp_Pin_EachPlayersMayIsDecidedAsItResolves`).
+
+---
+
+## 15. Dr. Mundo, Expert with fewer than three cards in the trash
+
+**Card**
+
+- Dr. Mundo, Expert: "My Might is increased by the number of cards in your trash. At the start of your Beginning Phase, recycle 3 from your trash."
+
+**Situation.** At the start of my Beginning Phase my trash holds two cards.
+
+**Question.** The three cards are targets: they are in a public zone and I choose them (355.10.a). With only two there, is the ability removed from the chain as it would be finalized, so nothing is recycled? Or is it finalized with the two, so both are recycled?
+
+**Rules found**
+
+- For "removed, nothing recycled": 403.4, "If there are not enough options to make legal choices for a Triggered Ability that has been put on the chain, remove it from the Chain now"; 355.8, "valid choices must be made for all targets". "Recycle 3" names three targets, and the third has no legal choice. This is the reading the engine applies to Teemo, Strategist (question 6).
+- For "recycle the two": the instruction could be read as "as many as you can". 359.3.e.5 ignores only an instruction whose target became illegal after finalization, so it does not decide this case. Nothing in the text says "up to".
+
+**What the engine does.** The strict reading of 403.4: with fewer than three cards, the ability is removed and nothing is recycled (`BatchM1Abilities.DrMundo_Pin_WithFewerThanThreeCardsTheAbilityIsRemoved`, `C4Test.DrMundoExpert_Pin_FewerThanThreeAreNotRecycled`). With exactly three, all three are recycled. `SweepCostsTest.Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOnes` lists Dr. Mundo with Teemo, Strategist.

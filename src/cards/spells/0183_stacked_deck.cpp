@@ -43,20 +43,17 @@ public:
             // Publish a 1-of-N "pick the keeper" choice. Each Intent's
             // chosen_objects = [the card to put into hand].
             std::vector<Intent> choices;
-            std::string label = "Stacked Deck: pick 1 of " +
-                                std::to_string(actual) + " to draw [";
+            // The prompt's header is read by both players: it names none of
+            // the cards looked at (testing phase R1, the Lunar Boon kind).
+            const std::string label = "Stacked Deck: pick 1 of " +
+                                      std::to_string(actual) + " to put into your hand";
             for (int i = 1; i <= actual; ++i) {
                 Intent c;
                 c.type = IntentType::MakeChoice;
                 c.player = ctx.controller;
                 c.chosen_objects = {GameObjectId::fromRaw(ri.resume_data[i])};
                 choices.push_back(c);
-                if (i > 1) label += " | ";
-                if (ctx.state.objectExists(GameObjectId::fromRaw(ri.resume_data[i]))) {
-                    label += ctx.state.getObject(GameObjectId::fromRaw(ri.resume_data[i])).name;
-                }
             }
-            label += "]";
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
             ri.resume_point = 1;

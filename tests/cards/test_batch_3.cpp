@@ -104,6 +104,7 @@ constexpr CardDefId kPoroSnax = 369;
 constexpr CardDefId kMesmerize = 839;
 constexpr CardDefId kAlphaStrike = 751;
 constexpr CardDefId kPowerNexus = 528;
+constexpr CardDefId kMoonfall = 755;
 constexpr CardDefId kButcherOfTheSands = 928;
 constexpr CardDefId kScryersBloom = 698;   // test-only: see Batch3Combat
 
@@ -1862,6 +1863,23 @@ TEST_F(Batch3Test, D30_APaymentOffersOnlyAddsAfterWhichItCanStillBeMade) {
     EXPECT_FALSE(agent.butcher_offered) << "its [A][A] would leave the [A][A][A][A] unpayable";
     EXPECT_EQ(ps(P1).score, score_before + 1) << "paid with the runes and Gold";
     EXPECT_FALSE(onBoard(gold));
+}
+
+// Gate fuzz finding (seeds 16232330834963386301 14198999052881540591
+// 847915265, random-player:pass=0): Moonfall's "you may move up to one enemy
+// unit" was offered on the raw list, so accepting it with only an enemy
+// [Deflect] unit it could not also pay for met a required target with nothing
+// to choose. It is offered only with a unit the spell can choose.
+TEST_F(Batch3Test, D8_MoonfallOffersItsMoveOnlyWithAUnitItCanPayToChoose) {
+    addUnit(P1, kInvalidId, 3, 0);
+    auto poro = addUnit(P2, kPoutyPoro, 2, 1);
+    auto card = addToHand(P1, kMoonfall);
+    EnginePathAgent agent(EnginePathAgent::accepting());
+    playThroughEngine(card, &agent);   // funds exactly its cost
+    EXPECT_FALSE(agent.wasOffered(poro)) << "its [A] cannot be paid with the spell's cost";
+    ASSERT_TRUE(onBoard(poro));
+    EXPECT_EQ(*o(poro).battlefieldId(), state.battlefields[1].id) << "not moved";
+    EXPECT_FALSE(inHand(P1, card)) << "played: the battlefield is its one required choice";
 }
 
 }  // namespace riftbound::test::batch_3

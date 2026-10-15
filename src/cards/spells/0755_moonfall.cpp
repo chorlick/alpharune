@@ -64,9 +64,12 @@ public:
             });
         };
         // "No" is zero units (CR 355.13); the -2 [M] below does not depend on it.
+        // Offered only with a unit it can choose — its Deflect payable, with
+        // the spell's cost while it chooses before it (a fuzz finding of
+        // batch 3: the "may" was offered on the raw list).
         const int conf = confirmOptional(ctx,
             "Moonfall: move an enemy unit to that battlefield?",
-            [&]() { return !movable().empty(); });
+            [&]() { return !offerableChoices(ctx, movable()).empty(); });
         if (conf == -1) return;  // waiting for agent
         GameObjectId mover = kInvalidId;
         if (conf == 1) {

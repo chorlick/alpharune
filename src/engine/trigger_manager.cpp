@@ -1,4 +1,5 @@
 #include "trigger_manager.h"
+#include "openspiel/action_vocab.h"
 #include "cards/card.h"
 #include "engine/effect_executor.h"
 #include "engine/deck_ops.h"
@@ -405,10 +406,24 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     // ability of this source for this trigger that has not been finalized yet
     // came from the same set of events (nobody has had priority since).
     if (card && card->triggersOncePerBatch(fired)) {
-        for (const auto& ci : state_.chain.items)
+        for (auto& ci : state_.chain.items)
             if (ci.source == source && ci.status == ChainItemStatus::Pending &&
-                ci.is_ability && !ci.is_activated_ability && ci.fired_trigger == fired)
+                ci.is_ability && !ci.is_activated_ability && ci.fired_trigger == fired) {
+                // The events happened together: which one the engine announced
+                // first is the order it processed them in (object ids), not
+                // something the rules say. The ability is about the first of
+                // them in an order of what the players see (batch 5d N1).
+                if (subject != kInvalidId && ci.triggering_subject != subject &&
+                    state_.objectExists(subject) && state_.objectExists(ci.triggering_subject)) {
+                    std::vector<GameObjectId> both{ci.triggering_subject, subject};
+                    openspiel::sortObjectsAsSeen(state_, both, controller);
+                    if (both.front() == subject) {
+                        ci.triggering_subject = subject;
+                        captureSubjectAsItLeft(state_, ci);
+                    }
+                }
                 return false;
+            }
     }
 
     RIFT_DEBUG(events_, "TRIGGER: " + obj.name + " (" + toString(controller) +

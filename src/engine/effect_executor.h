@@ -53,6 +53,12 @@ struct DeathBatchMark {
     ChainItemId first_item = ChainItemId::fromRaw(0);  // chain ids from here on are the batch's
     OpenClosedState oc_state = OpenClosedState::Open;
     bool chain_was_empty = true;
+    /// The members in an order of what the players see of them on the board,
+    /// and each trash's size as the batch began: the members that went to a
+    /// trash are put there in this order (they die at once; which the engine
+    /// kills first must not order the trash by object id — batch 5d N1).
+    std::vector<GameObjectId> seen_order;
+    size_t trash_size[2] = {0, 0};
 };
 
 class DeathBatch {

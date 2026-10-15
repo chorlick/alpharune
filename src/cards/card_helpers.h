@@ -2,6 +2,7 @@
 /// @file card_helpers.h
 /// Cross-cutting card helpers used across multiple card types. Type-specific
 /// bases live in their type dirs (gear/equip_base.h, units/weaponmaster_base.h).
+#include "openspiel/action_vocab.h"
 #include "engine/deck_ops.h"
 #include "engine/trash_replacement.h"
 #include "cards/card.h"
@@ -753,6 +754,17 @@ inline Intent declineChoice(PlayerId p, const std::string& label) {
 inline int takenValue(CardContext& ctx, int fallback) {
     auto c = ctx.executor.takeChoice();
     return (c && c->chosen_value.has_value()) ? *c->chosen_value : fallback;
+}
+
+// ── Things done at once, one after another ──────────────────────────────────
+/// Put `ids` in an order of what the players see of them (openspiel::
+/// sortObjectsAsSeen, as the turn player sees them), for an effect that does
+/// at once what the engine does one object at a time ("kill all gear"): the
+/// order they go to a trash in, and what is announced first, must not follow
+/// object ids (batch 5d N1). Units killed together use a DeathBatch, which
+/// does this itself.
+inline void inSeenOrder(const GameState& state, std::vector<GameObjectId>& ids) {
+    openspiel::sortObjectsAsSeen(state, ids, state.turn.turn_player);
 }
 
 // ── Picking an object without "choosing" it ─────────────────────────────────

@@ -159,8 +159,18 @@ std::string firstDifference(const Shown& a, const Shown& b) {
     if (a.knowable != b.knowable) {
         size_t i = 0;
         while (i < std::min(a.knowable.size(), b.knowable.size()) && a.knowable[i] == b.knowable[i]) ++i;
+        int64_t section = 0;
+        for (size_t k = 0; k <= i && k < a.knowable.size(); ++k)
+            if (a.knowable[k] <= -1001 && a.knowable[k] >= -1008) section = a.knowable[k];
+        std::string around = " section " + std::to_string(section);
+        for (const auto* v : {&a.knowable, &b.knowable}) {
+            around += " [";
+            for (size_t k = i > 12 ? i - 12 : 0; k < std::min(v->size(), i + 12); ++k)
+                around += (k == i ? "*" : "") + std::to_string((*v)[k]) + ",";
+            around += "]";
+        }
         return "the per-observer queries differ (ObserverView::fingerprint, at " +
-               std::to_string(i) + " of " + std::to_string(a.knowable.size()) + ")";
+               std::to_string(i) + " of " + std::to_string(a.knowable.size()) + ")" + around;
     }
     if (!(a.prompt == b.prompt)) {
         if (a.prompt.text != b.prompt.text)
@@ -576,7 +586,12 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
         const std::string where = deckName(g) + " seed " + std::to_string(seed);
         std::string last_choice;   // the decision before, for a divergence report
         for (int n = 0; n < 4000; ++n) {
-            if (stateKey(a.state()) != stateKey(b.state())) {
+            // Both games over with one winner: the same game to its end (what
+            // is left on the chain of a game that has ended — triggers nobody
+            // ordered — is nobody's to see); its last log lines are compared below.
+            const bool both_over = a.isStepDone() && b.isStepDone() &&
+                                   a.state().winner == b.state().winner;
+            if (!both_over && stateKey(a.state()) != stateKey(b.state())) {
                 if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
                     const std::string ka = stateKey(a.state()), kb = stateKey(b.state());
                     size_t k = 0;
@@ -585,6 +600,16 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                     std::cout << "  diverged: " << where << " decision " << n << " after "
                               << last_choice << ": ..." << ka.substr(from, 140) << " | ..."
                               << kb.substr(from, 140) << "\n";
+                    for (const GameEngine* e : {&a, &b}) {
+                        std::cout << "    chain:";
+                        for (const auto& ci : e->state().chain.items)
+                            std::cout << " [" << (e->state().objectExists(ci.source) ? e->state().getObject(ci.source).name.get() : "?")
+                                      << " batch " << ci.trigger_batch << (ci.batch_ordered ? " ordered" : "")
+                                      << " st " << static_cast<int>(ci.status) << "]";
+                        std::cout << " | prompt " << toString(e->currentStep().prompt.kind) << " '"
+                                  << e->currentStep().prompt.question << "'\n";
+                    }
+                    for (const auto& l : tap_a.lines[0]) std::cout << "      A| " << l << "\n";
                 }
                 ++diverged;   // handled in the table's order: another game now
                 break;
@@ -657,6 +682,32 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                             }
                         }
                     }
+                    if (std::getenv("RIFTBOUND_LEAK_VERBOSE") && va.knowable != vb.knowable) {
+                        for (const GameEngine* e : {&a, &b}) {
+                            const auto& st = e->state();
+                            std::cout << "  -- game " << (e == &a ? "A" : "B") << " board:\n";
+                            for (const auto& f : ObserverView(st, who, *db_, registry_).board()) {
+                                std::cout << "   " << st.getObject(f.id).name.get() << " m" << f.might
+                                          << " d" << f.damage << " kw" << f.keywords << " des"
+                                          << static_cast<int>(f.designation) << " :";
+                                for (auto v : openspiel::visibleObjectDescription(st, f.id, who))
+                                    std::cout << v << ",";
+                                std::cout << "\n";
+                            }
+                            std::cout << "   chain:";
+                            for (const auto& c : ObserverView(st, who, *db_, registry_).chain()) {
+                                std::cout << " [" << c.position << " "
+                                          << (st.objectExists(c.source) ? st.getObject(c.source).name.get() : "?")
+                                          << " subj " << (st.objectExists(c.subject) ? st.getObject(c.subject).name.get() : "-")
+                                          << " targets";
+                                for (auto t : c.targets) std::cout << " " << (st.objectExists(t) ? st.getObject(t).name.get() : "?");
+                                std::cout << " chosen";
+                                for (auto t : c.chosen) std::cout << " " << (st.objectExists(t) ? st.getObject(t).name.get() : "?");
+                                std::cout << "]";
+                            }
+                            std::cout << "\n";
+                        }
+                    }
                     problem(where + " decision " + std::to_string(n) + " (shown to " +
                             toString(who) + "): " + firstDifference(va, vb));
                     ok = false;
@@ -678,6 +729,10 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
     for (const auto& p : problems) ADD_FAILURE() << p;
     EXPECT_EQ(renamed, games) << "the salt did not change the ids";
     EXPECT_GT(decisions, 50L * games) << "too few decisions compared";
+    // Nothing done at once follows the object table's order any more (batch
+    // 5d N1): (nearly) every pair is the same game to its end.
+    EXPECT_LE(diverged * 50, static_cast<long>(games))
+        << diverged << " of " << games << " pairs became other games under other ids";
     std::cout << "[ hidden order, relabelled: " << games << " game pairs (" << finished
               << " compared to the end, " << diverged
               << " became other games by the table's order), " << decisions

@@ -222,7 +222,9 @@ std::vector<int64_t> ObserverView::fingerprint() const {
         for (const auto& r : rows) out.insert(out.end(), r.begin(), r.end());
     };
 
+    // (Section markers, -1001.., make a difference easy to place.)
     // The turn and the timing window.
+    put(out, -1001);
     const TimingFacts t = timing();
     put(out, static_cast<int>(t.phase));
     put(out, t.turn_number);
@@ -236,6 +238,7 @@ std::vector<int64_t> ObserverView::fingerprint() const {
 
     for (PlayerId p : {observer_, opponent(observer_)}) {
         const auto& ps = state_.player(p);
+        put(out, -1002);
         put(out, ps.score);
         put(out, ps.xp);
         put(out, handSize(p));
@@ -249,6 +252,7 @@ std::vector<int64_t> ObserverView::fingerprint() const {
         put(out, card(ps.champion_zone));
         put(out, card(ps.legend_zone));
         // Resources.
+        put(out, -1003);
         const ResourceFacts r = resources(p);
         put(out, r.pool.energy); put(out, r.pool.unit_energy); put(out, r.pool.spell_energy);
         put(out, r.pool.showdown_energy); put(out, r.pool.universal_power);
@@ -258,6 +262,7 @@ std::vector<int64_t> ObserverView::fingerprint() const {
         for (int k = 0; k < 4; ++k) { put(out, r.energy[k]); put(out, r.power_any[k]); }
         for (int v : r.power_by_domain) put(out, v);
         // What the observer knows of their hidden zones.
+        put(out, -1004);
         knowledgeList(knowledge_.knownHiddenCards(p), true);
         knowledgeList(knowledge_.knownDeckTop(p), false);
         knowledgeList(knowledge_.knownDeckBottom(p), false);
@@ -267,6 +272,7 @@ std::vector<int64_t> ObserverView::fingerprint() const {
             put(out, knowledge_.unknownCount(p, z));
     }
     // Its own hand and the compositions it knows.
+    put(out, -1005);
     for (auto id : ownHand()) put(out, card(id));
     for (const auto& [c, n] : knowledge_.ownDeckComposition()) { put(out, c.raw()); put(out, n); }
     put(out, -2);
@@ -274,6 +280,7 @@ std::vector<int64_t> ObserverView::fingerprint() const {
     put(out, -2);
 
     // The board, with the derived facts.
+    put(out, -1006);
     for (const auto& b : battlefields()) {
         put(out, static_cast<int64_t>(b.id.raw()));
         put(out, static_cast<int64_t>(b.card.raw()));
@@ -284,17 +291,31 @@ std::vector<int64_t> ObserverView::fingerprint() const {
         optPlayer(b.attacker); optPlayer(b.defender);
         put(out, b.facedown);
     }
-    for (const auto& f : board()) {
-        object(f.id);
-        put(out, f.might); put(out, f.keywords);
-        put(out, f.assault); put(out, f.shield); put(out, f.deflect);
-        put(out, f.damage); put(out, f.lethal);
-        put(out, f.exhausted); put(out, f.stunned); put(out, f.buffs); put(out, f.empowered);
-        put(out, static_cast<int>(f.designation));
-        location(f.location);
-        if (f.attached_to != kInvalidId) object(f.attached_to); else put(out, -3);
+    put(out, -1007);
+    {
+        // One row per object, the rows as a set: two objects that look the
+        // same are told apart only by what they are attached to, and the
+        // board's order breaks such ties by object id.
+        std::vector<std::vector<int64_t>> rows;
+        for (const auto& f : board()) {
+            std::vector<int64_t> row;
+            std::swap(out, row);
+            object(f.id);
+            put(out, f.might); put(out, f.keywords);
+            put(out, f.assault); put(out, f.shield); put(out, f.deflect);
+            put(out, f.damage); put(out, f.lethal);
+            put(out, f.exhausted); put(out, f.stunned); put(out, f.buffs); put(out, f.empowered);
+            put(out, static_cast<int>(f.designation));
+            location(f.location);
+            if (f.attached_to != kInvalidId) object(f.attached_to); else put(out, -3);
+            std::swap(out, row);
+            rows.push_back(std::move(row));
+        }
+        std::sort(rows.begin(), rows.end());
+        for (const auto& r : rows) out.insert(out.end(), r.begin(), r.end());
     }
     // The chain with its links.
+    put(out, -1008);
     for (const auto& c : chain()) {
         put(out, c.position); put(out, c.resolving); put(out, rel(c.controller));
         object(c.source);

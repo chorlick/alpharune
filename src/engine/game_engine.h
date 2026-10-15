@@ -939,6 +939,8 @@ private:
     /// abilities first (the attacker's in a combat-start batch, CR 466.2.d.1),
     /// each player choosing the order of their own when it can differ.
     void orderPendingTriggers();
+    std::vector<ChainItemId> canonicalBatchOrder(const std::vector<ChainItemId>& ids);
+    std::string triggerOrderLabel(const ChainItem& ci) const;
     /// CR 355.1.a / 805: the choice to pay [Accelerate] is made before the
     /// unit's cost is paid, and the cost is paid with it. Returns the cost
     /// adjustment to pay with (the Accelerate cost added when chosen) and

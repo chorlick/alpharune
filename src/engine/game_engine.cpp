@@ -1925,8 +1925,129 @@ void GameEngine::makeNewChoicesFor(ChainItemId item_id) {
 // Turn Order, each player orders their Triggered Abilities on the Chain."
 // What is simultaneous is ChainItem::trigger_batch. The first one placed is
 // the lowest: it is finalized first and resolves last.
+// The pending items `ids` of one trigger batch, put in an order of what both
+// players see of each ability (its source's card where both may see it, what
+// fired it, how the source and its subject stand) in their own places on the
+// chain, so that the chain, the order prompt's options and every decision met
+// before the batch is ordered do not depend on ids (batch 5b item T2, batch 5d
+// N1); the order queued decides only between abilities nobody can tell apart.
+// Returns the new order.
+std::string GameEngine::triggerOrderLabel(const ChainItem& ci) const {
+    std::string l = state_.objectExists(ci.source) ? state_.getObject(ci.source).name.get()
+                                                   : std::string("?");
+    if (ci.keyword_ability.has_value()) l += std::string(" [") + toString(*ci.keyword_ability) + "]";
+    if (ci.equipped_unit != kInvalidId && state_.objectExists(ci.equipped_unit))
+        l += " on " + state_.getObject(ci.equipped_unit).name;
+    else if (ci.triggering_subject != kInvalidId && ci.triggering_subject != ci.source &&
+             state_.objectExists(ci.triggering_subject))
+        l += " (" + state_.getObject(ci.triggering_subject).name + ")";
+    return l;
+}
+
+std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<ChainItemId>& ids) {
+    auto itemOf = [this](ChainItemId id) -> const ChainItem* {
+        for (const auto& ci : state_.chain.items) if (ci.id == id) return &ci;
+        return nullptr;
+    };
+    auto label = [this](const ChainItem& ci) { return triggerOrderLabel(ci); };
+    auto placeInOrder = [&](const std::vector<ChainItemId>& order) {
+        std::vector<ChainItem> in_order;
+        for (auto id : order)
+            if (const ChainItem* ci = itemOf(id)) in_order.push_back(*ci);
+        size_t n = 0;
+        for (auto& ci : state_.chain.items) {
+            if (n >= in_order.size()) break;
+            if (std::find(ids.begin(), ids.end(), ci.id) == ids.end()) continue;
+            ci = in_order[n++];
+        }
+    };
+    auto publicKey = [&](ChainItemId id) {
+        const ChainItem* ci = itemOf(id);
+        std::string text;
+        int64_t fired = -1, kw = -1;
+        std::vector<int64_t> where;   // the source as both players see it
+        if (ci) {
+            const bool seen_by_both =
+                knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
+                knowledge::identityVisible(state_, ci->source, PlayerId::Player2);
+            if (seen_by_both) text = label(*ci);
+            fired = static_cast<int64_t>(ci->fired_trigger);
+            if (ci->keyword_ability.has_value())
+                kw = static_cast<int64_t>(*ci->keyword_ability);
+            // Two copies of one card triggering together: told apart by
+            // where they are and how they stand, not by which was queued
+            // first (the table's order). The same for what each is about
+            // (its subject, the unit an Equipment is on): one ability
+            // triggered by two units dying together (batch 5d N1).
+            auto standing = [&](GameObjectId id) {
+                if (id == kInvalidId || !state_.objectExists(id) ||
+                    !knowledge::identityVisible(state_, id, PlayerId::Player1) ||
+                    !knowledge::identityVisible(state_, id, PlayerId::Player2)) {
+                    where.push_back(-9);
+                    return;
+                }
+                const GameObject& o = state_.getObject(id);
+                where.push_back(static_cast<int64_t>(o.card_def_id.raw()));
+                where.push_back(static_cast<int64_t>(o.zone.get()));
+                if (!o.location.has_value()) {
+                    // Off the board: its place in a public pile.
+                    int64_t at = -1;
+                    if (o.owner == PlayerId::Player1 || o.owner == PlayerId::Player2) {
+                        const auto& ps = state_.player(o.owner);
+                        const auto& pile = o.zone.get() == ZoneType::Trash ? ps.trash
+                                                                            : ps.banishment;
+                        const auto it = std::find(pile.begin(), pile.end(), id);
+                        if (it != pile.end()) at = it - pile.begin();
+                    }
+                    where.push_back(-1);
+                    where.push_back(at);
+                } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
+                    where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
+                } else {
+                    where.push_back(static_cast<int64_t>(
+                        std::get<BaseLocation>(*o.location).player));
+                }
+                where.push_back(o.current_might);
+                where.push_back(o.damage_marked);
+                where.push_back(o.is_exhausted);
+                where.push_back(o.is_stunned);
+                where.push_back(o.buff_count);
+            };
+            if (seen_by_both && state_.objectExists(ci->source)) standing(ci->source);
+            if (ci->triggering_subject != ci->source) standing(ci->triggering_subject);
+            standing(ci->equipped_unit);
+        }
+        return std::make_tuple(std::move(text), fired, kw, std::move(where));
+    };
+    std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
+                          ChainItemId>> keyed;
+    for (auto id : ids) keyed.emplace_back(publicKey(id), id);
+    std::stable_sort(keyed.begin(), keyed.end(),
+                     [](const auto& x, const auto& y) { return x.first < y.first; });
+    std::vector<ChainItemId> canonical;
+    for (auto& [k, id] : keyed) canonical.push_back(id);
+    placeInOrder(canonical);
+    return canonical;
+}
+
 void GameEngine::orderPendingTriggers() {
     auto isPending = [](const ChainItem& ci) { return ci.status == ChainItemStatus::Pending; };
+    // Every batch still waiting is in an order of what the players see before
+    // anything is asked: a prompt met while finalizing an older item must not
+    // show the later batches in the order they were queued (batch 5d N1).
+    {
+        std::vector<uint32_t> waiting;
+        for (const auto& ci : state_.chain.items)
+            if (isPending(ci) && ci.trigger_batch != 0 && !ci.batch_ordered &&
+                std::find(waiting.begin(), waiting.end(), ci.trigger_batch) == waiting.end())
+                waiting.push_back(ci.trigger_batch);
+        for (uint32_t b : waiting) {
+            std::vector<ChainItemId> members;
+            for (const auto& ci : state_.chain.items)
+                if (isPending(ci) && ci.trigger_batch == b) members.push_back(ci.id);
+            if (members.size() > 1) canonicalBatchOrder(members);
+        }
+    }
     const auto oldest = std::find_if(state_.chain.items.begin(), state_.chain.items.end(),
                                      isPending);
     if (oldest == state_.chain.items.end()) return;
@@ -1954,17 +2075,7 @@ void GameEngine::orderPendingTriggers() {
                a.triggering_subject == b.triggering_subject &&
                a.equipped_unit == b.equipped_unit && a.keyword_ability == b.keyword_ability;
     };
-    auto label = [this](const ChainItem& ci) {
-        std::string l = state_.objectExists(ci.source) ? state_.getObject(ci.source).name.get()
-                                                       : std::string("?");
-        if (ci.keyword_ability.has_value()) l += std::string(" [") + toString(*ci.keyword_ability) + "]";
-        if (ci.equipped_unit != kInvalidId && state_.objectExists(ci.equipped_unit))
-            l += " on " + state_.getObject(ci.equipped_unit).name;
-        else if (ci.triggering_subject != kInvalidId && ci.triggering_subject != ci.source &&
-                 state_.objectExists(ci.triggering_subject))
-            l += " (" + state_.getObject(ci.triggering_subject).name + ")";
-        return l;
-    };
+    auto label = [this](const ChainItem& ci) { return triggerOrderLabel(ci); };
 
     // Rewrite the batch's own places on the chain in the order of `order`.
     auto placeInOrder = [&](const std::vector<ChainItemId>& order) {
@@ -1979,57 +2090,8 @@ void GameEngine::orderPendingTriggers() {
         }
     };
     // The batch was queued in the object table's order, which follows object
-    // ids. Put it in an order of what both players see of each ability (its
-    // source's card where both may see it, what fired it), so that the chain
-    // and the order prompt's options do not depend on ids (batch 5b item T2);
-    // the order queued decides only between abilities nobody can tell apart.
-    {
-        auto publicKey = [&](ChainItemId id) {
-            const ChainItem* ci = itemOf(id);
-            std::string text;
-            int64_t fired = -1, kw = -1;
-            std::vector<int64_t> where;   // the source as both players see it
-            if (ci) {
-                const bool seen_by_both =
-                    knowledge::identityVisible(state_, ci->source, PlayerId::Player1) &&
-                    knowledge::identityVisible(state_, ci->source, PlayerId::Player2);
-                if (seen_by_both) text = label(*ci);
-                fired = static_cast<int64_t>(ci->fired_trigger);
-                if (ci->keyword_ability.has_value())
-                    kw = static_cast<int64_t>(*ci->keyword_ability);
-                // Two copies of one card triggering together: told apart by
-                // where they are and how they stand, not by which was queued
-                // first (the table's order).
-                if (seen_by_both && state_.objectExists(ci->source)) {
-                    const GameObject& o = state_.getObject(ci->source);
-                    where.push_back(static_cast<int64_t>(o.zone.get()));
-                    if (!o.location.has_value()) {
-                        where.push_back(-1);
-                    } else if (const auto* bf = std::get_if<BattlefieldLocation>(&*o.location)) {
-                        where.push_back(100 + static_cast<int64_t>(bf->id.raw()));
-                    } else {
-                        where.push_back(static_cast<int64_t>(
-                            std::get<BaseLocation>(*o.location).player));
-                    }
-                    where.push_back(o.current_might);
-                    where.push_back(o.damage_marked);
-                    where.push_back(o.is_exhausted);
-                    where.push_back(o.is_stunned);
-                    where.push_back(o.buff_count);
-                }
-            }
-            return std::make_tuple(std::move(text), fired, kw, std::move(where));
-        };
-        std::vector<std::pair<std::tuple<std::string, int64_t, int64_t, std::vector<int64_t>>,
-                              ChainItemId>> keyed;
-        for (auto id : ids) keyed.emplace_back(publicKey(id), id);
-        std::stable_sort(keyed.begin(), keyed.end(),
-                         [](const auto& x, const auto& y) { return x.first < y.first; });
-        std::vector<ChainItemId> canonical;
-        for (auto& [k, id] : keyed) canonical.push_back(id);
-        placeInOrder(canonical);
-        ids = canonical;
-    }
+    // ids: put it in an order of what both players see (canonicalBatchOrder).
+    ids = canonicalBatchOrder(ids);
 
     std::vector<ChainItemId> ordered;
     for (int pass = 0; pass < 2; ++pass) {
@@ -4596,6 +4658,10 @@ void GameEngine::executeMulligan(const Intent& intent) {
     // Recycle set-aside cards to bottom of deck in random order (CR 118.3)
     // The owner knows which cards went down, not their order; the opponent
     // knows only how many.
+    // Shuffled from an order of the cards, not of their ids (batch 5d N1).
+    std::stable_sort(set_aside.begin(), set_aside.end(), [&](GameObjectId a, GameObjectId b) {
+        return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+    });
     std::shuffle(set_aside.begin(), set_aside.end(), rng_);
     std::vector<deck::Placed> placed;
     for (auto card_id : set_aside) {
@@ -8188,8 +8254,12 @@ void GameEngine::processLethalDamage() {
             RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
         to_kill.push_back(id);
     }
-    // They die at the same time: each one's last-known information is taken
-    // while all of them are still on the board.
+    // They die at the same time; the engine kills them one after another, in
+    // an order of what the players see (they are on the board), not in the
+    // object table's (batch 5d N1: it is the order they enter the trash).
+    openspiel::sortObjectsAsSeen(state_, to_kill, state_.turn.turn_player);
+    // Each one's last-known information is taken while all of them are still
+    // on the board.
     const DeathBatchMark batch = effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);

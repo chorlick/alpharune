@@ -4,6 +4,7 @@
 
 #include "cards/card.h"
 #include "cards/card_registry.h"
+#include "openspiel/action_vocab.h"
 #include "engine/deck_ops.h"
 #include "engine/trash_replacement.h"
 #include "cards/card_helpers.h"
@@ -245,6 +246,11 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     mark.first_item = state_.chain.next_id;
     mark.oc_state = state_.turn.oc_state;
     mark.chain_was_empty = state_.chain.items.empty();
+    if (units.size() > 1) {
+        mark.seen_order = units;
+        openspiel::sortObjectsAsSeen(state_, mark.seen_order, state_.turn.turn_player);
+        for (int p = 0; p < 2; ++p) mark.trash_size[p] = state_.players[p].trash.size();
+    }
     // The units of a batch die at the same time: what their deaths trigger is
     // one batch of simultaneous triggers (CR 383.3.d). Closed in endDeathBatch.
     if (state_.chain.trigger_batch_holds++ == 0)
@@ -474,6 +480,27 @@ void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
     if (items.size() != before && items.empty() && mark.chain_was_empty &&
         !state_.chain.resuming.has_value())
         state_.turn.oc_state = mark.oc_state;
+    // The members that went to a trash, in the batch's seen order (N1).
+    if (!mark.seen_order.empty()) {
+        auto rank = [&](GameObjectId id) {
+            return std::find(mark.seen_order.begin(), mark.seen_order.end(), id) -
+                   mark.seen_order.begin();
+        };
+        for (int p = 0; p < 2; ++p) {
+            auto& trash = state_.players[p].trash;
+            std::vector<size_t> at;
+            std::vector<GameObjectId> members;
+            for (size_t i = std::min(mark.trash_size[p], trash.size()); i < trash.size(); ++i)
+                if (std::find(units.begin(), units.end(), trash[i]) != units.end()) {
+                    at.push_back(i);
+                    members.push_back(trash[i]);
+                }
+            if (members.size() < 2) continue;
+            std::stable_sort(members.begin(), members.end(),
+                             [&](GameObjectId a, GameObjectId b) { return rank(a) < rank(b); });
+            for (size_t k = 0; k < at.size(); ++k) trash[at[k]] = members[k];
+        }
+    }
 }
 
 void EffectExecutor::snapshotLastKnown(GameObjectId id, bool dying) {
@@ -1872,6 +1899,15 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
             shuffleable.push_back(cid);
         }
     }
+    // The random order (CR 417.5) is drawn from an order of the cards, not of
+    // the list the caller built (which may follow object ids): the deck that
+    // results is a function of which cards go down (batch 5d N1). Runes go
+    // down in their owner's order (CR 417.5.a): by card.
+    auto byCard = [&](GameObjectId a, GameObjectId b) {
+        return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+    };
+    std::stable_sort(shuffleable.begin(), shuffleable.end(), byCard);
+    std::stable_sort(rune_ordered.begin(), rune_ordered.end(), byCard);
     if (rng_) {
         std::shuffle(shuffleable.begin(), shuffleable.end(), *rng_);
     }

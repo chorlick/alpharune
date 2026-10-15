@@ -793,9 +793,12 @@ TEST_F(C3Test, DragUnder_CostsTwoLessWhenAnEffectPlaysItFromOutsideTheHand) {
     // plays it off the deck: 5 - 2 (Void Rush) - 2 (its own) = [1] + [O].
     auto drag = addToDeck(P1, kDragUnder);
     auto spell = addToHand(P1, kVoidRush);
+    // "Kill a unit at a battlefield": a target to choose (CR 355.8: with none
+    // it is not played — batch 3, D57).
+    auto victim = addUnit(P2, kInvalidId, 2, 0);
     state.player(P1).rune_pool.energy += 1;
     state.player(P1).rune_pool.universal_power += 1;
-    StepAgent agent{V(1), O(drag)};
+    StepAgent agent{V(1), O(drag), O(victim)};
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0) << "affordable only with its own [2] reduction";
     EXPECT_TRUE(inTrash(P1, drag)) << "played, resolved, in the trash";

@@ -744,6 +744,7 @@ TEST_F(CostPaymentRulesTest, EffectPlay_FullCostIsChargedThroughTheNormalPath) {
     rune(P1, Domain::Body);
     auto spell = cardInHand(P1, kPunchFirst);      // [1] + 2 Body power
     s().player(P1).hand.clear();
+    engineUnit(P1, 2, 0);   // its target (CR 355.8: no target, no play — batch 3)
     auto& exec = engine_->testHook_executor();
 
     ASSERT_TRUE(exec.canPlayPayingCost(P1, spell));
@@ -758,6 +759,7 @@ TEST_F(CostPaymentRulesTest, EffectPlay_IgnoringEnergyStillChargesPower) {
     rune(P1, Domain::Body, /*exhausted=*/true);    // no Energy available at all
     auto spell = cardInHand(P1, kPunchFirst);
     s().player(P1).hand.clear();
+    engineUnit(P1, 2, 0);   // its target (CR 355.8: no target, no play — batch 3)
     auto& exec = engine_->testHook_executor();
 
     EXPECT_FALSE(exec.canPlayPayingCost(P1, spell)) << "the [1] can't be paid";

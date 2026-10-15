@@ -612,6 +612,33 @@ private:
     /// the chain.
     void finishPlaySpell(const Intent& intent, std::vector<GameObjectId> play_targets,
                          bool target_chosen_at_play, std::vector<GameObjectId> cost_targets);
+    /// A spell's choices, made as it is played and before its cost is
+    /// determined and paid (CR 355 -> 356): its play-time target (one an
+    /// effect play must ask for too: a spell whose one required target a play
+    /// intent would name — `by_effect`) and the whole finalize pass of a
+    /// kFinalizeResolve spell (kept in `prefinalized_spell_` for the chain
+    /// item). `play_targets` comes in as the intent's targets. Returns false
+    /// only for an effect play that has no legal choice for a required
+    /// target: it cannot be played (CR 355.8), and nothing was paid.
+    bool chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id, bool via_trash_grant,
+                                  bool by_effect, std::vector<GameObjectId>& play_targets,
+                                  bool& target_chosen_at_play,
+                                  std::vector<GameObjectId>& cost_targets);
+    /// The cost a spell's choices left for the cost step (ChainItem::
+    /// cost_deferred), paid by running its pass again (CR 357.2).
+    void payDeferredSpellCost(GameObjectId card_id);
+    /// Whether an effect may play `card_id` paying its cost (with what the
+    /// effect waives staged): its cost, and for a spell a legal choice for
+    /// each target it asks as it is played, with that target's Deflect.
+    bool effectPlayAffordable(PlayerId player, GameObjectId card_id) const;
+    /// An effect play of a spell that pays (EffectExecutor::playPayingCost):
+    /// the targets chosen before its cost, for its chain item.
+    struct EffectPlayedSpell {
+        GameObjectId card = kInvalidId;
+        std::vector<GameObjectId> targets;
+        bool target_chosen_at_play = false;
+    };
+    std::optional<EffectPlayedSpell> effect_played_spell_;
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);

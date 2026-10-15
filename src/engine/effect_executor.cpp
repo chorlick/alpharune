@@ -2973,6 +2973,10 @@ bool EffectExecutor::playPayingCost(PlayerId player, GameObjectId card,
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return false;
+    // A new play: what an earlier play of this card paid is forgotten here,
+    // as it begins (Card::forgetPlayPayments) — not after this play's own
+    // additional cost has set its flags (testing phase K1).
+    Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     // "As you play me" choices come before the cost (CR 355.1 -> 356); only
     // for a play that is going to be paid for.
     if (!can_afford_ || can_afford_(player, card)) makeAsYouPlayChoices(player, card);
@@ -3001,6 +3005,9 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
     if (state_.getObject(card).isUnit() && location.has_value() &&
         !unitMayBePlayedTo(player, *location))
         return playIgnoringCostDecided(player, card, location, -1);   // not played
+    // A new play, and nothing is paid for it: what an earlier play of this
+    // card paid is forgotten (Card::forgetPlayPayments).
+    Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     makeAsYouPlayChoices(player, card);   // CR 355.1
     return playIgnoringCostDecided(player, card, location, -1);
 }
@@ -3025,9 +3032,9 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     bool accelerated = accelerate == 2;
     if (accelerate < 0 && obj.isUnit() && offer_accelerate_)
         accelerated = offer_accelerate_(player, card, obj.zone == ZoneType::Hand);
-    // A new play, and nothing is paid for it: what an earlier play of this
-    // card paid is forgotten (Card::forgetPlayPayments).
-    Card::forgetPlayPayments(state_, cardFor(obj.card_def_id), player, card);
+    // (What an earlier play of this card paid was forgotten as this play
+    // began: playIgnoringCost / playPayingCost. Not here — this play's own
+    // additional cost and [Accelerate] are already recorded; testing phase K1.)
 
     // A played card leaves the zone it is played from. Done here so no caller
     // can leave it listed in a hand, trash, banishment or deck while it is

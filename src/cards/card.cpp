@@ -58,6 +58,13 @@ bool Card::costDueNow(CardContext& ctx) {
     if (!r.has_value()) return true;
     if (r->finalizing) {
         if (r->finalize_costs_paid) return false;   // paid earlier in this pass
+        // A spell choosing before its cost is paid (CR 355 -> 357): the
+        // cost is paid in the cost step, with the Energy and Power (CR
+        // 357.2), by a run of this callback after them.
+        if (r->pre_play_choices) {
+            r->cost_deferred = true;
+            return false;
+        }
         if (!(r->finalize_checked & 32)) {
             // First "due" of this run: remember the state, so the engine can
             // tell whether the card went on to pay before asking a question.

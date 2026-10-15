@@ -698,6 +698,12 @@ struct ChainItem {
     // This spell's choices are being made before it is on the chain (and
     // before its cost is paid): "chosen" events are held until it is.
     bool pre_play_choices = false;
+    // A cost the card pays under Card::costDueNow was met in that pass and
+    // left for the cost step: a spell's additional cost ("kill a friendly
+    // unit", "exhaust a friendly unit", "spend 5 XP") is paid with its
+    // Energy and Power (CR 357.2), not as its choices are made
+    // (GameEngine::finishPlaySpell; testing phase F6).
+    bool cost_deferred = false;
 
     // ── Repeat (CR 820) — optional additional cost ──
     // `repeats_paid` is the number of times the Repeat cost was paid as

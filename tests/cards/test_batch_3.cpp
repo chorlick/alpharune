@@ -87,6 +87,16 @@ constexpr CardDefId kHoneyfruit = 611;
 constexpr CardDefId kDianaLunari = 641;
 constexpr CardDefId kUndertitan = 495;
 constexpr CardDefId kJhinMurderousArtist = 584;
+constexpr CardDefId kWildClaw = 876;
+constexpr CardDefId kZaunPunk = 481;
+constexpr CardDefId kSacrifice = 735;
+constexpr CardDefId kTheBoss = 264;
+constexpr CardDefId kHeedlessResurrection = 704;
+constexpr CardDefId kFizzTrickster = 461;
+constexpr CardDefId kPunchFirst = 419;
+constexpr CardDefId kSmokeScreen = 93;
+constexpr CardDefId kSmite = 568;
+constexpr CardDefId kVoidRush = 505;
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -546,6 +556,21 @@ TEST_F(Batch3Test, D8_DefiantDanceNeedsTwoUnits) {
     EXPECT_FALSE(offered(card)) << "\"another unit\"";
     addUnit(P2, kInvalidId, 2, 0);
     EXPECT_TRUE(offered(card));
+}
+
+// Fuzz finding (seeds 5507695139391896804 16390680603618962191 235069363,
+// random-player): a pair spell that declares no target requirements was
+// offered on its cost alone, and its pass found every pair too dear with the
+// enemy's Deflect. Defiant Dance [1][Calm/Chaos]: a friendly unit and an enemy
+// [Deflect] unit, Energy and Power for the spell but not for the Deflect.
+TEST_F(Batch3Test, D8_DefiantDanceIsNotOfferedWhenEveryPairCarriesADeflectItCannotPay) {
+    auto card = addToHand(P1, kDefiantDance);
+    fund(P1, 1, 1);
+    addUnit(P1, kInvalidId, 2, 0);
+    addUnit(P2, kPoutyPoro, 0, 0);
+    EXPECT_FALSE(offered(card)) << "the only pair chooses the [Deflect] unit (CR 355.8, 809)";
+    fund(P1, 0, 1);
+    EXPECT_TRUE(offered(card)) << "with the Deflect's [A] it is payable";
 }
 
 TEST_F(Batch3Test, D8_FacebreakerNeedsAFriendlyAndAnEnemyUnitAtOneBattlefield) {
@@ -1339,6 +1364,193 @@ TEST_F(Batch3Test, D8_Sweep_NoOfferedSpellIsPlayedWithoutARequiredTarget) {
     std::string all;
     for (const auto& m : misses) all += "\n  " + m;
     EXPECT_TRUE(misses.empty()) << misses.size() << " plays met a required choice with nothing to choose:" << all;
+}
+
+// ─── K1: an effect play that pays keeps what that play paid ─────────────────
+// Wild Claw plays Zaun Punk from the top of the deck paying its cost; Zaun
+// Punk's optional additional cost (kill a friendly gear) is paid as part of
+// that play (CR 356.2.b), so "if you paid the additional cost" holds.
+TEST_F(Batch3Test, K1_ZaunPunkPlayedByWildClawRemembersItsPaidAdditionalCost) {
+    auto mine = addGear(P1, kLongSword);
+    auto theirs = addGear(P2, kLongSword);
+    auto punk = addToDeck(P1, kZaunPunk);
+    auto claw = addToHand(P1, kWildClaw);
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(punk.raw()), 1, static_cast<int>(mine.raw()),
+         static_cast<int>(theirs.raw()), 0}));
+    playThroughEngine(claw, &agent);
+    ASSERT_TRUE(onBoard(punk)) << "Wild Claw played it";
+    EXPECT_FALSE(onBoard(mine)) << "the additional cost was paid";
+    EXPECT_FALSE(onBoard(theirs)) << "\"if you paid the additional cost, kill a gear\"";
+}
+
+// ─── F6: a spell's "kill a friendly unit" is paid with its Energy and Power ──
+// (CR 357.2 "In addition, pay any non-standard Cost ... in any order"; 357.2.a
+// a replaced cost is still paid.) Fuzz finding: the unit was killed as the
+// choice was made, The Boss's replacement took the one rune, and the spell was
+// left unpayable (engine error "made choices it cannot be paid for with").
+TEST_F(Batch3Test, F6_SacrificeWithTheBossPaysTheEnergyFirstAndTheReplacementFromWhatIsLeft) {
+    legendOf(P1, kTheBoss);
+    addRune(P1, Domain::Order);
+    deckOf(P1, 4);
+    auto big = addUnit(P1, kInvalidId, 5, 0);
+    o(big).buff_count = 1;
+    auto card = addToHand(P1, kSacrifice);
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(big.raw()), EnginePathAgent::kFirst, 1, EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    // The unit; the rune exhausted for the Energy; then The Boss's "may" —
+    // asked once the Energy is paid, and payable by recycling that rune.
+    ASSERT_GE(agent.prompts.size(), 3u);
+    EXPECT_TRUE(onBoard(big)) << "The Boss replaced the death";
+    EXPECT_TRUE(o(big).isAtBase()) << "healed, exhausted and recalled";
+    EXPECT_EQ(ps(P1).hand.size(), 2u) << "the replaced cost is still paid: draw 2 (CR 357.2.a)";
+}
+
+TEST_F(Batch3Test, F6_HeedlessResurrectionKillsItsUnitAfterTheRunesArePaid) {
+    for (int i = 0; i < 3; ++i) addRune(P1, Domain::Chaos);
+    auto victim = addUnit(P1, kInvalidId, 3, 0);
+    auto card = addToHand(P1, kHeedlessResurrection);
+    // Reads the game it is asked in (the live state, not the fixture's).
+    struct Notes : EnginePathAgent {
+        GameObjectId victim;
+        std::vector<bool> victim_on_board_at_rune_prompt;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            for (const auto& i : legal)
+                if (i.type == IntentType::MakeChoice && !i.chosen_objects.empty() &&
+                    st.objectExists(i.chosen_objects[0]) &&
+                    st.getObject(i.chosen_objects[0]).isRune()) {
+                    victim_on_board_at_rune_prompt.push_back(
+                        st.getObject(victim).location.has_value());
+                    return i;
+                }
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects[0] == victim) return i;
+            return EnginePathAgent::selectAction(st, legal);
+        }
+    } agent;
+    agent.victim = victim;
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_FALSE(agent.victim_on_board_at_rune_prompt.empty()) << "the runes were asked for";
+    for (bool b : agent.victim_on_board_at_rune_prompt)
+        EXPECT_TRUE(b) << "the unit is killed with the cost, after the Energy and Power (CR 357.2)";
+    EXPECT_FALSE(onBoard(victim)) << "and it was killed";
+}
+
+// ─── G16: an effect play that pays makes the spell's choices first ──────────
+// Fizz plays Punch First ("Give a unit +5 [M] this turn", [1] + 2 Body) from
+// the trash, ignoring its Energy. Its target is chosen before the Power is
+// paid (CR 355 -> 357), and a unit whose Deflect cannot be paid with that
+// Power is not offered (CR 356.2.a.2, 809).
+TEST_F(Batch3Test, G16_FizzAsksPunchFirstsTargetBeforeItsPowerAndOffersOnlyPayableOnes) {
+    auto mine = addUnit(P1, kInvalidId, 2, 0);
+    auto poro = addUnit(P2, kPoutyPoro, 0, 0);
+    for (int i = 0; i < 2; ++i) addRune(P1, Domain::Body);
+    auto punch = addToTrash(P1, kPunchFirst);
+    auto fizz = addToHand(P1, kFizzTrickster);
+    fund(P1, 3, 1);   // Fizz itself
+    struct Notes : EnginePathAgent {
+        GameObjectId punch, mine, poro;
+        std::vector<std::string> order;   // "target" / "rune", as asked
+        bool poro_offered = false;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            const bool is_choice = !legal.empty() && legal.front().type == IntentType::MakeChoice;
+            if (is_choice) {
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == poro) poro_offered = true;
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && st.objectExists(i.chosen_objects[0]) &&
+                        st.getObject(i.chosen_objects[0]).isRune()) {
+                        order.push_back("rune");
+                        return i;
+                    }
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == mine) {
+                        order.push_back("target");
+                        return i;
+                    }
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == punch) return i;
+                for (const auto& i : legal)
+                    if (i.chosen_value == 1) return i;   // Fizz's "may": yes
+            }
+            return EnginePathAgent::selectAction(st, legal);
+        }
+    } agent;
+    agent.punch = punch;
+    agent.mine = mine;
+    agent.poro = poro;
+    playThroughEngine(fizz, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_FALSE(agent.order.empty());
+    EXPECT_EQ(agent.order.front(), "target") << "the target before the Power (CR 355 -> 357)";
+    EXPECT_FALSE(agent.poro_offered) << "its Deflect can't be paid with Punch First's Power";
+    EXPECT_EQ(o(mine).current_might, 7) << "+5 [M]";
+}
+
+// ─── D32 / D57 (B9): a spell an effect plays, whose one target a play intent
+// would name, is asked for it — before its cost when the effect pays ─────────
+TEST_F(Batch3Test, D32_FizzPlaysSmokeScreenWithATargetChosenBeforeItsPower) {
+    auto theirs = addUnit(P2, kInvalidId, 6, 0);
+    addRune(P1, Domain::Mind);
+    auto smoke = addToTrash(P1, kSmokeScreen);
+    auto fizz = addToHand(P1, kFizzTrickster);
+    fund(P1, 3, 1);   // Fizz itself
+    struct Notes : EnginePathAgent {
+        GameObjectId smoke, theirs;
+        std::vector<std::string> order;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            if (!legal.empty() && legal.front().type == IntentType::MakeChoice) {
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && st.objectExists(i.chosen_objects[0]) &&
+                        st.getObject(i.chosen_objects[0]).isRune()) {
+                        order.push_back("rune");
+                        return i;
+                    }
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == theirs) {
+                        order.push_back("target");
+                        return i;
+                    }
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects[0] == smoke) return i;
+                for (const auto& i : legal)
+                    if (i.chosen_value == 1) return i;
+            }
+            return EnginePathAgent::selectAction(st, legal);
+        }
+    } agent;
+    agent.smoke = smoke;
+    agent.theirs = theirs;
+    playThroughEngine(fizz, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_FALSE(agent.order.empty());
+    EXPECT_EQ(agent.order.front(), "target");
+    EXPECT_EQ(o(theirs).current_might, 2) << "-4 [M]: it resolved with its target";
+}
+
+TEST_F(Batch3Test, D57_VoidRushPlaysSmiteAtTheUnitItChooses) {
+    auto victim = addUnit(P2, kInvalidId, 3, 0);
+    addRune(P1, Domain::Fury);
+    auto smite = addToDeck(P1, kSmite);
+    addToDeck(P1, kDredgeUp);
+    auto rush = addToHand(P1, kVoidRush);
+    fund(P1, 2, 1);   // Void Rush itself
+    EnginePathAgent agent(EnginePathAgent::script(
+        {1, static_cast<int>(smite.raw()), static_cast<int>(victim.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(rush, &agent, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_FALSE(onBoard(victim)) << "Deal 3: Smite resolved with its target";
+}
+
+TEST_F(Batch3Test, D57_VoidRushDoesNotOfferSmiteWithNoUnitAtABattlefield) {
+    addUnit(P2, kInvalidId, 3);   // at its base
+    addRune(P1, Domain::Fury);
+    auto smite = addToDeck(P1, kSmite);
+    addToDeck(P1, kDredgeUp);
+    auto rush = addToHand(P1, kVoidRush);
+    fund(P1, 2, 1);
+    EnginePathAgent agent(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    playThroughEngine(rush, &agent, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_FALSE(agent.wasOffered(smite)) << "no legal target, so no play (CR 355.8)";
+    EXPECT_TRUE(inHand(P1, smite)) << "drawn, as a card not banished";
 }
 
 }  // namespace riftbound::test::batch_3

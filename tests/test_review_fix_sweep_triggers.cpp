@@ -1870,6 +1870,9 @@ TEST_F(SweepTriggersTest, DragUnder_PlayedOffTheDeckCostsTwoLess) {
     constexpr CardDefId kDragUnder = 485;
     auto in_deck = addToDeck(P1, kDragUnder);
     auto in_hand = addToHand(P1, kDragUnder);
+    // "Kill a unit at a battlefield": a target for it (CR 355.8: an effect
+    // plays a spell only with a legal target — batch 3, D57).
+    addUnit(P2, kInvalidId, 2, 0);
     state.player(P1).rune_pool.energy = card_db.get(kDragUnder).energy_cost - 2;
     state.player(P1).rune_pool.universal_power = card_db.get(kDragUnder).power_cost;
     withEngine([&](GameEngine& e) {

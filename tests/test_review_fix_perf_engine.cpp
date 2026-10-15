@@ -700,6 +700,44 @@ TEST(PerfEngineTable, QueriesBetweenTwoMovesShareOneWalk) {
     EXPECT_EQ(st.objects.indexRebuilds(), built + 1);
 }
 
+// batch 5c-perf: an update re-reads only the objects that changed (and the
+// whole table order after an object was added or removed). Random moves,
+// additions, removals, copies and swaps, each followed now and then by a
+// query: every answer is what a walk over the table gives.
+TEST(PerfEngineTable, AnUpdateThatReadsOnlyTheChangedObjectsMatchesAWalk) {
+    std::mt19937 rng(20261015);
+    GameState st = scatteredState(50);
+    for (int step = 0; step < 3000; ++step) {
+        const GameObjectId id = GameObjectId::fromRaw(1 + static_cast<int>(rng() % 70));
+        const unsigned what = rng() % 10;
+        if (what == 0) {
+            (void)st.objects[id];                       // added (or already there)
+        } else if (what == 1) {
+            st.objects.erase(id);
+        } else if (st.objects.contains(id)) {
+            GameObject& o = st.getObject(id);
+            if (what < 5) {
+                o.zone = static_cast<ZoneType>(rng() % 11);
+            } else if (what < 8) {
+                o.location = (rng() % 2)
+                    ? LocationId{BaseLocation{(rng() % 2) ? PlayerId::Player1 : PlayerId::Player2}}
+                    : LocationId{BattlefieldLocation{BattlefieldId::fromRaw(rng() % 3)}};
+            } else {
+                o.location = std::nullopt;
+            }
+        }
+        if (step % 7 == 0) expectIndexMatchesAWalk(st, "step " + std::to_string(step));
+        if (step % 97 == 0) {
+            GameState copy = st;                        // a copy has an index of its own
+            copy.getObject(copy.objects.begin()->first).location = BattlefieldLocation{2};
+            expectIndexMatchesAWalk(copy, "a copy, then a move in it");
+            expectIndexMatchesAWalk(st, "the original after the copy moved");
+            if (step % 2 == 0) std::swap(st, copy);
+        }
+    }
+    expectIndexMatchesAWalk(st, "at the end");
+}
+
 // A range is the board as it was when it was taken. Moving an object while
 // one is being walked does not invalidate it (the lists it views are kept
 // until it is done); a checked build (-DRIFTBOUND_CHECK_BOARD_INDEX=ON) makes

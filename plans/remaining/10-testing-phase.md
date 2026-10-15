@@ -43,7 +43,6 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 
 ## Found by batch 2 (2026-10-14, `plans/reports/batch-2.md` sections 5 and 11)
 
-- [ ] **I4** (batch 5) Throughput is still about 12% below the pre-batch-1 rate (batch 2: 520 -> 650 games/s): the card aura hooks (`applyPassiveAura` for every card in play each Cleanup), `refreshFlowGrants` (rebuilt each pass), the two checksums and the StateSettled emission; recovering it needs a per-hook declaration of what an aura reads, or cheaper hooks. Game throughput matters for training (owner) — perf
 - [ ] **T6** Derived facts as exact inputs (owner discussion, 2026-10-14: what the engine computes the network should not have to re-derive, and what a player could infer about hidden cards must be available): expose to the observation, per observer — effective Might and keywords after continuous effects, damage and lethal-on-board, combat designations and the combat in progress, each player's spendable resources (ready runes, floating Energy / Power, restricted pools) and the open timing window, and the opponent's legal card pool (cards of their legend's Domains, released sets, no banned card, minus copies already seen beyond the copy limit). Test: each fact matches what the engine itself uses for its rules on every decision of a few hundred games — trainer items 8-10
 
 ## Found by batch 4b (2026-10-14, `plans/reports/batch-4b.md` section 10)
@@ -58,7 +57,6 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 ## Found by batch 5b (2026-10-15, `plans/reports/batch-5b.md` section 7; N2, N3 are T1's)
 
 - [ ] **N1** (batch 5c) The engine handles some simultaneous things in object-table (id) order: under other id labels 110 of 300 game pairs become different games (which identical rune pays, the order cards enter a deck together, ...). Not a leak (ids are random now); a determinism and test-coverage issue: order such ties by what the players see, or by the rules' order — CODE-ONLY
-- [ ] **N4** (batch 5c, with I4) Throughput: -4% to -5% from batch 4b (K3: 668 -> 633 games/s, 1 thread; partly longer games, 275 -> 283 decisions) and about -3.7% more from batch 5b. Measured against the pre-batch-1 783 games/s the engine is now about 20% slower; recover it (I4's per-hook aura declaration, cheaper hooks), measured — perf
 
 ## Found by batch 3 (2026-10-15, `plans/reports/batch-3.md` section 10)
 
@@ -68,3 +66,7 @@ Batch 4 is split so that its card-level part can run beside the engine-flow batc
 - [ ] **M4** Thrill of the Hunt ("Banish a friendly unit, then its owner plays it to any battlefield"): with a unit its controller does not own, the spell's controller picks the battlefield and the owner plays it there; check whether the owner, who plays it, chooses the battlefield (CR 355.2.a) — QUESTION if the text does not settle it
 - [ ] **M5** (convention, question if the owner wants one) An ability's effect play of a token or a card settles its location at finalization (Flame Chompers, Immortal Phoenix, Soulgorger, Herald of the Arcane, Zed after B5); CR 185.2.a ("tokens ... played ... following all the applicable steps for playing a card") can be read as the play's own 355.2 choice, at resolution. One judge question for the whole convention if the owner wants it settled — QUESTION (convention)
 
+
+## Found by batch 5c-perf (2026-10-15, `plans/reports/batch-5c-perf.md` section 5)
+
+- [ ] **P1** (owner decision on scope) Throughput is still 14% short of the pre-batch-1 rate per decision (187k against 218k decisions/s). What is left, by size: the Cleanup after every chain step (27%; 94% change nothing, but skipping a pass needs write tracking of the ~100 fields aura hooks read — a project); signals2 dispatch (17%, about 6% the library's own machinery; reworking the bus was ruled out earlier by the owner); allocation (13%: `Intent` holds 7 vectors — small-vector storage would cut most per-decision allocations); a `GameState` copy per pre-play probe and optional cost (2.7%, and the main cost of search, where every node copies); `refreshFlowGrants` reading every trash card each pass (2.9%); `canAffordWith` walking base runes per card per generation (3%) — perf

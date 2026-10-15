@@ -1,4 +1,5 @@
 #include "action_vocab.h"
+#include <array>
 
 #include "engine/knowledge_tracker.h"
 #include "ml/cfr_util.h"
@@ -84,14 +85,29 @@ int mulliganKey(const Intent& intent, const GameState& state) {
     return kOther;
 }
 
-/// FNV-1a over 64-bit words.
+/// FNV-1a over 64-bit words (each word's eight bytes, low byte first).
 struct Fingerprint {
+    static constexpr uint64_t kPrime = 1099511628211ull;
+    /// kPrime to the power k (mod 2^64), k = 0..8.
+    static constexpr std::array<uint64_t, 9> kPrimePow = [] {
+        std::array<uint64_t, 9> p{};
+        p[0] = 1;
+        for (int k = 1; k < 9; ++k) p[k] = p[k - 1] * kPrime;
+        return p;
+    }();
     uint64_t h = 14695981039346656037ull;
     void add(uint64_t v) {
-        for (int i = 0; i < 8; ++i) {
+        // A zero byte only multiplies (h ^= 0), so the zero bytes above a
+        // word's highest non-zero byte — six or seven of them for an id or a
+        // small number — are one multiply by kPrime to their count. The value
+        // is the byte-by-byte one (1.9% of a game was this loop).
+        int n = 8;
+        while (n > 0 && ((v >> ((n - 1) * 8)) & 0xFFu) == 0) --n;
+        for (int i = 0; i < n; ++i) {
             h ^= (v >> (i * 8)) & 0xFFu;
-            h *= 1099511628211ull;
+            h *= kPrime;
         }
+        h *= kPrimePow[static_cast<std::size_t>(8 - n)];
     }
     void addLocation(const std::optional<LocationId>& loc) {
         if (!loc.has_value()) { add(0); return; }

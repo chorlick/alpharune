@@ -7250,7 +7250,11 @@ void GameEngine::recalculateAuras() {
         obj.aura_bonus_damage_taken = 0;
         obj.immune_to_damage = false;  // re-asserted below by applyPassiveAura
         obj.spells_targeting_me_cost_reduction = 0;  // Irelia, Graceful
-        obj.granted_abilities = obj.temp_granted_abilities;  // Forge / Gardens / Heimerdinger re-add theirs; "this turn" grants persist
+        // Forge / Gardens / Heimerdinger re-add theirs; "this turn" grants
+        // persist. (Not assigned when both are empty, as for almost every
+        // object: the call was a measurable part of this walk.)
+        if (!obj.granted_abilities.empty() || !obj.temp_granted_abilities.empty())
+            obj.granted_abilities = obj.temp_granted_abilities;
         obj.prevent_enemy_spell_ability_damage = false;      // Esteemed Hierophant
         obj.cant_be_moved_by_enemy = false;                  // Jagged Cutlass
         obj.aura_cant_move_to_base = false;                  // Minotaur Reckoner

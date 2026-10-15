@@ -829,6 +829,9 @@ private:
     /// The Energy / Power half of canAfford, with `adj` taken off the cost.
     bool canAffordWith(PlayerId player, GameObjectId card_obj, int extra_any_power,
                        const Card::PlayCostAdjust& adj) const;
+    /// Options a main-phase or showdown list is reserved for (the list grew
+    /// by doubling: five buffers and fifteen moves of an Intent for sixteen).
+    static constexpr size_t kOptionsReserved = 16;
 
     /// Auto-pay a card's cost by exhausting/recycling runes.
     /// Returns false if payment failed (shouldn't happen if canAfford was checked).

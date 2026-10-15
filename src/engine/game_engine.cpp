@@ -5184,6 +5184,7 @@ bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
 
 std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const {
     std::vector<Intent> actions;
+    actions.reserve(kOptionsReserved);   // one buffer, not one per doubling
 
     // Always can end turn
     actions.push_back(Intent::endTurn(player));
@@ -5415,6 +5416,7 @@ std::vector<Intent> GameEngine::generateMulliganActions(PlayerId player) const {
 
 std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
     std::vector<Intent> actions;
+    actions.reserve(kOptionsReserved);
 
     // Can always pass focus
     actions.push_back(Intent::passFocus(player));

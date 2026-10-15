@@ -2014,6 +2014,19 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
                 where.push_back(o.is_exhausted);
                 where.push_back(o.is_stunned);
                 where.push_back(o.buff_count);
+                // (Everything else visibleObjectDescription shows of it.)
+                where.push_back(o.temp_buff_count);
+                where.push_back(o.temp_might_bonus);
+                where.push_back(static_cast<int64_t>(o.combat_designation));
+                where.push_back(o.empowered);
+                where.push_back(static_cast<int64_t>((o.keywords | o.aura_keywords).bits));
+                std::vector<int64_t> gear;
+                for (auto g : o.attachments)
+                    if (state_.objectExists(g))
+                        gear.push_back(static_cast<int64_t>(state_.getObject(g).card_def_id.raw()));
+                std::sort(gear.begin(), gear.end());
+                where.push_back(static_cast<int64_t>(gear.size()));
+                where.insert(where.end(), gear.begin(), gear.end());
             };
             if (seen_by_both && state_.objectExists(ci->source)) standing(ci->source);
             if (ci->triggering_subject != ci->source) standing(ci->triggering_subject);

@@ -61,6 +61,12 @@ int gamesOr(int dflt) {
     return dflt;
 }
 
+/// The first game: 0, or RIFTBOUND_LEAK_FROM (to replay one game of a long run).
+int firstGame() {
+    if (const char* e = std::getenv("RIFTBOUND_LEAK_FROM")) return std::max(0, std::atoi(e));
+    return 0;
+}
+
 /// What `who` is shown at a decision.
 struct Shown {
     std::vector<int> ids;                          // decider: action ids, ascending
@@ -408,7 +414,7 @@ void checkVariants(const GameState& state, const StepResult& step, const CardDB&
 TEST_F(HiddenOrderLeak, PositionsTheDeciderCannotTellApartShowItTheSame) {
     VariantTally t;
     const int games = gamesOr(60);
-    for (int g = 0; g < games; ++g) {
+    for (int g = firstGame(); g < firstGame() + games; ++g) {
         const auto [d1, d2] = decks(g);
         EventBus bus;
         GameEngine engine(*db_, bus, *registry_);
@@ -508,7 +514,7 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
     long decisions = 0, renamed = 0, log_lines = 0, diverged = 0, finished = 0;
     std::vector<std::string> problems;
     auto problem = [&](const std::string& s) { if (problems.size() < 20) problems.push_back(s); };
-    for (int g = 0; g < games; ++g) {
+    for (int g = firstGame(); g < firstGame() + games; ++g) {
         const auto [d1, d2] = decks(g);
         const uint64_t seed = 777000 + static_cast<uint64_t>(g);
         EventBus bus_a, bus_b;
@@ -583,6 +589,19 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                     if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
                         for (const GameEngine* e : {&a, &b}) {
                             const auto& st = e->state();
+                            std::cout << "  chain:";
+                            for (const auto& ci : st.chain.items)
+                                std::cout << " [" << (st.objectExists(ci.source) ? st.getObject(ci.source).name.get() : std::string("?"))
+                                          << " zone " << (st.objectExists(ci.source) ? static_cast<int>(st.getObject(ci.source).zone.get()) : -1)
+                                          << " ctl " << toString(ci.controller) << " st " << static_cast<int>(ci.status)
+                                          << " batch " << ci.trigger_batch << " src " << ci.source.raw()
+                                          << " subj " << ci.triggering_subject.raw() << "]";
+                            std::cout << "\n  objects of those cards:";
+                            for (const auto& ci : st.chain.items)
+                                for (const auto& [oid, o] : st.objects)
+                                    if (st.objectExists(ci.source) && o.card_def_id == st.getObject(ci.source).card_def_id)
+                                        std::cout << " " << o.name.get() << "#" << oid.raw() << " z" << static_cast<int>(o.zone.get());
+                            std::cout << "\n";
                             const auto& lg = e->currentStep().legal;
                             const auto ids = openspiel::actionIds(lg, st);
                             std::cout << "  -- game " << (e == &a ? "A" : "B") << "\n";
@@ -631,7 +650,7 @@ TEST_F(HiddenOrderLeak, AnOpponentWhoNeverActsCannotBeToldFromAnother) {
     long decisions = 0, pairs = 0, ended_by_sight = 0, differing_hands = 0, log_lines = 0;
     std::vector<std::string> problems;
     auto problem = [&](const std::string& s) { if (problems.size() < 20) problems.push_back(s); };
-    for (int g = 0; g < games; ++g) {
+    for (int g = firstGame(); g < firstGame() + games; ++g) {
         const auto [mine, base] = decks(g);
         DeckSubmission other = base;
         std::mt19937_64 deck_rng(9100 + static_cast<uint64_t>(g));

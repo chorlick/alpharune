@@ -230,6 +230,17 @@ void seeObject(std::vector<int64_t>& what, std::vector<int64_t>& order,
         const GameObject* bearer = o->attached_to ? lookup(state, *o->attached_to) : nullptr;
         what.push_back(bearer ? cardKey(bearer->card_def_id) : -1);
     }
+    // What the chain says about it: two copies of one card are told apart by
+    // which is the source, the subject or a target of which pending item
+    // (both players see the chain).
+    for (size_t k = 0; k < state.chain.items.size(); ++k) {
+        const auto& ci = state.chain.items[k];
+        if (ci.source == id) { what.push_back(1000 + static_cast<int64_t>(k)); }
+        if (ci.triggering_subject == id) { what.push_back(2000 + static_cast<int64_t>(k)); }
+        if (std::find(ci.targets.begin(), ci.targets.end(), id) != ci.targets.end())
+            what.push_back(3000 + static_cast<int64_t>(k));
+    }
+    what.push_back(-3);   // end of the chain part
     // Public order within the zone.
     int64_t at = -1;
     if (o->owner == PlayerId::Player1 || o->owner == PlayerId::Player2) {

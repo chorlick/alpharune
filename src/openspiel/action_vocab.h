@@ -229,8 +229,9 @@ int compareIntents(const Intent& a, const Intent& b);
 /// What the deciding player (`intent.player`) sees of an intent, as numbers:
 /// every field `Intent::operator==` compares, each object named replaced by
 /// what the decider sees of it (whose it is, its zone and place, its card
-/// only if the decider knows it, and for a permanent its Might, damage,
-/// statuses, buffs, keywords and gear). Never an object id. Two intents of
+/// only if the decider knows it, for a permanent its Might, damage,
+/// statuses, buffs, keywords and gear, and which chain items name it as
+/// source, subject or target). Never an object id. Two intents of
 /// one decision with equal descriptions are the same choice to the decider.
 std::vector<int64_t> visibleDescription(const Intent& intent, const GameState& state);
 

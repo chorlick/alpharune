@@ -380,7 +380,7 @@ nothing a player is shown is a function of them.
 |---|---|---|
 | Object ids of Main Deck / Rune Deck cards | deck-list order (1, 2, 3, ... per list line) | a random order per game (`GameEngine::setIdLabelSalt`; a stream of its own, so the deal is unchanged) |
 | Action slot of an object the decider cannot see (opponent's hand / facedown card, a deck card it was not shown) | its card id (L2) | key 0 ("no card the decider can see") |
-| Twin number (`actionIds`, `actionIdOf`) | intents of one slot ordered field by field, objects by id | ordered by `compareIntentsAsSeen`: what the decider sees (`visibleDescription`), then the public order of the objects named (hand / trash / banishment entry order), ids only between intents the decider sees as identical |
+| Twin number (`actionIds`, `actionIdOf`) | intents of one slot ordered field by field, objects by id | ordered by `compareIntentsAsSeen`: what the decider sees (`visibleDescription`, which includes which pending chain items name an object), then the public order of the objects named (hand / trash / banishment entry order), ids only between intents the decider sees as identical |
 | A prompt answer of several objects (`MakeChoice`, e.g. "choose 2 runes to keep") | slot keyed by the first object listed | keyed by the object the decider sees first; the objects are a set |
 | Mulligan slot positions | positions in the hand as dealt | positions in the hand sorted by card (`knowledge::sortedHand`) |
 | Self hand cards and costs (`kSelfPlayer` hand block, 10 + 10) | hand order (as dealt / drawn) | sorted by card id (`knowledge::sortedHand`) |

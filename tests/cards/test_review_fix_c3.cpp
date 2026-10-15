@@ -1437,10 +1437,10 @@ TEST_F(C3Test, UndyingLoyalty_OnlyABirdCatDogOrPoroEarnsTheDiscount) {
     play.type = IntentType::PlayCard;
     play.player = P1;
     play.card = spell;
-    // Corrected (sweep-costs, 9.N2 / 9.T1): the spell's own finalize-pass
-    // choice (where the unit is played) now comes before its cost step, where
-    // the unit is chosen.
-    StepAgent agent{V(0), O(sage)};
+    // Corrected (sweep-costs, 9.N2 / 9.T1), then again (batch 6 M5): the unit
+    // is chosen in the cost step, and where it is played as the spell
+    // resolves (CR 420.3.b.2), no longer in the spell's finalize pass.
+    StepAgent agent{O(sage), V(0)};
     withEngine([&](GameEngine& e) { e.testHook_executeIntent(play); settleLikeTheEngine(e); }, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_TRUE(onBoard(sage));

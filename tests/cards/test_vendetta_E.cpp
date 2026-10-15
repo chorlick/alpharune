@@ -363,8 +363,10 @@ TEST_F(VendettaE, Vendetta_DragonForm_BaseMightBecomesFiveThisTurn) {
     invokeOnResolve(spell, kDragonForm, P1, {}, exec);
     EXPECT_EQ(state.getObject(unit).current_might, 6) << "base 5 + the buff";
     EXPECT_EQ(state.getObject(unit).base_might, 2) << "printed base is restored at end of turn";
-    // End of turn: the this-turn Might goes away.
-    state.getObject(unit).temp_might_bonus = 0;
+    // End of turn: "base Might becomes 5 this turn" goes away (batch 6 R2: it
+    // is GameObject::base_might_this_turn now, a trait-altering effect, not a
+    // "+(5 - base)" this-turn bonus; the Expiration Step clears it).
+    state.getObject(unit).base_might_this_turn = -1;
     state.getObject(unit).recomputeMight();
     EXPECT_EQ(state.getObject(unit).current_might, 3);
     EXPECT_EQ(card_registry.get(kDragonForm)->flowCost().energy, 3);

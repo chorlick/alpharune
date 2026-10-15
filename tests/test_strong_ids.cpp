@@ -354,6 +354,7 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
     const std::map<std::string, int> audited = {
         {"src/cards/card.cpp", 7},
         {"src/cards/card_helpers.h", 12},   // +1: chooseFittingSubset's members, written plain by its record (batch M1)
+        {"src/cards/gear/0160_dazzling_aurora.cpp", 1},   // the revealed rest, written plain (batch 6 R6)
         {"src/cards/gear/0412_the_zero_drive.cpp", 1},
         {"src/cards/gear/0698_scryer_s_bloom.cpp", 1},
         {"src/cards/gear/0924_shady_spectacles.cpp", 1},
@@ -362,7 +363,7 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0062_reinforce.cpp", 3},
         {"src/cards/spells/0115_promising_future.cpp", 2},
         {"src/cards/spells/0153_overt_operation.cpp", 2},
-        {"src/cards/spells/0183_stacked_deck.cpp", 4},
+        {"src/cards/spells/0183_stacked_deck.cpp", 2},   // -2: the prompt label no longer names the cards (batch 6 R1)
         {"src/cards/spells/0209_cull_the_weak.cpp", 1},
         {"src/cards/spells/0247_icathian_rain.cpp", 1},
         {"src/cards/spells/0253_fox_fire.cpp", 2},
@@ -378,7 +379,7 @@ TEST(StrongIds, EveryObjectIdReadFromAnIntegerSlotIsOnTheAuditedList) {
         {"src/cards/spells/0704_heedless_resurrection.cpp", 2},
         {"src/cards/spells/0730_undying_loyalty.cpp", 1},
         {"src/cards/spells/0757_mirror_image.cpp", 2},
-        {"src/cards/spells/0876_wild_claw.cpp", 3},
+        {"src/cards/spells/0876_wild_claw.cpp", 4},   // +1: the rest, written plain, recycled after the play (batch 6 R6)
         {"src/cards/spells/0894_decree_of_discord.cpp", 1},   // the picks, written plain (batch M1)
         {"src/cards/spells/0943_lightning_rush.cpp", 4},   // +1: the look's replacement filter (D71)
         {"src/cards/units/0141_kinkou_monk.cpp", 2},

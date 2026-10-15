@@ -755,8 +755,10 @@ TEST_F(SweepCostsTest, UndyingLoyalty_TheDiscountFollowsTheUnitChosenAsItIsPlaye
     EXPECT_FALSE(playOffered(spell)) << "no unit of cost [2] or less in the trash";
     auto poro = addToTrash(P1, kPoutyPoro);          // a Poro: [2] less
     ASSERT_TRUE(playOffered(spell)) << "[2] less with a Poro leaves only the Power";
-    // Where it is played (the spell's finalize-pass choice), then the unit.
-    EnginePathAgent agent(EnginePathAgent::script({0, static_cast<int>(poro.raw())}));
+    // The unit (as the spell is played, a cost step), then where it is played
+    // (as it resolves: CR 420.3.b.2; batch 6 M5 — it was the spell's
+    // finalize-pass choice, asked first).
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(poro.raw()), 0}));
     play(spell, &agent);
     EXPECT_TRUE(onBoard(poro));
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
@@ -2663,7 +2665,11 @@ TEST_F(SweepCostsTest, CostFingerprint_DoesNotMoveWithACardsOwnCounters) {
     EXPECT_EQ(Card::costStateFingerprint(state), before);
 }
 
-// ─── 9.GG2: "where to play it" is settled at finalization even with no choice ─
+// ─── 9.GG2, reversed by batch 6 M5: "where to play it" is asked as the ──────
+// ability resolves (CR 420.3.b.2: a choice of the played card's play, made as
+// it is finalized, during the resolution). The 9.GG2 tests pinned the old
+// convention (settled at the ability's finalization, so a battlefield gained
+// in response was not offered): old -> new, the battlefield is offered.
 
 /// The opponent, the first time they get priority, hands battlefield 0 to P1:
 /// "a battlefield is controlled by then".
@@ -2682,10 +2688,10 @@ public:
     }
 };
 
-TEST_F(SweepCostsTest, EffectPlayLocation_FlameChompersDoesNotAskAtResolution) {
+TEST_F(SweepCostsTest, EffectPlayLocation_FlameChompersAsksAtResolution) {
     auto chompers = addToTrash(P1, kFlameChompers);
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
-    EnginePathAgent agent(EnginePathAgent::script({1}));   // pay [R] to play me: yes
+    EnginePathAgent agent(EnginePathAgent::script({1, 1}));   // pay [R]: yes; battlefield #0
     GivesABattlefieldAgent them;
     withEngine([&](GameEngine& e) {
         them.engine = &e;
@@ -2693,15 +2699,16 @@ TEST_F(SweepCostsTest, EffectPlayLocation_FlameChompersDoesNotAskAtResolution) {
         e.testHook_runChain();
     }, &agent, &them, P1);
     ASSERT_EQ(them.given, 1);
-    EXPECT_EQ(agent.prompts.size(), 1u) << "no location prompt as the ability resolves";
-    EXPECT_TRUE(o(chompers).isAtBase()) << "the base, settled when it was finalized";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "where, asked as the ability resolves";
+    EXPECT_EQ(o(chompers).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
+        << "the battlefield gained in response";
 }
 
-TEST_F(SweepCostsTest, EffectPlayLocation_ImmortalPhoenixDoesNotAskAtResolution) {
+TEST_F(SweepCostsTest, EffectPlayLocation_ImmortalPhoenixAsksAtResolution) {
     auto phoenix = addToTrash(P1, kImmortalPhoenix);
     state.player(P1).rune_pool.energy = 1;
     state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
-    EnginePathAgent agent(EnginePathAgent::script({1}));
+    EnginePathAgent agent(EnginePathAgent::script({1, 1}));
     GivesABattlefieldAgent them;
     withEngine([&](GameEngine& e) {
         them.engine = &e;
@@ -2710,18 +2717,19 @@ TEST_F(SweepCostsTest, EffectPlayLocation_ImmortalPhoenixDoesNotAskAtResolution)
         e.testHook_runChain();
     }, &agent, &them, P1);
     ASSERT_EQ(them.given, 1);
-    EXPECT_EQ(agent.prompts.size(), 1u);
-    EXPECT_TRUE(o(phoenix).isAtBase());
+    EXPECT_EQ(agent.prompts.size(), 2u);
+    EXPECT_EQ(o(phoenix).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
 }
 
-TEST_F(SweepCostsTest, EffectPlayLocation_SoulgorgerDoesNotAskAtResolution) {
+TEST_F(SweepCostsTest, EffectPlayLocation_SoulgorgerAsksAtResolution) {
     auto dead = addToTrash(P1, kFirstMate);
     auto card = addToHand(P1, kSoulgorger);
     const auto& def = card_db.get(kSoulgorger);
     setPool(P1, def.energy_cost, def.power_cost);
-    // Yes; the unit; then the revived First Mate's own trigger (whatever it asks).
+    // Yes; the unit; battlefield #0; then the revived First Mate's own trigger
+    // (whatever it asks).
     EnginePathAgent agent(EnginePathAgent::script(
-        {1, static_cast<int>(dead.raw()), EnginePathAgent::kRest}));
+        {1, static_cast<int>(dead.raw()), 1, EnginePathAgent::kRest}));
     GivesABattlefieldAgent them;
     Intent play_it;
     play_it.type = IntentType::PlayCard;
@@ -2733,11 +2741,8 @@ TEST_F(SweepCostsTest, EffectPlayLocation_SoulgorgerDoesNotAskAtResolution) {
         e.testHook_executeIntent(play_it);
     }, &agent, &them, P1);
     ASSERT_EQ(them.given, 1);
-    EXPECT_TRUE(o(dead).isAtBase()) << "the base, settled when the ability was finalized";
-    for (const auto& prompt : agent.prompts)
-        for (const auto& option : prompt)
-            EXPECT_TRUE(option.choice_label.rfind("Battlefield #", 0) != 0)
-                << "a location was asked for as the ability resolved";
+    EXPECT_EQ(o(dead).battlefieldId(), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)})
+        << "asked as the ability resolved, with the battlefield gained in response";
 }
 
 // ─── 9.EE1 / 9.EE2: the two card contracts the engine checks as it runs ─────

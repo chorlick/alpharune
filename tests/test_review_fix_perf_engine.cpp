@@ -1111,7 +1111,6 @@ TEST(PerfEngineSources, CardCodeWalksEveryObjectOnlyWhereItIsListed) {
         {"gear/0181_pack_of_wonders.cpp", {1, "the board and facedown cards"}},
         {"gear/0365_brutalizer.cpp", {1, "its own instances by card id; clears a counter off the board"}},
         {"gear/0509_shurelya_s_requiem.cpp", {1, "its own instances by card id"}},
-        {"gear/0710_cursed_sarcophagus.cpp", {1, "its own instances by card id"}},
         {"gear/0860_jagged_cutlass.cpp", {1, "its own instances by card id"}},
         {"spells/0576_monster_harpoon.cpp", {1, "facedown cards"}},
         {"units/0189_kayn_unleashed.cpp", {1, "its own instances by card id"}},
@@ -2281,7 +2280,8 @@ TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
     // Source scan. A card that kills "what the damage killed" calls
     // EffectExecutor::killLethallyDamagedTogether (21 sites) and has no loop
     // or lethal test of its own; a DeathBatch in card code is followed by a
-    // loop that kills every listed unit (7 sites in 6 files).
+    // loop that kills every listed unit (9 sites in 8 files: Safety Inspector
+    // and Acceptable Losses joined in batch 6, R3 / R4).
     namespace fs = std::filesystem;
     const char* root = std::getenv("RIFTBOUND_ROOT");
     ASSERT_NE(root, nullptr);
@@ -2305,7 +2305,7 @@ TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
         }
     }
     EXPECT_EQ(helper, 22);   // + Falling Star (D20: both instructions, then the kills)
-    EXPECT_EQ(everyone, 7);
+    EXPECT_EQ(everyone, 9);
 }
 
 // ─── 9.OO1: which dying unit a single replacement saves ─────────────────────

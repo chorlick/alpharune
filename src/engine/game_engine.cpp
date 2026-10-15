@@ -956,27 +956,33 @@ void GameEngine::awakenPhase() {
     // Monument). 1 on their first turn.
     state_.player(state_.turn.turn_player).turns_taken++;
 
-    // Ready all game objects the turn player controls (CR 315.1.b)
+    // Ready all game objects the turn player controls (CR 315.1.b), at once:
+    // what that triggers ("When I become ready") is one batch, ordered by
+    // what the players see and by its controller (CR 383.3.d), not by the
+    // object table's order (batch 7 Q1).
     auto player = state_.turn.turn_player;
-    for (auto& [id, obj] : state_.objects.onBoard()) {
-        if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
-            const Card* card = obj.card_def_id != kInvalidId
-                ? card_registry_.get(obj.card_def_id) : nullptr;
-            if (card && !card->canBeReadied()) continue;   // "I can't be readied."
-            obj.is_exhausted = false;
-            events_.emit(ObjectStateChangedEvent{id, "readied"});
-            events_.emit(ObjectStateChangedEvent{id, "became_ready"});
+    {
+        const SimultaneousTriggers together(state_.chain);
+        for (auto& [id, obj] : state_.objects.onBoard()) {
+            if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
+                const Card* card = obj.card_def_id != kInvalidId
+                    ? card_registry_.get(obj.card_def_id) : nullptr;
+                if (card && !card->canBeReadied()) continue;   // "I can't be readied."
+                obj.is_exhausted = false;
+                events_.emit(ObjectStateChangedEvent{id, "readied"});
+                events_.emit(ObjectStateChangedEvent{id, "became_ready"});
+            }
         }
-    }
-    // Also ready the legend
-    auto legend_id = state_.player(player).legend_zone;
-    if (legend_id != kInvalidId && state_.objectExists(legend_id)) {
-        auto& legend = state_.getObject(legend_id);
-        if (legend.is_exhausted) {
-            legend.is_exhausted = false;
-            events_.emit(ObjectStateChangedEvent{legend_id, "readied"});
+        // Also ready the legend
+        auto legend_id = state_.player(player).legend_zone;
+        if (legend_id != kInvalidId && state_.objectExists(legend_id)) {
+            auto& legend = state_.getObject(legend_id);
+            if (legend.is_exhausted) {
+                legend.is_exhausted = false;
+                events_.emit(ObjectStateChangedEvent{legend_id, "readied"});
+            }
         }
-    }
+    }   // (the readying's batch ends here)
     // CR 335: a phase is left only with no outstanding task and nothing
     // pending — "When I become ready" abilities resolve in this phase.
     settleStagedAndChain();
@@ -2037,6 +2043,18 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
                 std::sort(gear.begin(), gear.end());
                 where.push_back(static_cast<int64_t>(gear.size()));
                 where.insert(where.end(), gear.begin(), gear.end());
+                // What was "banished with" it (two Zero Drives triggering for
+                // one death: told apart by what each already holds; batch 7 Q1).
+                std::vector<int64_t> held;
+                for (auto t : o.tracked_objects)
+                    if (state_.objectExists(t))
+                        held.push_back(knowledge::identityVisible(state_, t, PlayerId::Player1) &&
+                                               knowledge::identityVisible(state_, t, PlayerId::Player2)
+                                           ? static_cast<int64_t>(state_.getObject(t).card_def_id.raw())
+                                           : -1);
+                std::sort(held.begin(), held.end());
+                where.push_back(static_cast<int64_t>(held.size()));
+                where.insert(where.end(), held.begin(), held.end());
             };
             if (seen_by_both && state_.objectExists(ci->source)) standing(ci->source);
             if (ci->triggering_subject != ci->source) standing(ci->triggering_subject);

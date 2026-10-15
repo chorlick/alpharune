@@ -255,6 +255,44 @@ void seeObject(std::vector<int64_t>& what, std::vector<int64_t>& order,
         what.insert(what.end(), gear.begin(), gear.end());
         const GameObject* bearer = o->attached_to ? lookup(state, *o->attached_to) : nullptr;
         what.push_back(bearer ? cardKey(bearer->card_def_id) : -1);
+        // The bearer as it stands: two copies of a gear on two tokens of one
+        // card are told apart by how their bearers stand (batch 7 Q1).
+        if (bearer) {
+            // What this gear gives its bearer through its own effects (a
+            // Brutalizer attached this turn: +2; batch 7 Q1).
+            int64_t gives = 0;
+            for (const auto& ae : bearer->aura_effects)
+                if (ae.source == id) gives += ae.might_bonus;
+            what.push_back(gives);
+            what.push_back(placeCode(bearer->location.get(), viewer));
+            what.push_back(bearer->current_might);
+            what.push_back(bearer->damage_marked);
+            what.push_back(bearer->is_exhausted);
+            what.push_back(bearer->is_stunned);
+            what.push_back(bearer->buff_count);
+            what.push_back(bearer->temp_buff_count);
+            what.push_back(static_cast<int64_t>(bearer->combat_designation));
+            what.push_back(static_cast<int64_t>((bearer->keywords | bearer->aura_keywords).bits));
+            std::vector<int64_t> bearer_gear;
+            for (auto g : bearer->attachments)
+                if (const GameObject* go = lookup(state, g))
+                    bearer_gear.push_back(cardKey(go->card_def_id));
+            std::sort(bearer_gear.begin(), bearer_gear.end());
+            what.push_back(static_cast<int64_t>(bearer_gear.size()));
+            what.insert(what.end(), bearer_gear.begin(), bearer_gear.end());
+        }
+        // The cards "banished with" it (GameObject::tracked_objects: The Zero
+        // Drive, Cursed Sarcophagus, Virtuoso), those the viewer may know.
+        if (!o->tracked_objects.empty()) {
+            std::vector<int64_t> held;
+            for (auto t : o->tracked_objects)
+                if (const GameObject* to = lookup(state, t))
+                    held.push_back(knowledge::identityVisible(state, t, viewer)
+                                       ? static_cast<int64_t>(cardKey(to->card_def_id)) : -1);
+            std::sort(held.begin(), held.end());
+            what.push_back(static_cast<int64_t>(held.size()));
+            what.insert(what.end(), held.begin(), held.end());
+        }
     }
     // What the chain says about it: two copies of one card are told apart by
     // which is the source, the subject or a target of which pending item

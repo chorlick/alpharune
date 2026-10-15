@@ -89,7 +89,7 @@ public:
                     ri.resume_data.push_back(static_cast<int32_t>(chosen.raw()));
                     // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
-                                               "Reinforce: where to play it");
+                                               "Reinforce: where to play it", PromptKind::Location);
                     ri.resume_point = kAwaitWhere;
                     return;
                 }
@@ -101,7 +101,7 @@ public:
             for (auto u : units) options.push_back(objChoice(ctx.controller, u));
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "Reinforce: banish a unit to play (cost reduced by 5)");
+                                       "Reinforce: banish a unit to play (cost reduced by 5)", PromptKind::ChooseObject);
             ri.resume_point = kAwait;
             return;
         }

@@ -67,7 +67,8 @@ public:
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int chosen = pickMode(ctx, "Aurora: where to play unit",
                                static_cast<int>(locations.size()),
-                               labels, legal_mask);
+                               labels, legal_mask, std::source_location::current(),
+                               PromptKind::Location);
         if (chosen == -1) return;  // yielded for agent input
         if (chosen < 0 || static_cast<size_t>(chosen) >= locations.size()) {
             chosen = 0;

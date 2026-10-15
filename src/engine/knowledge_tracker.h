@@ -117,6 +117,16 @@ void movedTogether(GameState& state, const std::vector<GroupCard>& cards,
 /// `owner`'s Main Deck was shuffled: nobody knows a position in it any more.
 void shuffled(GameState& state, PlayerId owner);
 
+// ── Rune Decks (testing phase T4) ──
+/// `rune` was just put on the bottom of its owner's Rune Deck; `seers` can
+/// identify it (both players for a rune recycled from the board), and so can
+/// whoever knew it where it came from (a rune looked at or revealed on top).
+void runeToBottom(GameState& state, GameObjectId rune, Seers seers);
+/// `seers` looked at `rune` on top of its owner's Rune Deck.
+void runeSeenOnTop(GameState& state, GameObjectId rune, Seers seers);
+/// `owner`'s Rune Deck was shuffled: no rune's slot in it is known any more.
+void runeDeckShuffled(GameState& state, PlayerId owner);
+
 /// Drop facts about cards that are now public or gone. Cheap; call it before
 /// handing a decision to an agent.
 void prune(GameState& state);
@@ -152,6 +162,9 @@ public:
     std::vector<std::pair<CardDefId, int>> ownDeckComposition() const override;
     std::vector<CardKnowledge> knownDeckTop(PlayerId owner) const override;
     std::vector<CardKnowledge> knownDeckBottom(PlayerId owner) const override;
+    std::vector<CardKnowledge> knownRuneDeckTop(PlayerId owner) const override;
+    std::vector<CardKnowledge> knownRuneDeckBottom(PlayerId owner) const override;
+    std::vector<std::pair<CardDefId, int>> ownRuneDeckComposition() const override;
 
 private:
     struct Where {
@@ -164,6 +177,10 @@ private:
     bool position(const HiddenCardFact& fact, PlayerId owner,
                   CardKnowledge& k) const;
     std::vector<CardKnowledge> knownDeckEnd(PlayerId owner, DeckEnd end) const;
+    /// What the observer knows of a rune in a Rune Deck (identity and slot),
+    /// or nothing (identity_known false).
+    CardKnowledge aboutRune(GameObjectId rune) const;
+    std::vector<CardKnowledge> knownRuneDeckEnd(PlayerId owner, DeckEnd end) const;
 
     const GameState& state_;
     PlayerId observer_;

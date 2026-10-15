@@ -139,7 +139,7 @@ public:
                     ri->resume_data[0] = static_cast<int32_t>(next);
                     // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
-                        "The Zero Drive: where to play " + ctx.state.getObject(uid).name);
+                        "The Zero Drive: where to play " + ctx.state.getObject(uid).name, PromptKind::Location);
                     ri->resume_point = kAwaitWhere;
                     return;
                 }

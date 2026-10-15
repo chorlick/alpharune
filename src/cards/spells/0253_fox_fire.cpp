@@ -84,7 +84,7 @@ public:
                     options.push_back(valChoice(ctx.controller, 0, "Stop here"));
                     for (auto id : can_pick) options.push_back(objChoice(ctx.controller, id));
                     ctx.executor.requestChoice(ctx.controller, std::move(options),
-                        "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)");
+                        "Fox-Fire: kill a unit at a battlefield (total Might 4 or less)", PromptKind::ChooseObject);
                     ri.resume_point = kAwait;
                     return;
                 }
@@ -168,7 +168,7 @@ public:
             for (auto id : options) choices.push_back(objChoice(ctx.controller, id));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                 "Fox-Fire: the chosen units no longer have total Might 4 or less at one"
-                " battlefield - choose which of them to kill");
+                " battlefield - choose which of them to kill", PromptKind::ChooseObject);
             ri.resume_point = kRechooseAwait;
             return;
         }

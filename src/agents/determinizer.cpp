@@ -13,14 +13,7 @@ namespace {
 
 using knowledge::Place;
 
-constexpr int kCopiesPerName = 3;    // CR 103.3.b
-constexpr int kSignatureCards = 3;   // CR 103.3.d
 constexpr int kRejectionTries = 64;
-
-bool isMainDeckType(const CardDef& d) {
-    return d.card_type == CardType::Unit || d.card_type == CardType::Spell ||
-           d.card_type == CardType::Gear;
-}
 
 /// One hidden slot of a player: an object id and the kind of place it is in.
 struct Slot {
@@ -73,24 +66,6 @@ GroupKey groupKey(const CardKnowledge& k) {
     return {static_cast<int>(k.deck_position), k.deck_rank, k.deck_rank_span};
 }
 
-/// Copy-limit bookkeeping for one deck (CR 103.3.b / .d, 825.3.a).
-struct CopyCounts {
-    std::map<std::string, int> by_name;
-    int signatures = 0;
-
-    bool room(const CardDef& d) const {
-        if (d.super_type == SuperType::Signature && signatures >= kSignatureCards) return false;
-        if (d.unlimited_copies) return true;
-        const int cap = d.keywords.has(Keyword::Unique) ? 1 : kCopiesPerName;
-        auto it = by_name.find(d.name);
-        return (it == by_name.end() ? 0 : it->second) < cap;
-    }
-    void add(const CardDef& d) {
-        if (d.super_type == SuperType::Signature) ++signatures;
-        if (!d.unlimited_copies) ++by_name[d.name];
-    }
-};
-
 }  // namespace
 
 void becomeCard(GameObject& obj, const CardDef& def) {
@@ -120,51 +95,7 @@ void becomeCard(GameObject& obj, const CardDef& def) {
     obj = fresh;   // keeps reporting to the table it is in (tracked_field.h)
 }
 
-WorldSampler::WorldSampler(const CardDB& db) : db_(db), builder_(db) {
-    std::vector<const CardDef*> defs;
-    for (const auto& [id, d] : db.all()) defs.push_back(&d);
-    std::sort(defs.begin(), defs.end(),
-              [](const CardDef* a, const CardDef* b) { return a->id < b->id; });
-
-    auto fillHidden = [&](LegendPool& pool) {
-        for (CardDefId id : pool.cards)
-            if (db_.get(id).keywords.has(Keyword::Hidden)) pool.hidden.push_back(id);
-    };
-    for (const CardDef* d : defs) {
-        if (!d->banned && !d->isTokenCard() && isMainDeckType(*d)) any_.cards.push_back(d->id);
-    }
-    std::vector<CardDefId> all_runes;
-    for (const CardDef* d : defs) {
-        if (!d->banned && !d->isTokenCard() && d->card_type == CardType::Rune)
-            all_runes.push_back(d->id);
-    }
-    if (!all_runes.empty()) any_.runes.push_back(all_runes);
-    fillHidden(any_);
-
-    for (const CardDef* d : defs) {
-        if (d->card_type != CardType::Legend) continue;
-        const RandomDeckBuilder::LegendCards* cards = builder_.legendCards(d->id);
-        if (!cards) continue;
-        LegendPool pool;
-        pool.found = true;
-        pool.cards = cards->main;
-        pool.cards.insert(pool.cards.end(), cards->signatures.begin(), cards->signatures.end());
-        std::sort(pool.cards.begin(), pool.cards.end());
-        pool.runes = cards->runes;
-        fillHidden(pool);
-        pools_.emplace(d->id, std::move(pool));
-    }
-}
-
-const CardDef* WorldSampler::def(CardDefId id) const {
-    auto it = db_.all().find(id);
-    return it == db_.all().end() ? nullptr : &it->second;
-}
-
-const WorldSampler::LegendPool& WorldSampler::poolFor(CardDefId legend) const {
-    auto it = pools_.find(legend);
-    return it == pools_.end() ? any_ : it->second;
-}
+WorldSampler::WorldSampler(const CardDB& db) : db_(db), model_(db) {}
 
 WorldDraw WorldSampler::sample(GameState& world, PlayerId observer,
                                std::mt19937_64& rng) const {
@@ -228,9 +159,15 @@ WorldDraw WorldSampler::sample(GameState& world, PlayerId observer,
         refill(free_ids, std::move(free_cards));
         refillGroups(groups);
 
-        const auto& runes = world.player(observer).rune_deck;
+        // Its rune deck: the runes it knows at a slot stay (a recycled rune at
+        // the bottom, testing phase T4); the others are shuffled among theirs.
+        std::vector<GameObjectId> runes;
         std::vector<CardDefId> rune_cards;
-        for (auto id : runes) rune_cards.push_back(world.getObject(id).card_def_id);
+        for (auto id : world.player(observer).rune_deck) {
+            if (view.about(id).identity_known) { ++out.kept; continue; }
+            runes.push_back(id);
+            rune_cards.push_back(world.getObject(id).card_def_id);
+        }
         refill(runes, std::move(rune_cards));
     }
 
@@ -243,19 +180,7 @@ WorldDraw WorldSampler::sample(GameState& world, PlayerId observer,
         const LegendPool& pool = poolFor(legend);
 
         // Copy limits over every card of theirs the observer can identify.
-        CopyCounts counts;
-        {
-            std::vector<GameObjectId> ids;
-            for (const auto& [id, obj] : world.objects)
-                if (obj.owner == opp && !obj.is_token) ids.push_back(id);
-            std::sort(ids.begin(), ids.end());
-            for (auto id : ids) {
-                const CardKnowledge k = view.about(id);
-                if (!k.identity_known) continue;
-                const CardDef* d = def(k.card_def_id);
-                if (d && isMainDeckType(*d)) counts.add(*d);
-            }
-        }
+        CopyCounts counts = model_.seenCounts(world, opp, observer);
 
         // Classify. `open` are the slots to fill; `floating` the cards known
         // by identity whose slot is not known (deck_only: known to be in the
@@ -341,7 +266,7 @@ WorldDraw WorldSampler::sample(GameState& world, PlayerId observer,
         // Everything else from the deck model: facedown slots first (they need
         // a [Hidden] card), then the rest in slot order.
         auto draw = [&](const std::vector<CardDefId>& from) -> const CardDef* {
-            const std::vector<CardDefId>& list = from.empty() ? any_.cards : from;
+            const std::vector<CardDefId>& list = from.empty() ? model_.any().cards : from;
             if (list.empty()) return nullptr;
             for (int t = 0; t < kRejectionTries; ++t) {
                 const CardDef* d = def(list[pick(list.size())]);
@@ -369,9 +294,10 @@ WorldDraw WorldSampler::sample(GameState& world, PlayerId observer,
         }
 
         // Their rune deck: a Domain of the legend's, then a printing.
-        const auto& rune_lists = pool.runes.empty() ? any_.runes : pool.runes;
+        const auto& rune_lists = pool.runes.empty() ? model_.any().runes : pool.runes;
         if (!rune_lists.empty()) {
             for (auto id : opp_state.rune_deck) {
+                if (view.about(id).identity_known) { ++out.kept; continue; }   // known (T4)
                 const auto& list = rune_lists[pick(rune_lists.size())];
                 const CardDef* d = def(list[pick(list.size())]);
                 if (!d) continue;

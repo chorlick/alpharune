@@ -65,7 +65,7 @@ public:
             // so an agent can name it (the cards are told apart by object).
             choices.push_back(valChoice(ctx.controller, 0, "Rek'Sai: banish none"));
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "Rek'Sai: banish & play one of top 2 (or decline)");
+                                        "Rek'Sai: banish & play one of top 2 (or decline)", PromptKind::ChooseObject);
             ri.resume_data[kStepSlot] = 1;
             return;
         }
@@ -135,7 +135,8 @@ public:
                 int mode = 0;
                 if (mask != 1u) {
                     mode = pickMode(ctx, "Rek'Sai: play it to",
-                                    static_cast<int>(labels.size()), labels, mask);
+                                    static_cast<int>(labels.size()), labels, mask,
+                                    std::source_location::current(), PromptKind::Location);
                     if (mode == -1) return;   // waiting for the agent
                 }
                 if (mode >= 1 && static_cast<size_t>(mode) <= bfs.size() &&

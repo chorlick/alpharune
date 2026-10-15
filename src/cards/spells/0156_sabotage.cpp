@@ -62,7 +62,7 @@ public:
             }
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "recycle 1 non-unit from opponent's hand (Sabotage)");
+                                        "recycle 1 non-unit from opponent's hand (Sabotage)", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

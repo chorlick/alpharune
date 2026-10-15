@@ -90,7 +90,7 @@ public:
                 opts.push_back(valChoice(ctx.controller, 0, "Done"));
                 ctx.executor.requestChoice(ctx.controller, std::move(opts),
                     "Decree of Discord: return an enemy Order unit (Might left: " +
-                    std::to_string(kTotalMight - mightOf(picked())) + ")");
+                    std::to_string(kTotalMight - mightOf(picked())) + ")", PromptKind::ChooseObject);
                 ri.resume_point = kAwait;
                 return;
             }

@@ -72,7 +72,8 @@ public:
                 const auto where = playLocationsFor(ctx, ctx.controller, chosen);
                 // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                 const int mode = pickMode(ctx, "Void Rush: where to play it",
-                                          where.count(), where.labels);
+                                          where.count(), where.labels, ~0u,
+                                          std::source_location::current(), PromptKind::Location);
                 if (mode < 0 || mode >= where.count()) return;   // waiting
                 where_to = where.locations[mode];
             }

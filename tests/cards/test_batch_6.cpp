@@ -60,6 +60,9 @@ constexpr CardDefId kKharox = 901;
 constexpr CardDefId kDragonForm = 903;
 constexpr CardDefId kLightningRush = 943;
 constexpr CardDefId kPoutyPoro = 13;           // [Deflect]
+constexpr CardDefId kArcaneShift = 515;
+constexpr CardDefId kDoubleTrouble = 594;
+constexpr CardDefId kHereToHelp = 433;
 
 constexpr int kRest = EnginePathAgent::kRest;
 
@@ -716,6 +719,95 @@ TEST_F(Batch6Test, R10_BackOff_PlayedFromTheHandDraws) {
     EnginePathAgent me(EnginePathAgent::script({raw(unit), kRest}));
     playThroughEngine(spell, &me);
     EXPECT_EQ(state.player(P1).hand.size(), hand_before) << "-1 played, +1 drawn";
+}
+
+// ═══ R11: Arcane Shift: "then its owner plays it" — the owner chooses where ═
+// The player who plays a unit chooses its location (CR 355.2); for a unit its
+// controller does not own that is the owner (as batch 5d's M4 for Thrill of
+// the Hunt).
+
+namespace {
+/// P2: answers a value prompt with `value`, recording that it was asked.
+class AnswersAValue : public EnginePathAgent {
+public:
+    int value = 0;
+    int asked = 0;
+    Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+        for (const auto& i : legal)
+            if (i.type == IntentType::MakeChoice && i.chosen_value.has_value() &&
+                i.chosen_objects.empty()) {
+                ++asked;
+                for (const auto& j : legal)
+                    if (j.chosen_value == value) return j;
+                return i;
+            }
+        return EnginePathAgent::selectAction(st, legal);
+    }
+};
+}  // namespace
+
+TEST_F(Batch6Test, R11_ArcaneShift_TheOwnerChoosesWhereTheirUnitIsPlayed) {
+    auto borrowed = addUnit(P2, kShipyardSkulker, 3, -1);
+    o(borrowed).controller = P1;
+    o(borrowed).location = BaseLocation{P1};
+    auto enemy = addUnit(P2, kShipyardSkulker, 3, 0);
+    addUnit(P2, kShipyardSkulker, 3, 1);
+    state.battlefields[1].controller = P2;
+    auto spell = addToHand(P1, kArcaneShift);
+    EnginePathAgent me(EnginePathAgent::script({raw(borrowed), raw(enemy), kRest}));
+    AnswersAValue them;
+    them.value = 1;   // the owner's second place: battlefield #1
+    playThroughEngine(spell, &me, std::nullopt, &them);
+    EXPECT_EQ(them.asked, 1) << "the owner is asked";
+    EXPECT_EQ(o(borrowed).controller, P2);
+    EXPECT_EQ(bfOf(borrowed), bf(1));
+}
+
+// ═══ R13: a card picked from a hidden zone is not a target (CR 355.10.a) ════
+
+namespace {
+/// EnginePathAgent that notes the kind of every prompt offering `watch`.
+class NotesKinds : public EnginePathAgent {
+public:
+    GameObjectId watch = kInvalidId;
+    std::vector<PromptKind> kinds;
+    using EnginePathAgent::EnginePathAgent;
+    Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                  const Prompt& prompt) override {
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == watch) {
+                kinds.push_back(prompt.kind);
+                break;
+            }
+        return selectAction(st, legal);
+    }
+};
+}  // namespace
+
+TEST_F(Batch6Test, R13_DoubleTrouble_TheUnitFromTheDeckIsAPickNotATarget) {
+    addToDeck(P1, kIncinerate);
+    auto unit = addToDeck(P1, kShipyardSkulker);
+    auto spell = addToHand(P1, kDoubleTrouble);
+    NotesKinds me(EnginePathAgent::script({1, raw(unit), kRest}));
+    me.watch = unit;
+    playThroughEngine(spell, &me);
+    ASSERT_EQ(me.kinds.size(), 1u);
+    EXPECT_EQ(me.kinds[0], PromptKind::ChooseObject);
+    EXPECT_TRUE(inHand(P1, unit));
+}
+
+TEST_F(Batch6Test, R13_HereToHelp_TheUnitFromTheHandIsAPickNotATarget) {
+    addUnit(P1, kShipyardSkulker, 3, 0);
+    state.battlefields[0].controller = P1;
+    auto unit = addToHand(P1, kShipyardSkulker);
+    auto spell = addToHand(P1, kHereToHelp);
+    fund(P1, 3, 0);
+    NotesKinds me(EnginePathAgent::script({1, raw(unit), kRest}));
+    me.watch = unit;
+    playThroughEngine(spell, &me);
+    ASSERT_EQ(me.kinds.size(), 1u);
+    EXPECT_EQ(me.kinds[0], PromptKind::ChooseObject);
+    EXPECT_EQ(bfOf(unit), bf(0));
 }
 
 // ═══ R12: card data ═════════════════════════════════════════════════════════

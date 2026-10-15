@@ -39,7 +39,7 @@ public:
                 // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
                 ctx.executor.requestChoice(ctx.controller, std::move(options),
                     "Recruit the Vanguard: where to play Recruit " +
-                    std::to_string(ri.resume_data.size() + 1) + " of 4");
+                    std::to_string(ri.resume_data.size() + 1) + " of 4", PromptKind::Location);
                 ri.resume_point = kAwait;
                 return;
             }

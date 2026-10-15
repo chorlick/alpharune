@@ -55,7 +55,7 @@ public:
             }
             if (options.empty()) { ri.resume_point = kNamed; return; }
             ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "Fallen Feline: name a spell");
+                                       "Fallen Feline: name a spell", PromptKind::NameACard);
             ri.resume_point = kAsked;
             return;
         }

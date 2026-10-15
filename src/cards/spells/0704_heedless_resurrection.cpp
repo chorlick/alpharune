@@ -102,7 +102,7 @@ public:
                 std::vector<Intent> opts;
                 for (auto cid : cands) opts.push_back(objChoice(ctx.controller, cid));
                 ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                    "Heedless Resurrection: play a unit from your trash");
+                    "Heedless Resurrection: play a unit from your trash", PromptKind::ChooseObject);
                 ri.resume_point = kAwaitRevive;
                 return;
             }
@@ -116,7 +116,8 @@ public:
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2).
         const auto where = playLocationsFor(ctx, ctx.controller, revived);
         const int mode = pickMode(ctx, "Heedless Resurrection: where to play it",
-                                  where.count(), where.labels);
+                                  where.count(), where.labels, ~0u,
+                                  std::source_location::current(), PromptKind::Location);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         ri.resume_data[kRevivedSlot] = -1;               // played once
         ctx.executor.playIgnoringCost(ctx.controller, revived, where.locations[mode]);

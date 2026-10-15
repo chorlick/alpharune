@@ -59,20 +59,25 @@ public:
             return;                            // waiting for the agent
         // A target no longer legal comes back as kInvalidId: that instruction
         // is ignored (CR 359.3.e.5), the other still happens.
-        // Where the unit comes back: its owner's base or a battlefield they
-        // control (CR 355.2.a), chosen as it is played and finalized, at
-        // resolution (CR 420.3.b.2). A token is not played back (CR 183.1).
+        // Where the unit comes back: its owner's base, a battlefield they
+        // control or where the unit's own permissions allow (CR 355.2;
+        // playLocationsFor leaves out a battlefield units can't be played
+        // to), chosen as it is played and finalized, at resolution (CR
+        // 420.3.b.2). The OWNER plays it, so the owner chooses — not the
+        // spell's controller when the unit is one they took control of
+        // (testing phase R11, as M4 for Thrill of the Hunt). A token is not
+        // played back (CR 183.1).
         std::optional<LocationId> back_to;
         const bool replay = unit != kInvalidId && !ctx.state.getObject(unit).isToken();
         if (replay) {
             const PlayerId unit_owner = ctx.state.getObject(unit).owner;
-            const auto where = playLocations(ctx.state, unit_owner);
-            // playLocations leaves out a battlefield units can't be played to
-            // (Rockfall Path; a player who may only play units to base).
-            const int mode = pickMode(ctx, "Arcane Shift: where the unit is played",
-                                      where.count(), where.labels);
-            if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
-            back_to = where.locations[mode];
+            const auto where = playLocationsFor(ctx, unit_owner, unit);
+            const auto picked = pickValueAs(ctx, unit_owner, "Arcane Shift: where the unit is played",
+                                            where.labels, PromptKind::Location);
+            if (!picked.has_value()) return;   // waiting for the owner
+            const int mode = *picked;
+            if (mode < 0 || mode >= where.count()) return;
+            back_to = where.locations[static_cast<size_t>(mode)];
         }
 
         // 1. Banish a friendly unit, then its owner plays it ignoring its cost.

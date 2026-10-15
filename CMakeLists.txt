@@ -459,6 +459,7 @@ add_library(riftbound_core
     src/core/keyed_slots.cpp
     src/rules/deck_validator.cpp
     src/rules/random_deck.cpp
+    src/rules/deck_model.cpp
     src/engine/game_engine.cpp
     src/engine/chain_manager.cpp
     src/engine/effect_executor.cpp
@@ -467,6 +468,8 @@ add_library(riftbound_core
     src/engine/knowledge_tracker.cpp
     src/engine/deck_ops.cpp
     src/engine/play_permissions.cpp
+    src/engine/prompt_description.cpp
+    src/engine/observer_view.cpp
     src/io/state_renderer.cpp
     src/io/replay_writer.cpp
     src/io/state_editor.cpp

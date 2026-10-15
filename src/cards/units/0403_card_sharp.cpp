@@ -36,7 +36,7 @@ public:
             ctx.executor.requestChoice(opp,
                 {declineChoice(opp, "Card Sharp: no Gold"),
                  valChoice(opp, 1, "Card Sharp: play a Gold gear token exhausted")},
-                "Card Sharp: play a Gold gear token exhausted? (your opponent then plays one too)");
+                "Card Sharp: play a Gold gear token exhausted? (your opponent then plays one too)", PromptKind::May);
             ri.resume_data[kOppSlot] = 1;
             return;
         }

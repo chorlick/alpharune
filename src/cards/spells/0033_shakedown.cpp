@@ -34,7 +34,7 @@ public:
                     {valChoice(unit_controller, 0, "Take 6 damage"),
                      valChoice(unit_controller, 1, "Opponent draws 2")},
                     "Shakedown: 6 damage to " + ctx.state.getObject(targets[0]).name +
-                    " unless you have the opponent draw 2");
+                    " unless you have the opponent draw 2", PromptKind::Mode);
                 ri.resume_point = kAwait;
                 return;
             }

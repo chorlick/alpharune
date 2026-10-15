@@ -10,6 +10,7 @@
 #include "core/events.h"
 #include "core/game_state.h"
 #include "core/intent.h"
+#include "core/prompt.h"
 #include "engine/knowledge_tracker.h"
 #include "engine/resource_payment.h"
 
@@ -52,6 +53,12 @@ struct DeathBatchMark {
     ChainItemId first_item = ChainItemId::fromRaw(0);  // chain ids from here on are the batch's
     OpenClosedState oc_state = OpenClosedState::Open;
     bool chain_was_empty = true;
+    /// Each trash's size as the batch began (when it has two or more
+    /// members): the members that went to a trash are put there in an order of
+    /// what the players see of them there, not in the order the engine killed
+    /// them in (they die at once; that order followed object ids — batch 5d N1).
+    bool several = false;
+    size_t trash_size[2] = {0, 0};
 };
 
 class DeathBatch {
@@ -94,6 +101,14 @@ LogAudience audienceNaming(const GameState& state, PlayerId knower,
 /// Power of any Domain `player` could pay right now.
 int payableAnyPower(const GameState& state, PlayerId player, SpendFor f = SpendFor::Other);
 
+/// The lethal-damage rule as a function of the state, the one EffectExecutor::
+/// damageKills (and so the cleanup) applies: lethal damage (CR 142.4), or any
+/// damage marked by a player one of whose units makes all their damage lethal
+/// (Elder Dragon, Card::anyDamageIsLethal). For a reader with no executor
+/// (ObserverView, testing phase T6).
+bool anyDamageIsLethalFor(const GameState& state, const CardRegistry* registry, PlayerId damager);
+bool damageKillsIn(const GameState& state, const CardRegistry* registry, const GameObject& unit);
+
 class EffectExecutor {
 public:
     EffectExecutor(GameState& state, EventBus& events, const CardDB& card_db,
@@ -125,13 +140,17 @@ public:
     /// label): the engine heads the decision's trace line with it instead of
     /// with the phase the game happens to be in (plans/09 9.PP1). Empty when
     /// nothing is being asked through the executor.
-    const std::string& asking() const { return asking_; }
+    const std::string& asking() const { return asking_.question; }
+    /// The whole of what is being asked through the executor right now (kind,
+    /// source, chain item, words: testing phase T1). Kind Unspecified when
+    /// nothing is.
+    const Prompt& askingPrompt() const { return asking_; }
     /// Names the prompt for as long as it lives. The executor's own prompts
     /// use it through ask(); the engine and the chain manager use it around
-    /// a card's pending choice (PendingChoice::label).
+    /// a card's pending choice (PendingChoice::prompt).
     class Asking {
     public:
-        Asking(const EffectExecutor& executor, std::string what)
+        Asking(const EffectExecutor& executor, Prompt what)
             : executor_(executor), before_(std::move(executor.asking_)) {
             executor_.asking_ = std::move(what);
         }
@@ -140,24 +159,53 @@ public:
         Asking& operator=(const Asking&) = delete;
     private:
         const EffectExecutor& executor_;
-        std::string before_;
+        Prompt before_;
     };
+    /// The object whose rule is acting while a card's hook runs outside the
+    /// chain (an additional cost paid as it is played, a replacement, an
+    /// "as you play me" choice, an Equip attaching): a prompt the hook asks
+    /// names it as its source (Prompt::source). Inside a chain item's
+    /// resolution or finalization the item names it.
+    class ActingFor {
+    public:
+        ActingFor(EffectExecutor& executor, GameObjectId source)
+            : executor_(executor), before_(executor.acting_) {
+            executor_.acting_ = source;
+        }
+        ~ActingFor() { executor_.acting_ = before_; }
+        ActingFor(const ActingFor&) = delete;
+        ActingFor& operator=(const ActingFor&) = delete;
+    private:
+        EffectExecutor& executor_;
+        GameObjectId before_;
+    };
+    /// A Prompt of `kind` put to `decider`, with its source and chain item
+    /// read from where the game is: the acting hook's object (ActingFor), else
+    /// the chain item being finalized or resolved.
+    Prompt promptHere(PlayerId decider, PromptKind kind, std::string question,
+                      std::source_location where) const;
 
     /// Ask `player` to choose one of `objects` right now, for an effect that
     /// is not resolving from the chain and so cannot suspend (an Equip
     /// attaching). Returns the first object when there is no agent to ask, and
     /// kInvalidId when `objects` is empty.
-    GameObjectId chooseObjectNow(PlayerId player, const std::vector<GameObjectId>& objects);
+    GameObjectId chooseObjectNow(PlayerId player, const std::vector<GameObjectId>& objects,
+                                 const std::string& what = "choose one",
+                                 PromptKind kind = PromptKind::ChooseObject,
+                                 std::source_location where = std::source_location::current());
 
     /// Ask `player` a yes/no question right now, for a "may" that is not
     /// resolving from the chain and so cannot suspend (a replacement effect:
     /// "its controller may pay ... instead"). Returns false when there is no
     /// agent to ask.
-    bool confirmNow(PlayerId player, const std::string& label);
+    bool confirmNow(PlayerId player, const std::string& label,
+                    PromptKind kind = PromptKind::May,
+                    std::source_location where = std::source_location::current());
     /// Ask `player` to pick one of `labels` right now (a choice made as a card
     /// is played, CR 355.1). Returns the index; 0 when there is no agent.
     int chooseValueNow(PlayerId player, const std::vector<std::string>& labels,
-                       const std::string& what);
+                       const std::string& what, PromptKind kind = PromptKind::Mode,
+                       std::source_location where = std::source_location::current());
     /// The "As you play me" choices of `card` (Card::asYouPlayChoices).
     void makeAsYouPlayChoices(PlayerId player, GameObjectId card);
     /// `card` (owned by `owner`) is being looked at or revealed from the top
@@ -168,7 +216,8 @@ public:
     bool seenOnTopOfDeck(PlayerId owner, GameObjectId card);
     /// Ask `player` to pick one of (value, label) right now; the value.
     int chooseAmongNow(PlayerId player, const std::vector<std::pair<int, std::string>>& options,
-                       const std::string& what);
+                       const std::string& what, PromptKind kind = PromptKind::Mode,
+                       std::source_location where = std::source_location::current());
 
     /// "You may make new choices for it" (CR 750-755): the item's controller
     /// re-chooses its targets. Costs already paid are unaffected (755.1).
@@ -470,6 +519,12 @@ public:
     bool canPayAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other) {
         return canPayWithAdds(player, 0, amount, resource::kAnyDomain, f);
     }
+    /// The most Power of any Domain (Energy) `player` could pay now, at most
+    /// `cap`, [Add] abilities counted: "pay any amount" offers an X the
+    /// payment can reach with them (CR 357.1.a; testing phase M2). Probes
+    /// only above what the pool and runes cover.
+    int maxPayableAnyPower(PlayerId player, int cap, SpendFor f = SpendFor::Other);
+    int maxPayableEnergy(PlayerId player, int cap, SpendFor f = SpendFor::Other);
     /// Before a payment of [energy] + `power` (`mask`) that the pool and
     /// runes cannot cover: `player` activates [Add] Reactions, naming which,
     /// until it can be covered or none is left (CR 430.3). Called by the
@@ -576,7 +631,8 @@ public:
     /// Ask `player` to choose one of `locations` right now (see
     /// chooseObjectNow). Returns the first when there is no agent to ask.
     LocationId chooseLocationNow(PlayerId player, const std::vector<LocationId>& locations,
-                                 const std::string& label);
+                                 const std::string& label,
+                                 std::source_location where = std::source_location::current());
 
     /// Add a battlefield-token slot to the board. Creates a fresh
     /// GameObject for the BF card (card_type=Battlefield, super_type=Token,
@@ -744,12 +800,30 @@ public:
                                           // Empty = no label printed; trace
                                           // falls back to a generic
                                           // "MakeChoice pick=[...]" line.
+        /// What it asks (testing phase T1): kind, source and chain item as
+        /// they were when the card asked. Its words are `label`, moved into
+        /// `prompt.question` as it is asked (askedPrompt).
+        Prompt prompt;
+        /// The prompt as asked: the label as its question, or `fallback`
+        /// when the card gave none.
+        Prompt askedPrompt(std::string fallback) {
+            prompt.question = label.empty() ? std::move(fallback) : std::move(label);
+            return std::move(prompt);
+        }
     };
+    /// Publish a card's prompt (see PendingChoice). `kind` says what kind of
+    /// question it is; `where` is filled in by the compiler and names the
+    /// asking code (Prompt::where).
     void requestChoice(PlayerId p, std::vector<Intent> legal,
-                        std::string label = "") {
+                       std::string label = "", PromptKind kind = PromptKind::Unspecified,
+                       std::source_location where = std::source_location::current()) {
         dropLeftWhileSeen(legal);
-        pending_ = PendingChoice{true, p, std::move(legal), std::move(label)};
+        pending_ = PendingChoice{true, p, std::move(legal), std::move(label),
+                                 promptHere(p, kind, {}, where)};
     }
+    /// Put back a prompt that was set aside (an [Add] resolved while a card's
+    /// prompt was waiting).
+    void restorePendingChoice(PendingChoice c) { pending_ = std::move(c); }
     /// An option naming a card that left as it was looked at is not offered
     /// (unless nothing else is: the card then does nothing with it).
     void dropLeftWhileSeen(std::vector<Intent>& options) const {
@@ -842,15 +916,20 @@ private:
                                  std::optional<LocationId> location, int accelerate);
     std::mt19937_64* rng_ = nullptr;
     AgentChoiceQuery agent_query_;
-    mutable std::string asking_;
+    mutable Prompt asking_;
+    GameObjectId acting_ = kInvalidId;   // ActingFor
     /// Ask `player` through the engine, naming the prompt (see asking()).
     /// The "ASK_PROMPT:" line is what the play server shows above the options
     /// (it titles a decision from the last "*_PROMPT:" trace line; a card's
     /// own prompt helpers write MAY_PROMPT / MODE_PROMPT / TGT_PROMPT).
-    Intent ask(PlayerId player, std::vector<Intent> options, std::string what) const {
+    Intent ask(PlayerId player, std::vector<Intent> options, std::string what,
+               PromptKind kind, std::source_location where,
+               GameObjectId source = kInvalidId) const {
         dropLeftWhileSeen(options);
         RIFT_TRACE(events_, "ASK_PROMPT: " + what);
-        const Asking named(*this, std::move(what));
+        Prompt p = promptHere(player, kind, std::move(what), where);
+        if (source != kInvalidId) p.source = source;
+        const Asking named(*this, std::move(p));
         return agent_query_(player, options);
     }
     PendingChoice pending_;

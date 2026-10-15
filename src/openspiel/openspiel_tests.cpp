@@ -95,6 +95,10 @@ void expectSamePosition(const ::open_spiel::State& a,
         ASSERT_EQ(sa.players[p].score, sb.players[p].score) << where;
         ASSERT_EQ(a.ObservationString(p), b.ObservationString(p)) << where;
         ASSERT_EQ(a.ObservationTensor(p), b.ObservationTensor(p)) << where;
+        // What the decision asks (testing phase T1) travels with a clone.
+        if (!a.IsTerminal()) {
+            ASSERT_TRUE(rb(a).describeDecision(p) == rb(b).describeDecision(p)) << where;
+        }
     }
     if (a.IsTerminal()) {
         ASSERT_EQ(a.Returns(), b.Returns()) << where;
@@ -424,6 +428,32 @@ TEST(RiftboundStateTest, ActionHistoryIsOneSlotPerAppliedAction) {
 // clones are taken at every kind of decision the game reaches — mulligan,
 // chain priority, combat, cost payment, card prompts, and the plain
 // main-phase ones — and from clones of clones.
+// Testing phase T1: the decision API says what each decision asks. The
+// decider's description lists every legal action once, by its OpenSpiel id,
+// in id order; the other player is told who decides and the kind only.
+TEST(RiftboundStateTest, EveryDecisionSaysWhatItAsksWithTheActionIdsOnOffer) {
+    for (int seed = 1; seed <= 3; ++seed) {
+        auto game = loadGame(seed);
+        auto state = game->NewInitialState();
+        std::mt19937_64 rng(seed * 101);
+        int n = 0;
+        while (!state->IsTerminal() && n < 2000) {
+            const auto& r = rb(*state);
+            const auto decider = state->CurrentPlayer();
+            EXPECT_NE(r.decisionPrompt().kind, ::riftbound::PromptKind::Unspecified);
+            const auto mine = r.describeDecision(decider);
+            std::vector<::open_spiel::Action> ids;
+            for (const auto& o : mine.options) ids.push_back(o.action_id);
+            ASSERT_EQ(ids, state->LegalActions()) << "seed " << seed << " decision " << n;
+            const auto theirs = r.describeDecision(1 - decider);
+            EXPECT_EQ(theirs.decider, 2);
+            EXPECT_TRUE(theirs.options.empty());
+            state->ApplyAction(pickAction(rng, state->LegalActions()));
+            ++n;
+        }
+    }
+}
+
 TEST(RiftboundStateTest, CloneTakenAtAnyDecisionPlaysTheSameGame) {
     constexpr int kFollow = 40;      // steps each clone is checked for
     constexpr size_t kMaxLive = 6;   // clones followed at once

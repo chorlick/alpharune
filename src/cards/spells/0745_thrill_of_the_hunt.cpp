@@ -70,13 +70,14 @@ public:
                                 " can't be played to any battlefield — it stays banished");
             return;
         }
-        uint32_t legal_mask = (locations.size() >= 32)
-            ? 0xFFFFFFFFu
-            : ((1u << locations.size()) - 1);
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
-        int chosen = pickMode(ctx, "Thrill: which battlefield",
-                              static_cast<int>(locations.size()), labels, legal_mask);
-        if (chosen == -1) return;  // yielded for agent input
+        // The OWNER plays it, so the owner chooses where it goes (CR 355.2:
+        // the location is a choice of the play; testing phase M4) — which is
+        // not the spell's controller when the unit is one it took control of.
+        const auto picked = pickValueAs(ctx, owner, "Thrill: which battlefield", labels,
+                                        PromptKind::Location);
+        if (!picked.has_value()) return;  // yielded for the owner's answer
+        int chosen = *picked;
         if (chosen < 0 || static_cast<size_t>(chosen) >= locations.size()) chosen = 0;
         banish();
         // Step 2: owner plays it to the chosen battlefield, ignoring cost.

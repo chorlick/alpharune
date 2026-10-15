@@ -225,6 +225,16 @@ void seeObject(std::vector<int64_t>& what, std::vector<int64_t>& order,
     }
     what.push_back(facedown_at);
     what.push_back(visible ? static_cast<int64_t>(cardKey(o->card_def_id)) : -1);
+    // A card in a Main Deck the viewer was shown: the slot it knows it at (two
+    // copies among the top cards looked at are not the same choice; batch 5d
+    // N1). Built only for such a card, which an option rarely names.
+    if (visible && o->zone.get() == ZoneType::MainDeck &&
+        (viewer == PlayerId::Player1 || viewer == PlayerId::Player2)) {
+        const CardKnowledge k = knowledge::GameKnowledgeView(state, viewer).about(id);
+        what.push_back(static_cast<int64_t>(k.deck_position));
+        what.push_back(k.deck_rank);
+        what.push_back(k.deck_rank_span);
+    }
     if (visible && (o->location.has_value() || o->zone.get() == ZoneType::LegendZone ||
                     o->zone.get() == ZoneType::ChampionZone)) {
         what.push_back(o->current_might);
@@ -386,6 +396,16 @@ std::vector<int64_t> visibleObjectDescription(const GameState& state, GameObject
     std::vector<int64_t> what, order;
     seeObject(what, order, state, object, viewer);
     return what;
+}
+
+void sortObjectsAsSeen(const GameState& state, std::vector<GameObjectId>& objects,
+                       PlayerId viewer) {
+    if (objects.size() < 2) return;
+    std::vector<std::pair<std::vector<int64_t>, GameObjectId>> seen;
+    seen.reserve(objects.size());
+    for (auto id : objects) seen.push_back({visibleObjectDescription(state, id, viewer), id});
+    std::sort(seen.begin(), seen.end());
+    for (size_t i = 0; i < objects.size(); ++i) objects[i] = seen[i].second;
 }
 
 std::vector<int64_t> visibleDescription(const Intent& intent, const GameState& state) {

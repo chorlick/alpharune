@@ -52,7 +52,7 @@ public:
             opts.push_back(valChoice(ctx.controller, 0, "Draw none"));
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Lightning Rush: draw one of the top 3 cards");
+                                       "Lightning Rush: draw one of the top 3 cards", PromptKind::ChooseObject);
             ri.resume_point = 1;
             return;
         }

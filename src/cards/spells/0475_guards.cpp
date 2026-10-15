@@ -43,7 +43,8 @@ public:
         if (where.count() == 0) return;                  // nowhere to play it
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
-                            where.count(), where.labels);
+                            where.count(), where.labels, ~0u,
+                            std::source_location::current(), PromptKind::Location);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
 
         GameObjectId tok = kInvalidId;

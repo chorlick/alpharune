@@ -2,6 +2,7 @@
 /// @file card_helpers.h
 /// Cross-cutting card helpers used across multiple card types. Type-specific
 /// bases live in their type dirs (gear/equip_base.h, units/weaponmaster_base.h).
+#include "openspiel/action_vocab.h"
 #include "engine/deck_ops.h"
 #include "engine/play_permissions.h"
 #include "engine/trash_replacement.h"
@@ -223,7 +224,8 @@ inline void attachFree(CardContext& ctx, GameObjectId gear_id, GameObjectId unit
 // discardOneThenAct: discard exactly one (agent-chosen), then post_fn(ctx, discarded).
 template <typename PostFn>
 inline void discardOneThenAct(CardContext& ctx, const std::string& label,
-                              PostFn&& post_fn) {
+                              PostFn&& post_fn,
+                              std::source_location where = std::source_location::current()) {
     auto& ri = ctx.state.chain.resuming.value();
     auto& ps = ctx.state.player(ctx.controller);
     auto build_choices = [&]() {
@@ -237,7 +239,8 @@ inline void discardOneThenAct(CardContext& ctx, const std::string& label,
     switch (ri.resume_point) {
     case 0:
         if (ps.hand.empty()) { post_fn(ctx, kInvalidId); return; }
-        ctx.executor.requestChoice(ctx.controller, build_choices(), label);
+        ctx.executor.requestChoice(ctx.controller, build_choices(), label, PromptKind::Discard,
+                                   where);
         ri.resume_point = 1;
         return;
     case 1: {
@@ -256,7 +259,8 @@ inline void discardOneThenAct(CardContext& ctx, const std::string& label,
 // discardThenAct: discard up to `count` (agent-chosen), then post_fn(ctx).
 template <typename PostFn>
 inline void discardThenAct(CardContext& ctx, int count,
-                           const std::string& label, PostFn&& post_fn) {
+                           const std::string& label, PostFn&& post_fn,
+                           std::source_location where = std::source_location::current()) {
     auto& ri = ctx.state.chain.resuming.value();
     auto& ps = ctx.state.player(ctx.controller);
     auto build_choices = [&]() {
@@ -271,7 +275,8 @@ inline void discardThenAct(CardContext& ctx, int count,
     case 0:
         if (ps.hand.empty() || count <= 0) { post_fn(ctx); return; }
         ri.resume_data = {count};
-        ctx.executor.requestChoice(ctx.controller, build_choices(), label);
+        ctx.executor.requestChoice(ctx.controller, build_choices(), label, PromptKind::Discard,
+                                   where);
         ri.resume_point = 1;
         return;
     case 1: {
@@ -282,7 +287,8 @@ inline void discardThenAct(CardContext& ctx, int count,
         if (ri.resume_data.empty() || ri.resume_data[0] <= 0 || ps.hand.empty()) {
             post_fn(ctx); return;
         }
-        ctx.executor.requestChoice(ctx.controller, build_choices(), label);
+        ctx.executor.requestChoice(ctx.controller, build_choices(), label, PromptKind::Discard,
+                                   where);
         return;
     }
     }
@@ -752,6 +758,17 @@ inline int takenValue(CardContext& ctx, int fallback) {
     return (c && c->chosen_value.has_value()) ? *c->chosen_value : fallback;
 }
 
+// ── Things done at once, one after another ──────────────────────────────────
+/// Put `ids` in an order of what the players see of them (openspiel::
+/// sortObjectsAsSeen, as the turn player sees them), for an effect that does
+/// at once what the engine does one object at a time ("kill all gear"): the
+/// order they go to a trash in, and what is announced first, must not follow
+/// object ids (batch 5d N1). Units killed together use a DeathBatch, which
+/// does this itself.
+inline void inSeenOrder(const GameState& state, std::vector<GameObjectId>& ids) {
+    openspiel::sortObjectsAsSeen(state, ids, state.turn.turn_player);
+}
+
 // ── Picking an object without "choosing" it ─────────────────────────────────
 /// Ask the controller which of `options` to use when the pick is not a choice
 /// of that object in the rules sense — which unit's buff to spend, which rune
@@ -773,7 +790,9 @@ inline int takenValue(CardContext& ctx, int fallback) {
 /// apart.
 inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::string& label,
                                                 std::vector<GameObjectId> options,
-                                                size_t slot = 7, bool may_decline = false) {
+                                                size_t slot = 7, bool may_decline = false,
+                                                std::source_location where = std::source_location::current(),
+                                                PromptKind kind = PromptKind::ChooseObject) {
     std::sort(options.begin(), options.end());
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value())   // direct invocation: nobody to ask
@@ -817,7 +836,7 @@ inline std::optional<GameObjectId> selectObject(CardContext& ctx, const std::str
     }
     RIFT_TRACE(ctx.events, "SELECT_PROMPT: " + label + " [" + std::to_string(options.size()) +
                         " options]");
-    ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
+    ctx.executor.requestChoice(ctx.controller, std::move(choices), label, kind, where);
     ri.resume_data[slot] = 1;
     return std::nullopt;
 }
@@ -855,7 +874,8 @@ inline bool playedFromFacedown(const GameState& state, GameObjectId source) {
 inline std::optional<GameObjectId> selectTargetOrNone(Card& card, CardContext& ctx,
                                                       const std::string& label,
                                                       std::vector<GameObjectId> options,
-                                                      size_t slot = 7, bool allow_none = true) {
+                                                      size_t slot = 7, bool allow_none = true,
+                                                      std::source_location where = std::source_location::current()) {
     std::sort(options.begin(), options.end());
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value()) return options.empty() ? kInvalidId : options.front();
@@ -898,7 +918,8 @@ inline std::optional<GameObjectId> selectTargetOrNone(Card& card, CardContext& c
     if (allow_none) choices.push_back(valChoice(ctx.controller, 0, "None — " + label));
     RIFT_TRACE(ctx.events, "TGT_PROMPT: " + label + " [" + std::to_string(offered.size()) +
                         " options, or none]");
-    ctx.executor.requestChoice(ctx.controller, std::move(choices), "target: " + label);
+    ctx.executor.requestChoice(ctx.controller, std::move(choices), "target: " + label,
+                               PromptKind::Target, where);
     ri.resume_data[slot] = 1;
     return std::nullopt;
 }
@@ -950,7 +971,8 @@ constexpr int kSplitDamageCeaseAwait = 105;
 inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int total,
                              GameObjectId damage_source, std::vector<GameObjectId> legal,
                              std::vector<GameObjectId>& damaged,
-                             bool may_choose_none = false) {
+                             bool may_choose_none = false,
+                             std::source_location where = std::source_location::current()) {
     std::sort(legal.begin(), legal.end());
     auto dealAll = [&](const std::vector<std::pair<GameObjectId, int>>& alloc) {
         for (const auto& [id, n] : alloc) {
@@ -1066,7 +1088,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
             RIFT_TRACE(ctx.events, "SPLIT_PROMPT: " + label + " (target " +
                                 std::to_string(targetCount() + 1) + ")");
             ctx.executor.requestChoice(ctx.controller, std::move(options),
-                                       "split damage: " + label + " — choose a target");
+                                       "split damage: " + label + " — choose a target",
+                                       PromptKind::SplitTargets, where);
             ri.resume_point = kSplitDamageTargetsAwait;
             return false;
         }
@@ -1105,7 +1128,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
         std::vector<Intent> options;
         for (auto t : live) options.push_back(objChoice(ctx.controller, t));
         ctx.executor.requestChoice(ctx.controller, std::move(options),
-            "split damage: " + label + " — more targets than damage: which one is dropped");
+            "split damage: " + label + " — more targets than damage: which one is dropped",
+            PromptKind::SplitTargets, where);
         ri.resume_point = kSplitDamageCeaseAwait;
         return false;
     }
@@ -1140,7 +1164,8 @@ inline bool splitDamageAmong(CardContext& ctx, const std::string& label, int tot
                             " of " + std::to_string(total) + " damage left to assign)");
         ctx.executor.requestChoice(ctx.controller, std::move(options),
                                    "split damage: " + label + " (" +
-                                   std::to_string(remaining) + " left)");
+                                   std::to_string(remaining) + " left)",
+                                   PromptKind::SplitAmount, where);
         ri.resume_point = kSplitDamageAssignAwait;
         return false;
     }
@@ -1211,7 +1236,8 @@ inline bool effectPlayAllowedAt(const CardContext& ctx, PlayerId player, GameObj
 /// Returns -1 while waiting for the agent, else the mode to hand to
 /// effectPlayLocation. `unit`: the card being played (its permissions count).
 inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::string& label,
-                                  GameObjectId unit = kInvalidId) {
+                                  GameObjectId unit = kInvalidId,
+                                  std::source_location where = std::source_location::current()) {
     const auto& bfs = ctx.state.battlefields;
     uint32_t mask = 1u;
     std::vector<std::string> labels{"Base"};
@@ -1225,7 +1251,8 @@ inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::strin
         card.settleMode(ctx, 0);
         return 0;
     }
-    const int m = card.pickMode(ctx, label, static_cast<int>(labels.size()), labels, mask);
+    const int m = card.pickMode(ctx, label, static_cast<int>(labels.size()), labels, mask, where,
+                                PromptKind::Location);
     return m == -1 ? -1 : std::max(0, m);
 }
 /// The location a pickEffectPlayLocation mode stands for (asked just before
@@ -1419,7 +1446,8 @@ constexpr size_t kTokenPlaySlot = 8;
 template <typename MakeFn>
 bool playTokensChoosingLocations(CardContext& ctx, const std::string& label, int count,
                                  MakeFn&& make, std::vector<GameObjectId>& made,
-                                 std::optional<BattlefieldId> only_bf = std::nullopt) {
+                                 std::optional<BattlefieldId> only_bf = std::nullopt,
+                                 std::source_location asked_at = std::source_location::current()) {
     made.clear();
     const auto where = playLocations(ctx.state, ctx.controller, only_bf);
     if (count <= 0 || where.count() == 0) return true;
@@ -1458,7 +1486,7 @@ bool playTokensChoosingLocations(CardContext& ctx, const std::string& label, int
                 options.push_back(valChoice(ctx.controller, i, label + ": " + where.labels[i]));
             ctx.executor.requestChoice(ctx.controller, std::move(options),
                 label + " (token " + std::to_string(data[kTokenPlaySlot] + 1) + " of " +
-                std::to_string(count) + ")");
+                std::to_string(count) + ")", PromptKind::Location, asked_at);
             ri_opt->resume_point = kTokenPlayAwait;
             return false;
         }
@@ -1548,7 +1576,8 @@ inline std::vector<LocationId> tokenPlayLocations(const CardContext& ctx) {
 /// there is nowhere the token can be played (the caller must return for
 /// both: `if (dest < 0) return;`). Not asked when there is one place only.
 /// This is the callback's Card::pickMode.
-inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label) {
+inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label,
+                         std::source_location where = std::source_location::current()) {
     const auto dests = tokenPlayDests(ctx);
     if (dests.empty()) return -2;
     if (dests.size() == 1) {
@@ -1565,7 +1594,7 @@ inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label)
     }
     std::vector<std::string> labels;
     for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
-    return card.pickMode(ctx, label, modes, labels, mask);
+    return card.pickMode(ctx, label, modes, labels, mask, where, PromptKind::Location);
 }
 
 /// "Choose a battlefield", "... at a battlefield" with the battlefield as the
@@ -1574,7 +1603,8 @@ inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label)
 /// from facedown chooses the battlefield it was hidden at (CR 811.1.d.2,
 /// hiddenBinding). This is the callback's Card::pickMode: -1 while the agent
 /// decides, -2 with no battlefield to choose.
-inline int pickBattlefield(Card& card, CardContext& ctx, const std::string& label) {
+inline int pickBattlefield(Card& card, CardContext& ctx, const std::string& label,
+                           std::source_location where = std::source_location::current()) {
     const auto& bfs = ctx.state.battlefields;
     const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
     const HiddenBinding bind = hiddenBinding(ctx.state, ctx.source);
@@ -1586,8 +1616,8 @@ inline int pickBattlefield(Card& card, CardContext& ctx, const std::string& labe
             : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         if (!bind.bound || (bind.bf.has_value() && *bind.bf == bfs[i].id)) mask |= 1u << i;
     }
-    if (n == 0) return card.pickMode(ctx, label, 1, {}, 0u);   // nothing to choose: -2
-    return card.pickMode(ctx, label, n, labels, mask);
+    if (n == 0) return card.pickMode(ctx, label, 1, {}, 0u, where, PromptKind::Target);   // -2
+    return card.pickMode(ctx, label, n, labels, mask, where, PromptKind::Target);
 }
 
 /// "Move a unit" with no destination printed: ask ctx.controller where `u`
@@ -1596,7 +1626,8 @@ inline int pickBattlefield(Card& card, CardContext& ctx, const std::string& labe
 /// code, -1 while the agent is deciding (the caller must return) and -2 when
 /// there is nowhere to move it. This is the callback's Card::pickMode.
 inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
-                        const GameObject& u, bool battlefields_only = false) {
+                        const GameObject& u, bool battlefields_only = false,
+                        std::source_location where = std::source_location::current()) {
     uint32_t mask = 0;
     for (int d : moveDests(ctx.state, u))
         if (d < 32 && !(d == 0 && battlefields_only)) mask |= 1u << d;
@@ -1605,7 +1636,7 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
         modes = std::max(modes, 2 + static_cast<int>(bf.id.raw()));
     std::vector<std::string> labels;
     for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
-    return card.pickMode(ctx, label, modes, labels, mask);
+    return card.pickMode(ctx, label, modes, labels, mask, where, PromptKind::Location);
 }
 
 // ── Several objects, one prompt each ("up to N", "any number of") ───────────
@@ -1641,7 +1672,7 @@ inline int pickMoveDest(Card& card, CardContext& ctx, const std::string& label,
 /// has not been stored yet is offered what the current list still holds.
 inline std::optional<std::vector<GameObjectId>> selectSeveral(
         CardContext& ctx, const std::string& label, std::vector<GameObjectId> options,
-        int max_picks = -1, size_t first_slot = 7) {
+        int max_picks = -1, size_t first_slot = 7, std::source_location where = std::source_location::current()) {
     std::sort(options.begin(), options.end());
     std::vector<GameObjectId> picked;
     const auto& item = ctx.state.chain.resuming;
@@ -1661,12 +1692,12 @@ inline std::optional<std::vector<GameObjectId>> selectSeveral(
         if (options.empty()) {
             // Nothing left to pick: store the end of the list (no prompt), so
             // a later entry does not start asking again.
-            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true);
+            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true, where);
             break;
         }
         std::vector<GameObjectId> offer = options;
         offer.erase(std::unique(offer.begin(), offer.end()), offer.end());
-        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true);
+        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true, where);
         if (!one.has_value()) return std::nullopt;
         if (*one == kInvalidId) break;
         picked.push_back(*one);
@@ -1685,7 +1716,8 @@ inline std::optional<std::vector<GameObjectId>> selectSeveral(
 /// less"). Same slots and re-entry contract as selectSeveral.
 inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
         Card& card, CardContext& ctx, const std::string& label,
-        std::vector<GameObjectId> options, int max_picks = -1, size_t first_slot = 7) {
+        std::vector<GameObjectId> options, int max_picks = -1, size_t first_slot = 7,
+        std::source_location where = std::source_location::current()) {
     std::sort(options.begin(), options.end());
     std::vector<GameObjectId> picked;
     const auto& item = ctx.state.chain.resuming;
@@ -1708,10 +1740,12 @@ inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
                                item->resume_data[slot] == 1;
         if (!answering) offer = card.offerableChoices(ctx, offer);
         if (offer.empty()) {
-            if (item.has_value()) (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true);
+            if (item.has_value())
+                (void)selectObject(ctx, label, {}, slot, /*may_decline=*/true, where, PromptKind::Target);
             break;
         }
-        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true);
+        auto one = selectObject(ctx, label, offer, slot, /*may_decline=*/true, where,
+                                PromptKind::Target);
         if (!one.has_value()) return std::nullopt;
         if (*one == kInvalidId) break;
         if (answering) card.commitChosenObject(ctx, *one);   // chosen now: Deflect, "chosen"
@@ -1739,7 +1773,8 @@ inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
 template <typename Fits>
 std::optional<std::vector<GameObjectId>> chooseFittingSubset(
         CardContext& ctx, const std::string& label, std::vector<GameObjectId> originals,
-        Fits&& fits, size_t slot) {
+        Fits&& fits, size_t slot,
+        std::source_location where = std::source_location::current()) {
     std::sort(originals.begin(), originals.end());
     if (fits(originals)) return originals;
     if (originals.size() > 16)
@@ -1801,7 +1836,8 @@ std::optional<std::vector<GameObjectId>> chooseFittingSubset(
         if (v.size() == 1) { record(v.front()); continue; }
         std::vector<Intent> options;
         for (size_t i : v) options.push_back(objChoice(ctx.controller, originals[i]));
-        ctx.executor.requestChoice(ctx.controller, std::move(options), label);
+        ctx.executor.requestChoice(ctx.controller, std::move(options), label,
+                                   PromptKind::ChooseObject, where);
         ri.resume_data[slot + 1] = 1;
         return std::nullopt;
     }
@@ -1829,7 +1865,7 @@ inline void gainXp(CardContext& ctx, PlayerId player, int amount) {
 inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId chooser,
                                                   const std::string& label,
                                                   std::vector<GameObjectId> options,
-                                                  size_t slot = 7) {
+                                                  size_t slot = 7, std::source_location where = std::source_location::current()) {
     std::sort(options.begin(), options.end());
     auto& ri_opt = ctx.state.chain.resuming;
     if (!ri_opt.has_value())   // direct invocation: nobody to ask
@@ -1856,7 +1892,43 @@ inline std::optional<GameObjectId> selectObjectAs(CardContext& ctx, PlayerId cho
     for (auto id : options) choices.push_back(objChoice(chooser, id));
     RIFT_TRACE(ctx.events, "SELECT_PROMPT (" + std::string(toString(chooser)) + "): " + label +
                         " [" + std::to_string(options.size()) + " options]");
-    ctx.executor.requestChoice(chooser, std::move(choices), label);
+    ctx.executor.requestChoice(chooser, std::move(choices), label, PromptKind::ChooseObject, where);
+    ri.resume_data[slot] = 1;
+    return std::nullopt;
+}
+
+/// pickMode for a choice that belongs to `chooser`, who need not be
+/// ctx.controller: one of `labels` (value = its index), asked at resolution.
+/// For "its owner plays it to any battlefield" (the player who plays a unit
+/// chooses where it goes, CR 355.2; testing phase M4). Same slots and
+/// re-entry contract as selectObjectAs: nullopt while `chooser` is being
+/// asked, -1 when there is nothing to choose. A single option is asked too,
+/// as pickMode asks it (the decision is recorded).
+inline std::optional<int> pickValueAs(CardContext& ctx, PlayerId chooser, const std::string& label,
+                                      const std::vector<std::string>& labels,
+                                      PromptKind kind = PromptKind::Value, size_t slot = 7,
+                                      std::source_location where = std::source_location::current()) {
+    const int n = static_cast<int>(labels.size());
+    auto& ri_opt = ctx.state.chain.resuming;
+    if (!ri_opt.has_value()) return n == 0 ? -1 : 0;   // direct invocation: nobody to ask
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    auto answer = [&ri, slot](int v) {
+        ri.resume_data[slot] = 2;
+        ri.resume_data[slot + 1] = v;
+        return v;
+    };
+    if (ri.resume_data[slot] == 2) return ri.resume_data[slot + 1];
+    if (ri.resume_data[slot] == 1) {
+        const int v = takenValue(ctx, 0);
+        return answer(v >= 0 && v < n ? v : 0);
+    }
+    if (n == 0) return answer(-1);
+    std::vector<Intent> choices;
+    for (int i = 0; i < n; ++i) choices.push_back(valChoice(chooser, i, labels[static_cast<size_t>(i)]));
+    RIFT_TRACE(ctx.events, "VALUE_PROMPT (" + std::string(toString(chooser)) + "): " + label +
+                        " [" + std::to_string(n) + " options]");
+    ctx.executor.requestChoice(chooser, std::move(choices), label, kind, where);
     ri.resume_data[slot] = 1;
     return std::nullopt;
 }

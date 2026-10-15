@@ -76,7 +76,7 @@ public:
             choices.push_back(decline);
             ctx.executor.requestChoice(payer, std::move(choices),
                                        "Hard Bargain: pay 2 to save " + spell_name +
-                                       "? [pay | decline]");
+                                       "? [pay | decline]", PromptKind::May);
             ri.resume_point = kAwaitPay;
             return;
         }

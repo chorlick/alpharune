@@ -66,7 +66,7 @@ public:
             for (int d : options) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
             // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?");
+                "Vanguard Armory: play Recruit " + std::to_string(placed + 1) + " of 3 where?", PromptKind::Location);
             ri.resume_point = kAsking;
             return;
         }

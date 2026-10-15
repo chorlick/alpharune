@@ -63,7 +63,7 @@ public:
             keep.choice_label = "Keep it";
             choices.push_back(keep);
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                        "predict 1: recycle or keep (Abandon)");
+                                        "predict 1: recycle or keep (Abandon)", PromptKind::LookTop);
             ri.resume_point = 1;
             return;
         }

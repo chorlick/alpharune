@@ -31,7 +31,8 @@ public:
         // runes, ready or exhausted — so X ranges over payableAnyPower.
         // pickXAmount publishes one int-coded MakeChoice per X and the action
         // vocabulary has 16 int slots (0..15), so X is capped at 15.
-        const int max_x = std::min(ctx.executor.payableAnyPower(ctx.controller), 15);
+        // [Add] abilities count: the payment may use them (CR 357.1.a; M2).
+        const int max_x = ctx.executor.maxPayableAnyPower(ctx.controller, 15);
         // An [Add] ability resolves as it is activated (CR 401.2): no separate finalization (batch M1).
         const int x = pickXAmount(ctx, "Hextech Anomaly: pay X [A] → Add X energy", 0, max_x);
         if (x < 0) return;        // pending choice

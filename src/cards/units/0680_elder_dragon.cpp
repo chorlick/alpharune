@@ -54,7 +54,9 @@ public:
         // for this card, whose text does not say so.
         std::vector<GameObjectId> chosen;
         const bool taxed = !ignoresDeflect();
-        const int payable = ctx.executor.payableAnyPower(ctx.controller);
+        // [Add] abilities count toward what Deflect can be paid with (CR
+        // 357.1.a; batch 5d M2).
+        const int payable = ctx.executor.maxPayableAnyPower(ctx.controller, 64);
         int owed = 0;
         size_t slot = kLocationsSlot + 1;   // two per location (selectObject)
         for (const auto& loc : locations) {

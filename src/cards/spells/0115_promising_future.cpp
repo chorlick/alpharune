@@ -49,7 +49,7 @@ public:
             if (choices.empty()) return false;
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(p, std::move(choices),
-                                        "Promising Future: banish one of your top 5");
+                                        "Promising Future: banish one of your top 5", PromptKind::ChooseObject);
             return true;
         };
 
@@ -117,7 +117,7 @@ public:
                     "Promising Future: play to " + places.labels[static_cast<size_t>(i)]));
             // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             ctx.executor.requestChoice(p, std::move(where),
-                                       "Promising Future: where to play it");
+                                       "Promising Future: where to play it", PromptKind::Location);
             return true;
         };
         auto taken_where = [&](PlayerId p, GameObjectId banished) -> std::optional<LocationId> {

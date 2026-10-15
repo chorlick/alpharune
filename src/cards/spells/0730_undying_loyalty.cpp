@@ -116,7 +116,8 @@ public:
         // played to.
         const auto where = playLocationsFor(ctx, ctx.controller, picked);
         const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
-                                  where.count(), where.labels);
+                                  where.count(), where.labels, ~0u,
+                                  std::source_location::current(), PromptKind::Location);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         ctx.executor.playIgnoringCost(ctx.controller, picked, where.locations[mode]);
         RIFT_TRACE(ctx.events, "UNDYING LOYALTY: played a unit from trash, ignoring cost");

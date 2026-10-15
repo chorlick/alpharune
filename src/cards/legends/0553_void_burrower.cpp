@@ -99,7 +99,7 @@ public:
             }
             ri.resume_data[3] = 1;  // phase = awaiting banish choice
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                       "Void Burrower: banish one of the top 2 (then play it)");
+                                       "Void Burrower: banish one of the top 2 (then play it)", PromptKind::ChooseObject);
             return;
         }
 
@@ -145,7 +145,7 @@ public:
                     ri.resume_data[0] = static_cast<int32_t>(banished.raw());
                     ri.resume_data[3] = 2;   // phase = awaiting the location
                     ctx.executor.requestChoice(ctx.controller, std::move(where),
-                                               "Void Burrower: where to play it");
+                                               "Void Burrower: where to play it", PromptKind::Location);
                     return;
                 }
             }

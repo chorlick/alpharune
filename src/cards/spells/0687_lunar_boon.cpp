@@ -38,7 +38,8 @@ public:
             // phase R1; D11).
             // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
-                                       "Lunar Boon: discard 1, then draw 2");
+                                       "Lunar Boon: discard 1, then draw 2",
+                                       PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }

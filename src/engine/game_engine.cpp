@@ -7216,7 +7216,33 @@ bool GameEngine::canGainWinningPointViaConquer(PlayerId player) const {
 // Aura recalculation (Phase 5b — tagged effects)
 // ═══════════════════════════════════════════════════════════════════════════════
 
+namespace {
+// One object's word in the Cleanup's checksum (GameEngine::cleanup, which
+// says what it covers and why); FNV-style: h = (h ^ word) * prime.
+inline uint64_t cleanupObjectWord(GameObjectId id, const GameObject& obj) {
+    const uint64_t flags =
+        static_cast<uint64_t>(obj.zone.get()) |
+        (static_cast<uint64_t>(obj.controller) << 8) |
+        (obj.untargetable_by_enemy ? 1ULL << 16 : 0) |
+        (obj.is_exhausted ? 1ULL << 17 : 0);
+    return static_cast<uint64_t>(id.raw()) * 0x9E3779B97F4A7C15ULL ^
+           static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
+           static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
+           static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
+           static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(obj.tags.operator->())) *
+               0x94D049BB133111EBULL ^
+           flags * 0xFF51AFD7ED558CCDULL;
+}
+constexpr uint64_t kCleanupChecksumSeed = 0xCBF29CE484222325ULL;   // FNV-1a seed
+constexpr uint64_t kCleanupChecksumPrime = 0x100000001B3ULL;
+inline void cleanupMix(uint64_t& h, uint64_t x) {
+    h ^= x;
+    h *= kCleanupChecksumPrime;
+}
+}  // namespace
+
 void GameEngine::recalculateAuras() {
+    fold_checksum_valid_ = false;
     // Step 0: Drop the cost modifiers the previous aura pass produced. A
     // CostModifier pushed from Card::applyPassiveAura is a continuous effect:
     // like aura_effects it is rebuilt from scratch on every pass (Ornn's Forge,
@@ -7592,7 +7618,13 @@ void GameEngine::recalculateAuras() {
     auto foldAuras = [&]() {
         any_conditional = false;
         aura_outside_play_.clear();
-        forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
+        // The fold is the last walk of the pass that writes a field the
+        // Cleanup's checksum reads, and it visits the objects that checksum
+        // walks, in its order: it takes the checksum on the way (each object
+        // after its own fold), so the Cleanup need not walk them again.
+        uint64_t h = kCleanupChecksumSeed;
+        cleanupMix(h, state_.objects.size());
+        const auto fold = [&](GameObjectId id, GameObject& obj) {
             // Outside play with something a hook gave it (an Equipment in a
             // hand with a granted keyword): remembered for the next pass.
             if (!obj.location.has_value() && obj.zone != ZoneType::LegendZone &&
@@ -7633,7 +7665,13 @@ void GameEngine::recalculateAuras() {
             if (obj.isUnit() && obj.location.has_value()) {
                 obj.recomputeMight();
             }
+        };
+        forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
+            fold(id, obj);
+            cleanupMix(h, cleanupObjectWord(id, obj));
         });
+        fold_checksum_ = h;
+        fold_checksum_valid_ = true;
     };
     foldAuras();
 
@@ -7952,12 +7990,26 @@ void GameEngine::cleanup() {
     // GameState compare; covers all paths the cleanup sub-routines
     // mutate (object count + damage + zone + aura might/keywords +
     // BF control + score).
+    // What follows the objects in the checksum: the battlefields and scores.
+    auto finishChecksum = [&](uint64_t h) -> uint64_t {
+        auto mix = [&](uint64_t x) { cleanupMix(h, x); };
+        for (auto& bf : state_.battlefields) {
+            mix(static_cast<uint64_t>(bf.id.raw()));
+            // bf.controller is std::optional<PlayerId> — encode the
+            // has_value bit + the value (if any) into one mix.
+            mix(bf.controller.has_value()
+                ? (0x100ULL | static_cast<uint64_t>(*bf.controller))
+                : 0ULL);
+            mix(bf.is_contested ? 0xEEE : 0xFFF);
+        }
+        for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
+            mix(static_cast<uint64_t>(state_.player(pid).score));
+        }
+        return h;
+    };
     auto checksumOver = [&](bool every_object) -> uint64_t {
-        uint64_t h = 0xCBF29CE484222325ULL; // FNV-1a seed
-        auto mix = [&](uint64_t x) {
-            h ^= x;
-            h *= 0x100000001B3ULL;
-        };
+        uint64_t h = kCleanupChecksumSeed;
+        auto mix = [&](uint64_t x) { cleanupMix(h, x); };
         mix(state_.objects.size());
         // Every object of the game, not only those in play: a pass can change
         // a card that is in no list of the board index (a unit that just died
@@ -7977,38 +8029,13 @@ void GameEngine::cleanup() {
         // (Rumble, Scrapper: "Your Mechs have +1 [M]"). A tag given after the
         // reader looked is a change: the next pass gives the bonus. Tags are
         // interned, so equal tag lists are one pointer.
-        const auto mixObject = [&](GameObjectId id, const GameObject& obj) {
-            const uint64_t flags =
-                static_cast<uint64_t>(obj.zone.get()) |
-                (static_cast<uint64_t>(obj.controller) << 8) |
-                (obj.untargetable_by_enemy ? 1ULL << 16 : 0) |
-                (obj.is_exhausted ? 1ULL << 17 : 0);
-            mix(static_cast<uint64_t>(id.raw()) * 0x9E3779B97F4A7C15ULL ^
-                static_cast<uint64_t>(static_cast<uint32_t>(obj.damage_marked)) * 0xC2B2AE3D27D4EB4FULL ^
-                static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 0x165667B19E3779F9ULL ^
-                static_cast<uint64_t>(static_cast<uint32_t>(obj.aura_might_bonus)) * 0x27D4EB2F165667C5ULL ^
-                static_cast<uint64_t>(reinterpret_cast<std::uintptr_t>(obj.tags.operator->())) *
-                    0x94D049BB133111EBULL ^
-                flags * 0xFF51AFD7ED558CCDULL);
-        };
+        // (One object's word: cleanupObjectWord.)
         if (every_object) {
-            for (auto& [id, obj] : state_.objects) mixObject(id, obj);
+            for (auto& [id, obj] : state_.objects) mix(cleanupObjectWord(id, obj));
         } else {
-            for (auto& [id, obj] : state_.objects.offPiles()) mixObject(id, obj);
+            for (auto& [id, obj] : state_.objects.offPiles()) mix(cleanupObjectWord(id, obj));
         }
-        for (auto& bf : state_.battlefields) {
-            mix(static_cast<uint64_t>(bf.id.raw()));
-            // bf.controller is std::optional<PlayerId> — encode the
-            // has_value bit + the value (if any) into one mix.
-            mix(bf.controller.has_value()
-                ? (0x100ULL | static_cast<uint64_t>(*bf.controller))
-                : 0ULL);
-            mix(bf.is_contested ? 0xEEE : 0xFFF);
-        }
-        for (auto pid : {PlayerId::Player1, PlayerId::Player2}) {
-            mix(static_cast<uint64_t>(state_.player(pid).score));
-        }
-        return h;
+        return finishChecksum(h);
     };
     auto checksum = [&]() { return checksumOver(!piles_inert_); };
 
@@ -8041,7 +8068,15 @@ void GameEngine::cleanup() {
         recallMisplacedObjects();        // CR 323.6
         processContestedBattlefields();  // CR 323.2, 323.7-323.10
         recalculateAuras();
-        uint64_t after = checksum();
+        // The aura pass's last fold took the objects' part of the checksum
+        // as it went (nothing after it in the pass writes a field the
+        // checksum reads); the checked build takes it again and compares.
+        uint64_t after = fold_checksum_valid_ ? finishChecksum(fold_checksum_) : checksum();
+#ifdef RIFTBOUND_CHECK_BOARD_INDEX
+        if (after != checksum())
+            throw std::logic_error("GameEngine::cleanup: the checksum the aura pass's fold took "
+                                   "differs from a walk after the pass");
+#endif
 #ifdef RIFTBOUND_CHECK_BOARD_INDEX
         // (Not when a card whose effect reaches the piles entered play during
         // the pass: the walk is over every object from there on.)

@@ -1049,6 +1049,13 @@ private:
     // recalculateAuras takes it out while it runs, so a nested pass gets one
     // of its own.
     std::vector<std::pair<CardDefId, PlayerId>> aura_applied_buffer_;
+    // The Cleanup's checksum of the objects (cleanupObjectWord, over the
+    // objects a Cleanup walks, after objects.size()), taken by the last fold
+    // of the latest aura pass as it visits each object: what the checksum
+    // after a Cleanup pass would read again (cleanup()). Valid only while
+    // nothing has run since that fold that could change those fields.
+    uint64_t fold_checksum_ = 0;
+    bool fold_checksum_valid_ = false;
     // The last Cleanup found nothing to do and announced nothing but
     // StateSettled, to which nothing reacted; `quiet_cleanup_activity_` is
     // EventBus::activity() as it ended and `quiet_cleanup_shape_` what

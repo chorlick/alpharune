@@ -24,6 +24,8 @@ public:
             .targets = TargetRequirements{.count = 1, .must_be_friendly = true},
             .is_action = true, .is_reaction = false,
             .needs_activation_time_target = true,
+            .is_empower = false,
+            .adds_resources = true,   // resolves as it is activated (CR 430.2; D2)
         }};
     }
 

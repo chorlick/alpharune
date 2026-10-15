@@ -726,13 +726,11 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_DoesNotTriggerWhenPlayedFromHand) {
     auto eve = addUnit(P1, kEvelynn, 2, /*at_bf=*/0);
     auto enemy = addUnit(P2, kInvalidId, 3, /*at_bf=*/1);
     state.turn.turn_player = P1;
-    Seen seen;
-
-    driveResumableTrigger(kEvelynn, P1, eve, yesThen(enemy, &seen), exec,
-                          TriggerType::WhenYouPlayMe);
-
-    EXPECT_EQ(seen.prompts, 0) << "\"from face down\": a play from hand does not qualify";
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
+    (void)exec;
+    (void)enemy;
+    // The trigger condition (CR 383.2.a.1): nothing goes on the chain.
+    EXPECT_FALSE(triggersNow(kEvelynn, P1, eve, TriggerType::WhenYouPlayMe))
+        << "\"from face down\": a play from hand does not qualify";
 }
 
 TEST_F(RulesCardsTest, RulesCards_Evelynn_TriggersWhenPlayedFromFaceDownOnYourTurn) {
@@ -747,8 +745,10 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_TriggersWhenPlayedFromFaceDownOnYourTu
 
     EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(0))
         << "moved to Evelynn's battlefield";
-    EXPECT_EQ(state.getObject(eve).card_counters["__played_from_facedown"], 0)
-        << "the marker is consumed so a later play from hand doesn't reuse it";
+    // A later play from hand does not reuse the marker: it begins by dropping
+    // it (Card::forgetPlayPayments; testing phase B2).
+    Card::forgetPlayPayments(state, card_registry.get(kEvelynn), P1, eve);
+    EXPECT_FALSE(triggersNow(kEvelynn, P1, eve, TriggerType::WhenYouPlayMe));
 }
 
 TEST_F(RulesCardsTest, RulesCards_Evelynn_NotOnAnOpponentsTurn) {
@@ -757,13 +757,9 @@ TEST_F(RulesCardsTest, RulesCards_Evelynn_NotOnAnOpponentsTurn) {
     auto enemy = addUnit(P2, kInvalidId, 3, /*at_bf=*/1);
     state.turn.turn_player = P2;
     state.getObject(eve).card_counters["__played_from_facedown"] = 1;
-    Seen seen;
-
-    driveResumableTrigger(kEvelynn, P1, eve, yesThen(enemy, &seen), exec,
-                          TriggerType::WhenYouPlayMe);
-
-    EXPECT_EQ(seen.prompts, 0) << "\"on your turn\"";
-    EXPECT_EQ(state.getObject(enemy).battlefieldId().value_or(BattlefieldId::fromRaw(99)), BattlefieldId::fromRaw(1));
+    (void)exec;
+    (void)enemy;
+    EXPECT_FALSE(triggersNow(kEvelynn, P1, eve, TriggerType::WhenYouPlayMe)) << "\"on your turn\"";
 }
 
 TEST_F(RulesCardsTest, RulesCards_Evelynn_CantChooseUntargetableEnemy) {

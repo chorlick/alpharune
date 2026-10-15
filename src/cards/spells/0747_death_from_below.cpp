@@ -77,7 +77,7 @@ public:
         const int again = confirmOptional(ctx, "Death from Below: play it from your trash for [A]",
             [&]() {
                 return costAlreadyPaid(ctx) ||
-                       (in_trash() && ctx.executor.payableAnyPower(ctx.controller) >= 1 &&
+                       (in_trash() && ctx.executor.canPayAnyPower(ctx.controller, 1) &&
                         !enumerateLegalTargets(ctx.state, ctx.controller).empty());
             });
         if (again == 1 && costDueNow(ctx) && !ctx.executor.payAnyPower(ctx.controller, 1)) return;

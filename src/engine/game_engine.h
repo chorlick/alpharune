@@ -635,6 +635,33 @@ private:
     /// the chain.
     void finishPlaySpell(const Intent& intent, std::vector<GameObjectId> play_targets,
                          bool target_chosen_at_play, std::vector<GameObjectId> cost_targets);
+    /// A spell's choices, made as it is played and before its cost is
+    /// determined and paid (CR 355 -> 356): its play-time target (one an
+    /// effect play must ask for too: a spell whose one required target a play
+    /// intent would name — `by_effect`) and the whole finalize pass of a
+    /// kFinalizeResolve spell (kept in `prefinalized_spell_` for the chain
+    /// item). `play_targets` comes in as the intent's targets. Returns false
+    /// only for an effect play that has no legal choice for a required
+    /// target: it cannot be played (CR 355.8), and nothing was paid.
+    bool chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id, bool via_trash_grant,
+                                  bool by_effect, std::vector<GameObjectId>& play_targets,
+                                  bool& target_chosen_at_play,
+                                  std::vector<GameObjectId>& cost_targets);
+    /// The cost a spell's choices left for the cost step (ChainItem::
+    /// cost_deferred), paid by running its pass again (CR 357.2).
+    void payDeferredSpellCost(GameObjectId card_id);
+    /// Whether an effect may play `card_id` paying its cost (with what the
+    /// effect waives staged): its cost, and for a spell a legal choice for
+    /// each target it asks as it is played, with that target's Deflect.
+    bool effectPlayAffordable(PlayerId player, GameObjectId card_id) const;
+    /// An effect play of a spell that pays (EffectExecutor::playPayingCost):
+    /// the targets chosen before its cost, for its chain item.
+    struct EffectPlayedSpell {
+        GameObjectId card = kInvalidId;
+        std::vector<GameObjectId> targets;
+        bool target_chosen_at_play = false;
+    };
+    std::optional<EffectPlayedSpell> effect_played_spell_;
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);
@@ -741,6 +768,11 @@ private:
     /// with none, combat) begins — the turn player's choice when there are
     /// several. kInvalidId when nothing is staged.
     BattlefieldId chooseNextStaged(bool& is_combat);
+    /// The chain settled, then staged showdowns and combats begun one at a
+    /// time with everything they leave settled, until nothing is pending (CR
+    /// 323.11 / 323.12, 335). Run at the end of every phase and before each
+    /// Main Phase decision. False once the game is over.
+    bool settleStagedAndChain(bool chain_first = true);
 
     // ── Combat ──
     void runShowdown(BattlefieldId bf);
@@ -849,6 +881,24 @@ private:
     /// additional execution (CR 820.2).
     void chooseTargetsAtFinalize(ChainItem& item);
     void chooseFirstExecution(ChainItem& item);
+    /// A spell that made its choices before its cost (executePlaySpell) takes
+    /// them over as it goes on the chain, and announces them.
+    void adoptPrefinalizedChoices(ChainItem& item);
+    /// CR 407: an activated ability's choices and cost are done.
+    void finalizeActivatedItem(ChainItemId item_id);
+    /// CR 430.2: an ability that [Add]s resolves as it is played.
+    void resolveAddAbilityNow(ChainItemId item_id, OpenClosedState state_before,
+                              bool chain_was_empty);
+    /// The last payAndQueueAbility was an [Add] ability, resolved at once:
+    /// Focus does not pass (CR 430.2.a).
+    bool last_activation_added_ = false;
+    /// The [Add] Reactions `player` could activate now (CR 430.3).
+    std::vector<Intent> addReactionsFor(PlayerId player) const;
+    /// Whether `check` holds after `player` activates every [Add] Reaction
+    /// they can, tried on a copy of the game (EffectExecutor::canPayWithAdds).
+    bool probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check,
+                   const std::function<void()>* first = nullptr);
+    bool adds_probing_ = false;
     // (An item whose choices are made early — a spell an effect plays — is
     // marked ChainItemStatus::Finalized on the spot, which is what keeps the
     // chain's Finalize step from asking again.)
@@ -1027,7 +1077,10 @@ private:
     /// choosing something that takes enough off its cost (the generators'
     /// half of executePlaySpell's choices-before-payment).
     bool payableThroughAFinalizeChoice(PlayerId player, GameObjectId card_id,
-                                       const PlayerState::TrashReplayGrant* grant) const;
+                                       const PlayerState::TrashReplayGrant* grant,
+                                       bool whole_choice = false) const;
+    /// Whether some unit on the board would cost `player` a Deflect to choose.
+    bool anyDeflectFor(PlayerId player) const;
     /// A spell's finalize-pass choices made before its cost was paid; adopted
     /// by chooseTargetsAtFinalize when the spell goes on the chain.
     std::optional<ChainItem> prefinalized_spell_;

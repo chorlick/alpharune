@@ -21,6 +21,7 @@
 #include "types.h"
 
 #include <atomic>
+#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -112,6 +113,52 @@ private:
     bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
 
     Value value_;
+    std::atomic<bool>* stale_ = nullptr;
+};
+
+/// GameObject::zone: a TrackedField<ZoneType> that also counts the object's
+/// lives. CR 359.3.e.2 / 359.3.e.4: "A target is illegal as the spell resolves
+/// if ... it has changed Zones to or from a Non-Board Zone" — "it's not treated
+/// as the same object" even when it has come back (CR 124.1). Every change of
+/// zone other than between the two board zones (a Base and a Battlefield)
+/// starts a new life; `incarnation()` is its number. A chain item stamps the
+/// incarnation of what it chooses (GameState::stampChosen) and a choice whose
+/// object has had a new life since is no longer legal (GameState::
+/// stillTheChosenObject; testing phase G14). The counter sits in the padding
+/// after the one-byte zone, so a GameObject is no larger for it.
+class TrackedZone {
+public:
+    TrackedZone() = default;
+    TrackedZone(ZoneType v) : value_(v) {}                                  // NOLINT
+    TrackedZone(const TrackedZone& o) : value_(o.value_), incarnation_(o.incarnation_) {}
+    TrackedZone& operator=(const TrackedZone& o) {
+        set(o.value_);
+        incarnation_ = o.incarnation_;
+        return *this;
+    }
+    TrackedZone& operator=(ZoneType v) { set(v); return *this; }
+
+    operator const ZoneType&() const { return value_; }                    // NOLINT
+    const ZoneType& get() const { return value_; }
+    uint32_t incarnation() const { return incarnation_; }
+
+    static bool isBoardZone(ZoneType z) {
+        return z == ZoneType::Base || z == ZoneType::BattlefieldZone;
+    }
+
+private:
+    friend class ObjectTable;
+    void set(ZoneType v) {
+        if (value_ == v) return;
+        if (!(isBoardZone(value_) && isBoardZone(v))) ++incarnation_;
+        value_ = v;
+        if (stale_) stale_->store(true, std::memory_order_release);
+    }
+    void reportTo(std::atomic<bool>* stale) { stale_ = stale; }
+    bool reportsTo(const std::atomic<bool>* stale) const { return stale_ == stale; }
+
+    ZoneType value_{};
+    uint32_t incarnation_ = 0;
     std::atomic<bool>* stale_ = nullptr;
 };
 

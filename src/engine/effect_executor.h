@@ -442,6 +442,65 @@ public:
     /// whether that cost is still payable as things stand.
     void setAheadOfCostCheck(std::function<bool()> f) { ahead_of_cost_check_ = std::move(f); }
 
+    // ── [Add] abilities while a cost is paid (CR 430.3, 445.2.c, 357.1.a) ──
+    /// The engine lists the activations of `player`'s [Reaction] abilities that
+    /// [Add] which could be activated now (ActivatedAbility::adds_resources),
+    /// and activates one at once (it is paid and resolves immediately, CR
+    /// 430.2). Set by GameEngine; unset, no Add ability is used here.
+    using AddAbilitiesFn = std::function<std::vector<Intent>(PlayerId)>;
+    using ActivateNowFn = std::function<void(const Intent&)>;
+    /// Whether `check` holds once every listed Add ability of `player` has
+    /// been activated — tried on a copy of the game, quietly, and forgotten.
+    /// With `first`, that step is taken first on the copy (an Add activated,
+    /// an answer given), and the rest of the Adds after it.
+    using AddProbeFn = std::function<bool(PlayerId, const std::function<bool(const GameState&)>&,
+                                          const std::function<void()>* first)>;
+    void setAddAbilities(AddAbilitiesFn list, ActivateNowFn activate, AddProbeFn probe) {
+        add_abilities_ = std::move(list);
+        activate_now_ = std::move(activate);
+        add_probe_ = std::move(probe);
+    }
+    /// Whether `player` could pay [energy] + `power` Power of `mask` (and `extra_any`
+    /// more Power of any Domain, a Deflect) for `f`: from the pool and runes,
+    /// or with what their [Reaction] [Add] abilities would add (tried on a copy
+    /// of the game, quietly, only when the pool and runes are short).
+    bool canPayWithAdds(PlayerId player, int energy, int power, resource::DomainMask mask,
+                        SpendFor f = SpendFor::Other, int extra_any = 0);
+    /// The same question as payableAnyPower(...) >= amount, Add abilities counted.
+    bool canPayAnyPower(PlayerId player, int amount, SpendFor f = SpendFor::Other) {
+        return canPayWithAdds(player, 0, amount, resource::kAnyDomain, f);
+    }
+    /// Before a payment of [energy] + `power` (`mask`) that the pool and
+    /// runes cannot cover: `player` activates [Add] Reactions, naming which,
+    /// until it can be covered or none is left (CR 430.3). Called by the
+    /// executor's payments; returns whether the payment can now be made.
+    bool addForPayment(PlayerId player, int energy, int power, resource::DomainMask mask,
+                       SpendFor f);
+
+    // ── A cost owed after the choices (CR 403.2 -> 405.1) ──
+    /// What `player` still owes once the choices being made now are made: an
+    /// activated ability's cost (set by GameEngine::payAndQueueAbility while
+    /// it makes the ability's choices) or a "pay [N] to <choose>" of a
+    /// triggered ability (Card::owesAfterChoices, on the resolving item).
+    /// While there is one, a choice is offered only if its Deflect and this
+    /// cost can be paid together, and a Deflect is paid from what the cost
+    /// cannot use first (testing phase F5, G15).
+    struct OwedCost {
+        PlayerId player = PlayerId::None;
+        int energy = 0;
+        int power = 0;
+        resource::DomainMask mask = resource::kAnyDomain;
+        SpendFor spend_for = SpendFor::Other;
+    };
+    void setOwedCost(std::optional<OwedCost> c) { owed_ = c; }
+    std::optional<OwedCost> owedCost(PlayerId player) const;
+
+    // ── The chain, from a card (CR 355.9.a.2) ──
+    /// Take the item `id` off the chain wherever it lies — the one way a card
+    /// counters a chosen spell or ability (ChainManager::removeItemFrom).
+    /// nullopt if it is not on the chain.
+    std::optional<ChainItem> removeChainItem(ChainItemId id);
+
     // ── Scoring by an effect (CR 471 "score N points" outside Conquer/Hold) ──
     /// Give `player` `amount` points from an effect: honours "can't gain/score
     /// points" locks and ends the game at once if this reaches the Victory
@@ -711,6 +770,17 @@ public:
     /// helpers drop the rest (Card::offerableChoices).
     void setChoiceFilter(std::function<bool(GameObjectId)> f) { choice_filter_ = std::move(f); }
     bool choiceAllowed(GameObjectId id) const { return !choice_filter_ || choice_filter_(id); }
+    /// Objects a helper is judging as if already chosen but whose Deflect is
+    /// not paid yet (pickTargetPair asking whether a second target can go with
+    /// a first, CR 355.16): their Deflect is owed with the one being judged.
+    const std::vector<GameObjectId>& hypotheticallyUnpaid() const { return hypothetical_unpaid_; }
+    struct HypotheticallyUnpaid {
+        EffectExecutor& ex;
+        HypotheticallyUnpaid(EffectExecutor& e, std::vector<GameObjectId> ids) : ex(e) {
+            ex.hypothetical_unpaid_ = std::move(ids);
+        }
+        ~HypotheticallyUnpaid() { ex.hypothetical_unpaid_.clear(); }
+    };
     PendingChoice consumePendingChoice() {
         PendingChoice tmp = std::move(pending_);
         pending_ = PendingChoice{};
@@ -738,6 +808,25 @@ private:
     std::function<void()> aura_recalc_;
     std::function<bool(GameObjectId)> choice_filter_;
     std::function<bool()> ahead_of_cost_check_;
+    AddAbilitiesFn add_abilities_;
+    ActivateNowFn activate_now_;
+    AddProbeFn add_probe_;
+    std::optional<OwedCost> owed_;
+    std::vector<GameObjectId> hypothetical_unpaid_;
+    bool adding_for_payment_ = false;   // an [Add] paid for inside addForPayment
+    std::function<bool(const GameState&)> payment_goal_;   // set inside addForPayment
+public:
+    /// While addForPayment activates [Add] abilities: whether the payment it
+    /// serves can be made in a state (GameEngine::resolveAddAbilityNow offers
+    /// only the answers after which it still can, CR 357.3). Empty otherwise.
+    const std::function<bool(const GameState&)>& paymentGoal() const { return payment_goal_; }
+    /// Whether `goal` holds after `first` and then every listed Add ability
+    /// of `player`, tried on a copy (the engine's probe).
+    bool probeAddsAfter(PlayerId player, const std::function<bool(const GameState&)>& goal,
+                        const std::function<void()>& first) {
+        return add_probe_ && add_probe_(player, goal, &first);
+    }
+private:
     CanAffordFn can_afford_;
     QueueSpellFn queue_spell_;
     QueueTriggerFn queue_trigger_;

@@ -39,7 +39,7 @@ public:
         int conf = confirmOptional(ctx, "Vayne, Hunter: pay [1] to return me to hand?",
                                    [&]() {
             return costAlreadyPaid(ctx) ||
-                   (on_board() && payableEnergy(ctx.state, ctx.controller) >= 1);
+                   (on_board() && canPayEnergy(ctx, ctx.controller, 1));
         });
         if (conf != 1) return;
         if (costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;

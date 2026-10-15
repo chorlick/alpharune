@@ -159,8 +159,11 @@ TEST_F(VendettaCTest, Vendetta_TornadoWarrior_FromFaceDownEmpowersUntilEndOfTurn
     EXPECT_EQ(state.delayed_abilities[0].subject, ally);
     EXPECT_FALSE(state.getObject(elsewhere).isEmpowered());
     EXPECT_FALSE(state.getObject(warrior).isEmpowered());
-    EXPECT_EQ(state.getObject(warrior).card_counters["__played_from_facedown"], 0)
-        << "consumed: a later replay from hand must not re-trigger";
+    // A later play from hand does not trigger: that play begins by dropping
+    // the stamp (Card::forgetPlayPayments; testing phase B2 — the card used to
+    // consume it as it resolved).
+    Card::forgetPlayPayments(state, card_registry.get(kTornadoWarrior), P1, warrior);
+    EXPECT_FALSE(triggersNow(kTornadoWarrior, P1, warrior, TriggerType::WhenYouPlayMe));
 }
 
 TEST_F(VendettaCTest, Vendetta_TornadoWarrior_PlayedFromHandDoesNothing) {
@@ -169,10 +172,11 @@ TEST_F(VendettaCTest, Vendetta_TornadoWarrior_PlayedFromHandDoesNothing) {
     // Hidden earlier but NOT played from face down: no stamp, so no trigger.
     state.getObject(warrior).hidden_on_turn = 0;
     auto ally = addUnit(P1, kInvalidId, 2, 0);
-    driveResumableTrigger(kTornadoWarrior, P1, warrior, answer(1, ally), exec,
-                          TriggerType::WhenYouPlayMe);
-    EXPECT_FALSE(state.getObject(ally).isEmpowered());
-    EXPECT_FALSE(state.getObject(warrior).isEmpowered());
+    (void)exec;
+    (void)ally;
+    // "from face down" is the trigger condition (CR 383.2.a.1): nothing goes
+    // on the chain (the card used to test it itself as it resolved).
+    EXPECT_FALSE(triggersNow(kTornadoWarrior, P1, warrior, TriggerType::WhenYouPlayMe));
 }
 
 TEST_F(VendettaCTest, Vendetta_TornadoWarrior_MayDecline) {

@@ -18,23 +18,31 @@ public:
     // ── behaviour (Vendetta batch C) ──
     // "When you play me, [Burn 2]."
     // "When I conquer, give a spell in your trash [Flow] equal to its cost
-    //  this turn."
+    //  this turn." The spell (a target: the trash is public, CR 355.10.a.1) is
+    //  chosen as the ability is finalized (CR 403.2; testing phase D78).
     std::vector<TriggerType> triggerTypes() const override {
         return {TriggerType::WhenYouPlayMe, TriggerType::WhenIConquer};
     }
+    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (ctx.firing_trigger == TriggerType::WhenYouPlayMe) {
+            if (finalizingChoices(ctx)) return;   // nothing to choose
             ctx.executor.burn(ctx.controller, 2);
             return;
         }
-        if (ctx.firing_trigger != TriggerType::WhenIConquer) return;
+        if (ctx.firing_trigger != TriggerType::WhenIConquer) {
+            if (finalizingChoices(ctx)) return;
+            return;
+        }
         std::vector<GameObjectId> spells;
         for (auto cid : ctx.state.player(ctx.controller).trash) {
             if (!ctx.state.objectExists(cid)) continue;
             const auto& obj = ctx.state.getObject(cid);
             if (obj.isSpell() && obj.card_def_id != kInvalidId) spells.push_back(cid);
         }
-        GameObjectId picked = pickTarget(ctx, "Kennen, Storm of Shuriken: grant [Flow]", spells);
+        std::sort(spells.begin(), spells.end());
+        const GameObjectId picked = pickTarget(ctx, "Kennen, Storm of Shuriken: grant [Flow]", spells);
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         // The engine's Flow generator reads this stamp: a spell in trash whose
         // "__flow_granted_turn" equals the current turn may be played for its

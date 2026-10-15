@@ -206,6 +206,10 @@ public:
     /// Cost to activate the (single, legacy) ability.
     virtual ActivationCost getActivationCost() const { return {}; }
 
+    /// Whether the (single, legacy) activated ability [Add]s resources (CR
+    /// 430.2): it resolves as it is activated (ActivatedAbility::adds_resources).
+    virtual bool abilityAddsResources() const { return false; }
+
     /// Whether the (single, legacy) activated ability has [Action] timing
     /// (playable in showdowns).
     virtual bool isActionAbility() const { return false; }
@@ -556,6 +560,45 @@ public:
     /// the helpers (or finish with resume_data before the first helper call).
     static constexpr size_t kChoiceStateSlot = 6;
 
+    // ── Choosing a spell or ability on the chain (CR 355.9.a.2) ──
+    /// "Counter a spell", "Choose a spell", "an enemy spell or ability that
+    /// chooses ...": the item is a target, chosen as this spell or ability is
+    /// played / finalized (CR 355.5), so a card opts into choices at
+    /// finalization and asks with this before its marker. `candidates` are the
+    /// finalized items it may choose now (chainItemChoices in card_helpers.h
+    /// builds them: never this item itself, CR 355.9.c). Each option names the
+    /// item's source object and carries the item's id as its value.
+    /// Returns nullopt while the agent decides (return at once); kInvalidId
+    /// when there is nothing to choose (stored: nothingToDecide, and
+    /// requiredChoiceMissing) and, as the item resolves, when the chosen item
+    /// is no longer on the chain or no longer among `candidates` — a
+    /// mistarget (CR 359.3.e.5): the instruction does nothing, and nothing
+    /// else is taken instead. One per callback; the answer is
+    /// ChainItem::chosen_item. The item is acted on wherever it lies on the
+    /// chain: ChainManager::removeItem (EffectExecutor::removeChainItem) is
+    /// the one way a card takes it off.
+    std::optional<ChainItemId> pickChainItem(CardContext& ctx, const std::string& label,
+                                             const std::vector<ChainItemId>& candidates);
+
+    // ── A cost owed after the choices (CR 403.2 -> 405.1) ──
+    /// "You may pay [N] to <choose a unit>": the item's choices come before
+    /// its cost, and choosing a unit with [Deflect] adds to what must be paid
+    /// (CR 809). Called before the choice helpers, it records the cost on the
+    /// resolving item, so a unit is offered only if its Deflect and this cost
+    /// can be paid together, and a Deflect is paid from what the cost cannot
+    /// use first (testing phase F5). The card still pays the cost itself
+    /// (costDueNow) after its choices.
+    static void owesAfterChoices(CardContext& ctx, int energy, int power = 0,
+                                 uint32_t power_mask = ~0u);
+    /// `candidates` minus those `ctx.controller` could not choose and still
+    /// pay [energy] / [power] afterwards (their Deflect counted): what a "may
+    /// pay [N] to choose" offers, and its "may" is offered only if this is
+    /// not empty.
+    std::vector<GameObjectId> choosablePaying(const CardContext& ctx,
+                                              const std::vector<GameObjectId>& candidates,
+                                              int energy, int power = 0,
+                                              uint32_t power_mask = ~0u) const;
+
     // ── Choosing an object with hand-built options ──
     // A card that asks for an object through its own MakeChoice options
     // (objChoice / takenObject in card_helpers.h) instead of pickTarget owes
@@ -895,11 +938,25 @@ public:
     bool payEquipAndAttach(CardContext& ctx, GameObjectId unit, const EquipTerms& terms);
     bool payEquipAndAttach(CardContext& ctx, GameObjectId unit);
 
+    /// The two halves of an Equip activation (CR 818, 377.3): its cost is
+    /// paid as it is activated (payEquip: the Energy / Power and the extra
+    /// cost, all or nothing), the gear is attached as it resolves
+    /// (attachByEquip: both still on the board; onEquipped after).
+    bool payEquip(CardContext& ctx, GameObjectId unit, const EquipTerms& terms);
+    bool attachByEquip(CardContext& ctx, GameObjectId unit);
+
     /// This gear's Equip on `unit` at its printed terms (no discount): pay
     /// equipCost() and attach. The engine's own Equip path is
     /// payEquipAndAttach with GameEngine::equipTerms; an Equip intent always
     /// names the unit.
     bool onEquip(CardContext& ctx, GameObjectId unit);
+
+    /// A triggered ability of this card whose effect [Add]s resources
+    /// (CR 430.2, 401.2): it is finalized and resolves as soon as it triggers
+    /// — no chain item waiting, no priority, also in the middle of another
+    /// effect (Undertitan "As I'm revealed ..., [Add] [2]"; Jhin "When I move,
+    /// [Add] ..."; a battlefield's "each [Add] [1]").
+    virtual bool triggeredAbilityAdds(TriggerType /*trigger*/) const { return false; }
 
     /// Trigger type that fires on the equipped UNIT (from effect_text).
     /// e.g., "When I conquer" in effect_text → WhenIConquer on the unit.
@@ -1020,6 +1077,17 @@ public:
     /// .payable.
     virtual PlayCostAdjust payAdditionalPlayCost(
         CardContext& ctx, const std::function<bool(const PlayCostAdjust&)>& affordable);
+
+    /// A non-resource additional cost of a spell ("As an additional cost to
+    /// play this, kill a friendly unit": CR 356.2.a.1, 356.7), paid after its
+    /// Energy and Power (CR 357.2: "In addition, pay any non-standard Cost ...
+    /// in any order"). The engine calls it on every play path once the
+    /// resources are paid, so a replacement of that cost which asks for a
+    /// payment of its own (The Boss, Altar of Blood) is paid from what is left
+    /// and cannot leave the spell unpaid (testing phase F6). A death replaced
+    /// is still a cost paid (CR 357.2.a). The card records what it paid on its
+    /// own object (`card_counters`, a per-play flag: forgetPlayPayments).
+    virtual void payNonResourceCost(CardContext& /*ctx*/) {}
 
     /// The counter a card sets on itself (to 1) when its additional cost was
     /// paid for THIS play, for its play trigger to read ("When you play me,

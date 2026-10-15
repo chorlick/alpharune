@@ -28,7 +28,7 @@ public:
             if (!ctx.state.objectExists(ctx.source)) return false;
             if (ctx.state.getObject(ctx.source).is_exhausted) return false;
             // CR 445.2 / 164.2.a: floating Energy or a ready rune can pay.
-            return payableEnergy(ctx.state, ctx.controller) >= 1;
+            return canPayEnergy(ctx, ctx.controller, 1);
         };
         // No return ahead of the "may": when the cost can't be paid
         // confirmOptional stores the "no" on the chain item, so the resolution

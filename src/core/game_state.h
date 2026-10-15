@@ -606,6 +606,31 @@ struct ChainItem {
     // effects ask "what does this chain item choose" (Deflect, Irelia,
     // Sandswept Tomb, Decree of Focus, Repulse) for resolve-time-target cards.
     std::vector<GameObjectId> chosen_objects;
+    // The incarnation (GameObject::zone.incarnation()) of each object this
+    // item chose, as it was chosen (GameState::stampChosen). An object that
+    // has left for a non-board zone since — and maybe come back — is a new
+    // object and no longer this item's legal target (CR 359.3.e.2, 359.3.e.4;
+    // testing phase G14).
+    struct ChosenStamp {
+        GameObjectId id = kInvalidId;
+        uint32_t incarnation = 0;
+    };
+    std::vector<ChosenStamp> chosen_stamps;
+    // A finalized spell or ability on the chain that this item chose ("Counter
+    // a spell", "Choose a spell": CR 355.9.a.2), by Card::pickChainItem.
+    // kInvalidId: none.
+    ChainItemId chosen_item = kInvalidId;
+    // A cost this item still owes after its choices are made ("you may pay
+    // [N] to <choose a unit>", an activated ability's cost: CR 403.2 -> 405.1).
+    // While it is set, a choice is offered only if its Deflect and this cost
+    // can be paid together, and a Deflect is paid ahead of it (testing phase
+    // F5): Card::owesAfterChoices.
+    int owed_energy = 0;
+    int owed_power = 0;
+    uint32_t owed_power_mask = 0;   // resource::DomainMask of owed_power
+    // An [Equip] activation (CR 818): `targets` holds the unit; it attaches
+    // the source gear as it resolves.
+    bool is_equip = false;
 
     // Classification
     bool is_spell = false;        // true for spells (go to trash on resolve)
@@ -673,6 +698,12 @@ struct ChainItem {
     // This spell's choices are being made before it is on the chain (and
     // before its cost is paid): "chosen" events are held until it is.
     bool pre_play_choices = false;
+    // A cost the card pays under Card::costDueNow was met in that pass and
+    // left for the cost step: a spell's additional cost ("kill a friendly
+    // unit", "exhaust a friendly unit", "spend 5 XP") is paid with its
+    // Energy and Power (CR 357.2), not as its choices are made
+    // (GameEngine::finishPlaySpell; testing phase F6).
+    bool cost_deferred = false;
 
     // ── Repeat (CR 820) — optional additional cost ──
     // `repeats_paid` is the number of times the Repeat cost was paid as
@@ -694,6 +725,8 @@ struct ChainItem {
     struct ExecutionChoices {
         std::vector<GameObjectId> targets;
         std::vector<GameObjectId> chosen_objects;
+        std::vector<ChosenStamp> chosen_stamps;
+        ChainItemId chosen_item = kInvalidId;
         int resume_point = 0;
         std::vector<int32_t> resume_data;
         int8_t may_answer = -1;
@@ -1135,6 +1168,27 @@ struct GameState {
         const bool spell_or_unit_ability = by && (by->is_spell ||
             (by->is_ability && objectExists(by->source) && getObject(by->source).isUnit()));
         if (spell_or_unit_ability) player(chooser).enemy_choices_this_turn++;
+    }
+
+    /// Stamp `chosen` on `item` as it is now (CR 359.3.e.4: it is that
+    /// object only for as long as it does not change zones to or from a
+    /// non-board zone). Every site that locks in a choice calls this.
+    void stampChosen(ChainItem& item, GameObjectId chosen) const {
+        if (!objectExists(chosen)) return;
+        const uint32_t inc = getObject(chosen).zone.incarnation();
+        for (auto& st : item.chosen_stamps)
+            if (st.id == chosen) { st.incarnation = inc; return; }
+        item.chosen_stamps.push_back({chosen, inc});
+    }
+    /// False if `item` chose `chosen` and that object has changed zones to or
+    /// from a non-board zone since (a new object, CR 359.3.e.2 / 359.3.e.4):
+    /// the choice is then no longer legal. True for an object the item has
+    /// not stamped.
+    bool stillTheChosenObject(const ChainItem& item, GameObjectId chosen) const {
+        if (!objectExists(chosen)) return false;
+        for (const auto& st : item.chosen_stamps)
+            if (st.id == chosen) return st.incarnation == getObject(chosen).zone.incarnation();
+        return true;
     }
 
     // ── Observation tracking ──────────────────────────────────────────

@@ -31,10 +31,12 @@ public:
         return TargetRequirements{.count = 2, .must_be_unit = true, .must_be_friendly = true};
     }
     bool needsPlayTimeTargetPair() const override { return true; }
+    // "two friendly units": both are required (CR 355.8; testing phase D8).
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        int n = 0;
         for (auto& [id, obj] : state.objects.onBoard()) {
             if (!obj.location.has_value() || !obj.isUnit()) continue;
-            if (obj.controller == controller) return true;
+            if (obj.controller == controller && ++n >= 2) return true;
         }
         return false;
     }

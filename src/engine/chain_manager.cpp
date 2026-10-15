@@ -64,6 +64,9 @@ ChainItemId ChainManager::addSpell(GameObjectId spell_obj, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
+    // Each as it is now: one that changes zones to or from a non-board zone
+    // before this item resolves is a new object (CR 359.3.e.4; G14).
+    for (auto t : targets) state_.stampChosen(item, t);
     payDeflectForChoices(item);
     item.is_spell = true;
 
@@ -140,6 +143,9 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     // [Deflect] object costs its Deflect Value in [A], a mandatory additional
     // cost (resolve-time choices pay in Card::pickTarget instead).
     item.chosen_objects = targets;
+    // Each as it is now: one that changes zones to or from a non-board zone
+    // before this item resolves is a new object (CR 359.3.e.4; G14).
+    for (auto t : targets) state_.stampChosen(item, t);
     payDeflectForChoices(item);
     item.is_ability = true;
     item.is_activated_ability = is_activated;
@@ -169,6 +175,17 @@ ChainItemId ChainManager::addAbility(GameObjectId source, PlayerId controller,
     }
 
     return item.id;
+}
+
+std::optional<ChainItem> ChainManager::removeItemFrom(GameState& state, ChainItemId id) {
+    auto& items = state.chain.items;
+    for (auto it = items.begin(); it != items.end(); ++it) {
+        if (it->id != id) continue;
+        ChainItem out = std::move(*it);
+        items.erase(it);
+        return out;
+    }
+    return std::nullopt;
 }
 
 void ChainManager::processFEPR(
@@ -547,6 +564,8 @@ void ChainManager::stepResolve(
             ri.resume_point = 0;
             ri.resume_data.clear();
             ri.may_answer = -1;
+            ri.chosen_item = kInvalidId;
+            ri.chosen_stamps.clear();
             ri.choices_finalized = false;
             ri.finalize_costs_paid = false;
             ri.finalize_checked = 0;
@@ -556,6 +575,8 @@ void ChainManager::stepResolve(
                 const auto chosen = ri.repeat_choices[static_cast<size_t>(r)];   // copy
                 ri.targets = chosen.targets;
                 ri.chosen_objects = chosen.chosen_objects;
+                ri.chosen_stamps = chosen.chosen_stamps;
+                ri.chosen_item = chosen.chosen_item;
                 ri.resume_point = chosen.resume_point;
                 ri.resume_data = chosen.resume_data;
                 ri.may_answer = chosen.may_answer;

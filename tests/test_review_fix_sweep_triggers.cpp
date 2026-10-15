@@ -1870,6 +1870,9 @@ TEST_F(SweepTriggersTest, DragUnder_PlayedOffTheDeckCostsTwoLess) {
     constexpr CardDefId kDragUnder = 485;
     auto in_deck = addToDeck(P1, kDragUnder);
     auto in_hand = addToHand(P1, kDragUnder);
+    // "Kill a unit at a battlefield": a target for it (CR 355.8: an effect
+    // plays a spell only with a legal target — batch 3, D57).
+    addUnit(P2, kInvalidId, 2, 0);
     state.player(P1).rune_pool.energy = card_db.get(kDragUnder).energy_cost - 2;
     state.player(P1).rune_pool.universal_power = card_db.get(kDragUnder).power_cost;
     withEngine([&](GameEngine& e) {
@@ -2677,9 +2680,12 @@ TEST_F(ReflexiveCardsTest, DragonsRage) {
                      std::optional<BattlefieldId>{state.battlefields[1].id};
         damage_then = st.getObject(other).damage_marked;
     };
-    // The mover is locked in as it is played; then where it goes (battlefield
-    // 1 = destination code 2), then — the reflexive trigger — the other unit.
-    cast(spell, {mover}, answers({other}, {2}));
+    // The mover and where it goes (battlefield 1 = destination code 2) are
+    // chosen as it is played (testing phase D3: the play intent names no
+    // target, as the generator emits it); then — the reflexive trigger — the
+    // other unit.
+    cast(spell, {}, EnginePathAgent::script({static_cast<int>(mover.raw()), 2,
+                                             static_cast<int>(other.raw())}));
     EXPECT_TRUE(moved_then);
     EXPECT_EQ(damage_then, 0);
     EXPECT_EQ(obj(other).damage_marked, 2);

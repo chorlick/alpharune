@@ -18,7 +18,18 @@ public:
     // "Move a friendly unit. You may attach up to one Equipment with the same
     //  controller to it. This turn, that unit has "When I conquer, you may move
     //  me to my base.""
+    // As it is played: the unit (its target), where it moves (CR 355.4) and the
+    // Equipment, up to one (a target: CR 355.12, 355.13 — zero allowed). As it
+    // resolves: whether to attach the chosen Equipment ("you may"). The granted
+    // trigger's "may" is decided as that trigger is finalized (CR 403.1).
     bool isActionAbility() const override { return true; }
+    unsigned choicesAtFinalization() const override {
+        return kFinalizeResolve | kFinalizeTrigger;
+    }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);   // its target
+    }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 1, .must_be_unit = true,
                                   .must_be_friendly = true};
@@ -36,46 +47,45 @@ public:
         }
         return out;
     }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        if (targets.empty() || !ctx.state.objectExists(targets[0])) return;
-        const GameObjectId unit = targets[0];
-
-        // Every choice is made before anything happens (this callback is
-        // re-entered from the top with each answer): where the unit moves,
-        // whether to attach an Equipment, and which one.
-        const auto dests = moveDests(ctx.state, ctx.state.getObject(unit));
-        const int n = 1 + static_cast<int>(ctx.state.battlefields.size());
-        std::vector<std::string> labels;
-        uint32_t mask = 0;
-        for (int d = 0; d < n; ++d) labels.push_back(destLabel(d));
-        for (int d : dests) if (d >= 0 && d < 32) mask |= (1u << d);
-        const int dest = pickMode(ctx, "Relentless Pursuit: move it where?", n, labels, mask);
-        if (dest == -1) return;   // waiting for the agent (-2: nowhere to move)
-
-        // "up to one Equipment": "No" is none (CR 355.13); the move and the
-        // granted ability do not depend on it. The unit itself is mandatory.
-        const int attach = confirmOptional(ctx, "Relentless Pursuit: attach an Equipment to it",
-            [&]() { return !attachable(ctx.state, unit).empty(); });
-        if (attach == -1) return;
-        GameObjectId gear = kInvalidId;
-        if (attach == 1) {
-            gear = pickTarget(ctx, "Relentless Pursuit: Equipment to attach",
-                              attachable(ctx.state, unit));
-            if (gear == kInvalidId) return;   // waiting
+    bool needsPlayTimeTarget() const override { return true; }
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const GameObjectId unit = pickTarget(ctx, "Relentless Pursuit: move a friendly unit",
+                                             enumerateLegalTargets(ctx.state, ctx.controller));
+        if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;                           // waiting for the agent
+        int dest = -2;
+        std::optional<GameObjectId> gear = GameObjectId{kInvalidId};
+        if (unit != kInvalidId && ctx.state.getObject(unit).location.has_value()) {
+            dest = pickMoveDest(*this, ctx, "Relentless Pursuit: move it to",
+                                ctx.state.getObject(unit));
+            if (dest == -1) return;   // waiting for the agent (-2: nowhere to move)
+            gear = selectTargetOrNone(*this, ctx, "Relentless Pursuit: Equipment to attach",
+                                      attachable(ctx.state, unit));
+            if (!gear.has_value()) return;   // waiting
         }
-
-        if (dest >= 0) {
+        if (finalizingChoices(ctx)) return;  // choices end here (CR 355)
+        if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
+        // "You may attach": decided as it resolves, for the Equipment chosen.
+        const GameObjectId g = *gear;
+        int attach = 0;
+        if (g != kInvalidId) {
+            attach = confirmOptional(ctx, "Relentless Pursuit: attach the Equipment to it", [&]() {
+                return ctx.state.objectExists(g) && ctx.state.getObject(g).location.has_value();
+            });
+            if (attach == -1) return;
+        }
+        if (dest >= 0 && ctx.state.getObject(unit).location.has_value()) {
             moveTo(ctx, unit, dest);
             RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: moved a friendly unit");
         }
         if (!ctx.state.getObject(unit).location.has_value()) return;   // it left the board
-        if (gear != kInvalidId && ctx.state.objectExists(gear) &&
-            ctx.state.getObject(gear).location.has_value()) {
-            attachFree(ctx, gear, unit);
-            RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: attached " + ctx.state.getObject(gear).name);
+        if (attach == 1 && ctx.state.objectExists(g) && ctx.state.getObject(g).location.has_value()) {
+            attachFree(ctx, g, unit);
+            RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: attached " + ctx.state.getObject(g).name);
         }
-        // This turn, that unit has "When I conquer, you may move me to my
-        // base.": a delayed ability scoped to the unit, gone at end of turn.
+        // This turn, that unit has "When I conquer, you may move me to my base.":
+        // a delayed ability scoped to the unit, gone at end of turn.
         DelayedAbility da;
         da.source = ctx.source;
         da.card_def_id = cardDefId();
@@ -85,7 +95,8 @@ public:
         da.expires_on_turn = ctx.state.turn.turn_number;
         ctx.state.delayed_abilities.push_back(da);
     }
-    // The granted "When I conquer, you may move me to my base."
+    // The granted "When I conquer, you may move me to my base." Its "may" is
+    // decided as it is finalized (CR 403.1).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         const GameObjectId unit = ctx.state.chain.resuming->triggering_subject;
@@ -94,7 +105,10 @@ public:
             const auto& u = ctx.state.getObject(unit);
             return u.isUnit() && u.location.has_value() && !u.isAtBase();
         };
-        if (confirmOptional(ctx, "Relentless Pursuit: move it to its base", can_move) <= 0) return;
+        const int go = confirmOptional(ctx, "Relentless Pursuit: move it to its base", can_move);
+        if (go == -1) return;
+        if (finalizingChoices(ctx)) return;  // choices end here (CR 403)
+        if (go < 1) return;
         ctx.executor.moveToBase(unit);
         RIFT_TRACE(ctx.events, "RELENTLESS PURSUIT: the unit moved to its base after conquering");
     }

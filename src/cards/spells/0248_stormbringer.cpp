@@ -15,33 +15,49 @@ namespace {
 class Stormbringer : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-
     // "Choose a friendly unit in your base. Deal damage equal to its Might to
     //  all enemy units at a battlefield, then move your unit there."
+    // The unit and the battlefield (a target: "all enemy units at a
+    // battlefield", CR 355.10.b) are chosen as it is played (testing phase D3).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object,
+                                  [](const GameObject& u) { return u.isAtBase(); });
+    }
+    static std::vector<GameObjectId> baseUnits(const GameState& state, PlayerId controller) {
+        std::vector<GameObjectId> out;
+        for (auto& [id, obj] : state.objects.onBoard()) {
+            if (!obj.isUnit() || obj.controller != controller) continue;
+            if (!obj.isAtBase()) continue;
+            out.push_back(id);
+        }
+        std::sort(out.begin(), out.end());
+        return out;
+    }
+    // CR 355.8: playable only with a friendly unit in base to choose.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !baseUnits(state, controller).empty() && !state.battlefields.empty();
+    }
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        // 1) Choose a friendly unit in your base.
-        std::vector<GameObjectId> base_units;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-            if (!obj.isAtBase()) continue;
-            base_units.push_back(id);
+        const GameObjectId mover = pickTarget(ctx, "Stormbringer: friendly unit in base",
+                                              baseUnits(ctx.state, ctx.controller));
+        if (mover == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;                               // waiting for the agent
+        int dest = -2;
+        if (mover != kInvalidId && ctx.state.getObject(mover).isAtBase()) {
+            dest = pickMoveDest(*this, ctx, "Stormbringer: battlefield",
+                                ctx.state.getObject(mover), /*battlefields_only=*/true);
+            if (dest == -1) return;               // waiting for the battlefield
         }
-        std::sort(base_units.begin(), base_units.end());
-        GameObjectId mover = pickTarget(ctx, "Stormbringer: friendly unit in base",
-                                        base_units);
-        if (mover == kInvalidId) return;   // suspended, or no legal mover — fizzle
+        if (finalizingChoices(ctx)) return;       // choices end here (CR 355)
+        if (mover == kInvalidId || dest < 1) return;
         const auto& unit = ctx.state.getObject(mover);
         if (!unit.isAtBase()) return;
-
-        // 2) The battlefield is the controller's choice — any battlefield,
-        //    with or without enemy units (the unit still moves there).
-        const int dest = pickMoveDest(*this, ctx, "Stormbringer: battlefield", unit,
-                                      /*battlefields_only=*/true);
-        if (dest < 1) return;              // waiting, or no battlefield
         const BattlefieldId bf = BattlefieldId::fromRaw(dest - 1);
         const int dmg = unit.current_might;
-
         // Deal <dmg> to all enemy units there (collect, damage, then kill).
         std::vector<GameObjectId> hit;
         for (auto& [id, obj] : ctx.state.objects.onBoard()) {

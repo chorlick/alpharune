@@ -1726,8 +1726,10 @@ TEST_F(SweepCostsTest, TypedDiscardCost_SkyCrusierDiscardsTheGearThePlayerPicks)
     auto gear2 = addToHand(P1, kSkyfallOfAreion);
     auto act = offers();
     ASSERT_FALSE(act.empty());
+    // The target is chosen first, then the cost is paid (CR 403.2 -> 405.1;
+    // testing phase G15: the discard used to come first).
     EnginePathAgent agent(EnginePathAgent::script(
-        {static_cast<int>(gear2.raw()), static_cast<int>(enemy.raw())}));
+        {static_cast<int>(enemy.raw()), static_cast<int>(gear2.raw())}));
     execute(act.front(), &agent);
     EXPECT_TRUE(agent.wasOffered(gear1));
     EXPECT_FALSE(agent.wasOffered(not_gear)) << "only gear pays a \"Discard a gear\" cost";
@@ -2347,6 +2349,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                "Give an enemy unit -2 [M] this turn"}},
         {822, {"Empower a unit (disempower it at end of turn)",              // Sanction
                "Disempower an Empowered unit (empower it at end of turn)"}},
+        {606, {"Counter a spell", "Play four Bird tokens"}},                 // Flurry of Feathers
     };
     std::map<CardDefId, std::set<std::string>> labels_seen;
     const GameState blank = state;
@@ -2413,6 +2416,24 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
         for (const auto& i : legal())
             if (i.card == spell) plays.push_back(i);
         state = start;
+        // A spell that chooses a spell or ability on the chain (a counter,
+        // CR 355.9.a.2) is playable only with one there: an enemy spell that
+        // chooses the friendly unit at battlefield 0 (testing phase D21).
+        GameState with_chain = start;
+        // (Flurry of Feathers, modal, is playable without one: its "Counter a
+        // spell" mode is reached on the second board, which has the spell.)
+        if (plays.empty() || (id == 606 && board == 1)) {
+            plays.clear();
+            for (int i = 0; i < 4; ++i) addToDeck(P2, kPoutyPoro);
+            const auto src = pushSpellOnChain(P2, 836);   // Dredge Up
+            state.chain.items.back().targets = {mine[1].first};
+            state.chain.items.back().chosen_objects = {mine[1].first};
+            o(src).owner = P2;
+            with_chain = state;
+            for (const auto& i : legal())
+                if (i.card == spell) plays.push_back(i);
+        }
+        const GameState start2 = with_chain;
         int runs = 0;
         constexpr int kMaxRuns = 40000;
         for (const auto& intent : plays) {
@@ -2420,7 +2441,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
             while (!todo.empty() && runs < kMaxRuns) {
                 const std::vector<int> prefix = std::move(todo.back());
                 todo.pop_back();
-                state = start;
+                state = start2;
                 WalkAgent walker;
                 walker.prefix = prefix;
                 walker.labels = &labels_seen[id];
@@ -2441,7 +2462,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
             }
         }
         conn.disconnect();
-        state = start;
+        state = start2;   // the board it was offered on (a chain spell for a counter)
         const bool complete = runs < kMaxRuns;
         if (!complete) {
             ++capped;
@@ -2475,7 +2496,7 @@ TEST_F(SweepCostsTest, FinalizePassSpellDeclarationsMatchTheirPickLists) {
                 << card_db.get(id).name << " (" << id << "): mode \"" << label
                 << "\" was never offered on the test boards";
     }
-    // And those four are all the modal ones: the spells among the 34 whose
+    // And those five are all the modal ones: the spells among them whose
     // text says "Choose one".
     for (CardDefId id : spells)
         EXPECT_EQ(card_db.get(id).ability_text.find("Choose one") != std::string::npos,

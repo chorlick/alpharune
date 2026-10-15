@@ -34,7 +34,7 @@ public:
         deck::take(ctx.state, ctx.source, deck::Place::Public, knowledge::everyone());
         ctx.executor.banishObject(ctx.source);
         std::vector<std::pair<int, std::string>> modes{{0, "Don't play me"}};
-        if (ctx.executor.payableAnyPower(owner) >= 1) {
+        if (ctx.executor.canPayAnyPower(owner, 1)) {
             modes.push_back({1, "Play me for [A] to base"});
             const auto& bfs = ctx.state.battlefields;
             for (size_t i = 0; i < bfs.size() && i < 30; ++i)

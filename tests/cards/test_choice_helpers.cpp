@@ -249,16 +249,24 @@ TEST_F(ChoiceHelperTest, PickTargetPairReturnsNothingWhileWaitingForTheSecondPic
     EXPECT_EQ(card.completions, 1);
 }
 
-TEST_F(ChoiceHelperTest, PickTargetPairWithNoSecondTargetIsAFinishedPartialPair) {
+TEST_F(ChoiceHelperTest, PickTargetPairWithNoSecondTargetOffersNoFirstTarget) {
+    // A first target with no second to go with it is not offered (CR 355.16:
+    // no choice that deterministically leads to an illegal one; 355.8 — valid
+    // choices for all targets; testing phase D8). It used to be offered and
+    // the pair finished half-made. The pair is finished, empty, and nothing
+    // was asked.
     EffectExecutor exec(state, events, card_db);
     auto u1 = addUnit(P1, kInvalidId, 2, 0);
     ProbeCard card;
     card.order = "P";
     card.targets = {u1};
+    int asked = 0;
     resolveProbe(card, ChainItem{}, [&](const std::string&, const std::vector<Intent>& legal) {
+        ++asked;
         return legal.front();
     }, exec);
-    EXPECT_EQ(card.pair.first, u1);
+    EXPECT_EQ(asked, 0);
+    EXPECT_EQ(card.pair.first, kInvalidId);
     EXPECT_EQ(card.pair.second, kInvalidId);
     EXPECT_EQ(resolved.resume_point, 13) << "done, not waiting";
     EXPECT_EQ(card.completions, 1);

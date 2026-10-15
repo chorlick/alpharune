@@ -16,6 +16,9 @@ class SealOfFocus_538 : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     bool hasActivatedAbility() const override { return true; }
+    // [Add]: it resolves as it is activated — no chain item, no priority,
+    // Focus stays (CR 430.2, 401.2; testing phase D2).
+    bool abilityAddsResources() const override { return true; }
     bool isReactionAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
         return ActivationCost{.exhaust = true};

@@ -20,9 +20,12 @@ public:
     //  power and then kill ourselves (token ceases to exist, CR 183.1).
     bool hasActivatedAbility() const override { return true; }
     bool isReactionAbility() const override { return true; }
+    // "Kill this, [E]": both are the cost, paid as it is activated (testing
+    // phase G27 / D38); the [Add] resolves at once (CR 430.2; D2).
     ActivationCost getActivationCost() const override {
-        return ActivationCost{.exhaust = true};
+        return ActivationCost{.exhaust = true, .kill_self = true};
     }
+    bool abilityAddsResources() const override { return true; }
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 0};
     }
@@ -43,7 +46,6 @@ public:
                                     " Energy (legend bonus)");
             }
         }
-        ctx.executor.killObject(ctx.source);
     }
 private:
     const CardDef def_ = [] {

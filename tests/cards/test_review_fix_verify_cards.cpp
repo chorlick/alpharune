@@ -1130,8 +1130,11 @@ TEST_F(VerifyCardsTest, Pin_Batch03_NotSoFastAndRepulse_ATriggersSubjectIsNotACh
         EXPECT_TRUE(top.targets.empty()) << "the engine never hands a trigger targets";
         EXPECT_FALSE(nsf->hasLegalTargets(st, P1)) << "it chose nothing";
         EXPECT_FALSE(repulse->hasLegalTargets(st, P1));
-        // Control: once the ability really chooses my unit, both can answer it.
+        // Control: once the ability really chooses my unit — and is finalized:
+        // a counter chooses finalized items only (CR 355.9.a.2; testing phase
+        // D21) — both can answer it.
         top.chosen_objects = {mine};
+        top.status = ChainItemStatus::Finalized;
         EXPECT_TRUE(nsf->hasLegalTargets(st, P1));
         EXPECT_TRUE(repulse->hasLegalTargets(st, P1));
         st.chain.items.clear();
@@ -5702,7 +5705,10 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
     auto u1 = addUnit(P1, kInvalidId, 2, 0);
     auto u2 = addUnit(P1, kInvalidId, 2, 0);
     auto spell = addToHand(P1, kEmperorsDivide);
-    EXPECT_TRUE(offersTargets(playsOffered(spell), {u1}));
+    // One play: the units are chosen as it is played (testing phase G17; the
+    // play intent used to name a unit standing for the battlefield).
+    ASSERT_EQ(playsOffered(spell).size(), 1u);
+    EXPECT_TRUE(playsOffered(spell).front().targets.empty());
     // "done": the option with no object.
     EnginePathAgent agent([](const std::vector<Intent>& legal) {
         for (const auto& i : legal)
@@ -5710,7 +5716,7 @@ TEST_F(VerifyCardsTest, Pin_EmperorsDivide_FirstPromptOffersMovingNoUnit) {
         ADD_FAILURE() << "no 'done' option";
         return legal.front();
     });
-    playAt(spell, {u1}, &agent);
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.prompts.size(), 1u);
     EXPECT_EQ(bfOf(u1), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(bfOf(u2), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
@@ -5923,11 +5929,14 @@ TEST_F(VerifyCardsTest, Pin_RelentlessPursuit_NoEquipment_StillMovesAndGrants) {
     auto unit = addUnit(P1, kInvalidId, 3);
     const auto plays = playsOffered(spell);
     ASSERT_EQ(plays.size(), 1u);
-    EXPECT_TRUE(offersTargets(plays, {unit}));
+    // One play; the unit is chosen in its finalize pass as it is played
+    // (testing phase D3 — it was a target of the play intent).
+    EXPECT_TRUE(plays.front().targets.empty());
     const size_t delayed_before = state.delayed_abilities.size();
-    EnginePathAgent agent(EnginePathAgent::script({1}));   // destination 1 = battlefield #0
-    playAt(spell, {unit}, &agent);
-    EXPECT_EQ(agent.prompts.size(), 1u) << "no Equipment: the attach is not asked";
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(unit.raw()), 1}));   // the unit; destination 1 = battlefield #0
+    playAt(spell, {}, &agent);
+    EXPECT_EQ(agent.prompts.size(), 2u) << "no Equipment: the Equipment is not asked";
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(0)});
     EXPECT_EQ(state.delayed_abilities.size(), delayed_before + 1)
         << "\"When I conquer, you may move me to my base.\"";
@@ -6572,9 +6581,10 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
 
 // ─── Forge of the Future 212 (not a defect) ─────────────────────────────────
 // "Kill this: Recycle up to 4 cards from trashes." With both trashes empty the
-// ability is still offered and its cost still paid. (By the time it resolves
-// the Forge itself is in a trash, so there is always a card to offer.) "None"
-// on the first prompt recycles nothing.
+// ability is still offered (zero is a legal choice, CR 355.13) and its cost
+// still paid. The cards are chosen as it is activated, before its cost (CR
+// 403.2; testing phase D41 — they used to be chosen as it resolved, by when
+// the Forge itself was in a trash): with nothing to choose nothing is asked.
 TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
     ASSERT_TRUE(ps(P1).trash.empty());
     ASSERT_TRUE(ps(P2).trash.empty());
@@ -6586,11 +6596,9 @@ TEST_F(VerifyCardsTest, Pin_ForgeOfTheFuture_ZeroCardsRecycled) {
     });
     EXPECT_TRUE(offered) << "activatable with nothing to recycle (CR 355.13)";
     const int deck_before = deckSize(P1);
-    EnginePathAgent none(EnginePathAgent::script({0}));
+    EnginePathAgent none(EnginePathAgent::script({}));
     activate(forge, &none);
-    ASSERT_EQ(none.prompts.size(), 1u);
-    EXPECT_TRUE(none.wasOffered(forge)) << "killed as the cost: it is in a trash by now";
-    EXPECT_TRUE(promptOffersValue(none, 0, 0)) << "\"None\" is on the first prompt";
+    EXPECT_TRUE(none.prompts.empty()) << "nothing in the trashes as it is activated";
     EXPECT_TRUE(inTrash(P1, forge)) << "\"Kill this\" was paid; nothing was recycled";
     EXPECT_EQ(deckSize(P1), deck_before);
 }
@@ -6652,7 +6660,9 @@ TEST_F(VerifyCardsTest, EmperorsDivide_FromFacedownWithNoFriendlyUnitThereIsPlay
     auto here = addUnit(P1, kInvalidId, 2, 0);
     const auto plays = hiddenPlays();
     ASSERT_EQ(plays.size(), 1u) << "this setup does offer a hidden Emperor's Divide";
-    EXPECT_EQ(plays[0].targets, std::vector<GameObjectId>{here});
+    // One play; the units are chosen as it is played, only at its battlefield
+    // (testing phase G17: the intent used to name a unit there).
+    EXPECT_TRUE(plays[0].targets.empty());
 
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(here.raw())}));
     withEngine([&](GameEngine& e) {

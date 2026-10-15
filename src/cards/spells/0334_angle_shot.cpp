@@ -26,6 +26,23 @@ public:
     TargetRequirements getTargetRequirements() const override {
         return TargetRequirements{.count = 2};
     }
+    // Both targets (CR 355.8; testing phase D8): a unit it can choose and an
+    // Equipment it can choose with the same controller.
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        for (PlayerId side : {PlayerId::Player1, PlayerId::Player2}) {
+            bool unit = false, equipment = false;
+            for (auto& [id, obj] : state.objects.onBoard()) {
+                if (!obj.location.has_value() || obj.controller != side) continue;
+                if (side != controller && obj.untargetable_by_enemy) continue;
+                if (obj.isUnit()) unit = true;
+                if (obj.isGear() &&
+                    std::find(obj.tags.begin(), obj.tags.end(), "Equipment") != obj.tags.end())
+                    equipment = true;
+            }
+            if (unit && equipment) return true;
+        }
+        return false;
+    }
 
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {

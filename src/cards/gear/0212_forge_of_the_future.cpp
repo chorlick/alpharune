@@ -25,53 +25,38 @@ public:
     }
 
     // "Kill this: Recycle up to 4 cards from trashes."
-    // "Kill this" is the whole cost (no [E]): it is paid as the ability is
-    // finalized (kFinalizeActivate + costDueNow). The cards — from either
-    // player's trash, each to its owner's Main Deck — are picked one at a time
-    // as the ability resolves, stopping at "None".
+    // "Kill this" is the whole cost, paid as the ability is activated, after
+    // its choices (ActivationCost::kill_self; CR 403.2 -> 405.1). The cards —
+    // targets: trashes are public (CR 355.10.a.1), up to 4, zero allowed (CR
+    // 355.13) — are chosen as it is activated, before anyone can respond
+    // (testing phase D41); each goes to its owner's Main Deck.
     unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
     std::vector<ActivatedAbility> activatedAbilities() const override {
-        return {ActivatedAbility{}};
+        ActivatedAbility ab;
+        ab.cost.kill_self = true;
+        return {ab};
     }
     void onActivate(CardContext& ctx, int /*ability_index*/,
                     const std::vector<GameObjectId>& /*targets*/) override {
-        if (costDueNow(ctx)) {
-            if (!ctx.state.objectExists(ctx.source) ||
-                !ctx.state.getObject(ctx.source).location.has_value()) return;   // nothing to kill
-            ctx.executor.killObject(ctx.source);
-        }
-        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
-        auto in_trashes = [&]() {
-            std::vector<GameObjectId> out;
-            for (auto pid : {PlayerId::Player1, PlayerId::Player2})
-                for (auto cid : ctx.state.player(pid).trash)
-                    if (ctx.state.objectExists(cid)) out.push_back(cid);
-            return out;
-        };
-        std::vector<GameObjectId> picks;
-        for (size_t i = 0; i < 4; ++i) {
-            std::vector<GameObjectId> rest;
-            for (auto cid : in_trashes())
-                if (std::find(picks.begin(), picks.end(), cid) == picks.end()) rest.push_back(cid);
-            if (rest.empty()) break;
-            // += rather than chained operator+ (GCC 13 false -Warray-bounds, as
-            // in Garbage Grabber).
-            std::string label = "Forge of the Future: recycle a card from a trash (";
-            label += std::to_string(i + 1);
-            label += " of up to 4)";
-            const auto pick = selectObject(ctx, label, rest, 7 + 2 * i, /*may_decline=*/true);
-            if (!pick.has_value()) return;          // waiting on the agent
-            if (*pick == kInvalidId) break;         // "up to": done
-            if (std::find(rest.begin(), rest.end(), *pick) == rest.end()) break;
-            picks.push_back(*pick);
-        }
-        for (auto cid : picks) {
+        std::vector<GameObjectId> in_trashes;
+        for (auto pid : {PlayerId::Player1, PlayerId::Player2})
+            for (auto cid : ctx.state.player(pid).trash)
+                if (ctx.state.objectExists(cid)) in_trashes.push_back(cid);
+        const auto picks = selectSeveralTargets(*this, ctx,
+            "Forge of the Future: recycle a card from a trash (up to 4)", in_trashes,
+            /*max_picks=*/4);
+        if (!picks.has_value()) return;          // waiting on the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 403)
+        std::vector<GameObjectId> to_recycle;
+        for (auto cid : *picks) {
             auto& trash = ctx.state.player(ctx.state.getObject(cid).owner).trash;
+            if (std::find(trash.begin(), trash.end(), cid) == trash.end()) continue;
             trash.erase(std::remove(trash.begin(), trash.end(), cid), trash.end());
+            to_recycle.push_back(cid);
         }
-        if (!picks.empty()) ctx.executor.recycleCards(ctx.controller, picks);
-        RIFT_TRACE(ctx.events, "FORGE OF THE FUTURE: killed -> recycled " +
-                            std::to_string(picks.size()) + " card(s) from trashes");
+        if (!to_recycle.empty()) ctx.executor.recycleCards(ctx.controller, to_recycle);
+        RIFT_TRACE(ctx.events, "FORGE OF THE FUTURE: recycled " +
+                            std::to_string(to_recycle.size()) + " card(s) from trashes");
     }
 private:
     const CardDef def_ = [] {

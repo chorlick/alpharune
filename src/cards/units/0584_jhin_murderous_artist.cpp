@@ -16,6 +16,8 @@ class JhinMurderousArtist : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenIMove; }
+    // "When I move, [Add] [1][A]" resolves as it triggers (CR 430.2; D2).
+    bool triggeredAbilityAdds(TriggerType) const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         // [Add] [1][A] — 1 floating energy + 1 universal-domain power.
         ctx.executor.addFloatingEnergy(ctx.controller, 1);

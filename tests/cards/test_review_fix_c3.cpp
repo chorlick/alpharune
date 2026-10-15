@@ -562,9 +562,10 @@ TEST_F(C3Test, RelentlessPursuit_MovesALoneUnitWhereItsControllerChooses) {
     auto unit = addUnit(P1, kInvalidId, 3);
     auto sword = addGear(P1, true);
     auto shield = addGear(P1, true);
-    // Battlefield #1 (destination 2), attach: yes, the second Equipment.
-    StepAgent agent{V(2), V(1), O(shield)};
-    playAt(spell, {unit}, &agent);
+    // As it is played (testing phase D3): the unit, battlefield #1
+    // (destination 2), the second Equipment; as it resolves: attach it, yes.
+    StepAgent agent{O(unit), V(2), O(shield), V(1)};
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.missed, 0);
     ASSERT_TRUE(bfOf(unit).has_value());
     EXPECT_EQ(*bfOf(unit), BattlefieldId::fromRaw(1));
@@ -576,8 +577,8 @@ TEST_F(C3Test, RelentlessPursuit_AttachingIsOptionalAndTheConquerRiderIsArmed) {
     auto spell = addToHand(P1, kRelentlessPursuit);
     auto unit = addUnit(P1, kInvalidId, 3);
     auto sword = addGear(P1, true);
-    StepAgent agent{V(1), V(0)};   // battlefield #0, attach: no
-    playAt(spell, {unit}, &agent);
+    StepAgent agent{O(unit), V(1), V(0)};   // the unit, battlefield #0, no Equipment
+    playAt(spell, {}, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_FALSE(state.getObject(sword).attached_to.has_value());
     ASSERT_EQ(state.delayed_abilities.size(), 1u);
@@ -624,9 +625,11 @@ TEST_F(C3Test, Riposte_StillCountersWhenTheChosenUnitIsGone) {
     EXPECT_TRUE(state.chain.items.empty());
 }
 
-TEST_F(C3Test, CountersAreOnlyPlayableAgainstTheChainTop) {
-    // Peek-and-pop counters answer the top of the chain; a spell under an
-    // ability cannot be reached, so it must not make them playable.
+TEST_F(C3Test, CountersCanChooseASpellUnderAnAbility) {
+    // A counter chooses the spell it counters (CR 355.9.a.2: "'Spell' and
+    // 'ability' refer to finalized objects on the Chain"), anywhere on the
+    // chain: a spell under an ability makes it playable (testing phase D21;
+    // this test pinned the old peek-and-pop rule, where it did not).
     addUnit(P1, kInvalidId, 3);   // Riposte also needs a friendly unit
     state.player(P2).spells_played_this_turn = 2;
     for (CardDefId counter : {kHardBargain, kRiposte, kAbandon, kLiltingLullaby, kCrumblingSands})
@@ -636,11 +639,12 @@ TEST_F(C3Test, CountersAreOnlyPlayableAgainstTheChainTop) {
         EXPECT_TRUE(hasLegalTargets(counter, P1)) << "a spell on top: " << counter;
     ChainItem ability;
     ability.id = state.chain.allocateId();
+    ability.status = ChainItemStatus::Finalized;
     ability.controller = P2;
     ability.is_ability = true;
     state.chain.items.push_back(ability);
     for (CardDefId counter : {kHardBargain, kRiposte, kAbandon, kLiltingLullaby, kCrumblingSands})
-        EXPECT_FALSE(hasLegalTargets(counter, P1)) << "an ability on top: " << counter;
+        EXPECT_TRUE(hasLegalTargets(counter, P1)) << "an ability on top of the spell: " << counter;
 }
 
 TEST_F(C3Test, Sacrifice_KillsTheMightyUnitAsItIsPlayed) {
@@ -789,9 +793,12 @@ TEST_F(C3Test, DragUnder_CostsTwoLessWhenAnEffectPlaysItFromOutsideTheHand) {
     // plays it off the deck: 5 - 2 (Void Rush) - 2 (its own) = [1] + [O].
     auto drag = addToDeck(P1, kDragUnder);
     auto spell = addToHand(P1, kVoidRush);
+    // "Kill a unit at a battlefield": a target to choose (CR 355.8: with none
+    // it is not played — batch 3, D57).
+    auto victim = addUnit(P2, kInvalidId, 2, 0);
     state.player(P1).rune_pool.energy += 1;
     state.player(P1).rune_pool.universal_power += 1;
-    StepAgent agent{V(1), O(drag)};
+    StepAgent agent{V(1), O(drag), O(victim)};
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0) << "affordable only with its own [2] reduction";
     EXPECT_TRUE(inTrash(P1, drag)) << "played, resolved, in the trash";
@@ -1365,8 +1372,23 @@ TEST_F(C3Test, Conscription_WithoutTheXpOnlySmallUnitsAndTheRecallIsNotAMove) {
 TEST_F(C3Test, Conscription_SpendingFiveXpIsPaidOnceAndWidensTheChoice) {
     auto spell = addToHand(P1, kConscription);
     auto big = addUnit(P2, kInvalidId, 6, 0);
+    addUnit(P2, kInvalidId, 2, 1);   // a unit of 3 [M] or less: paying is then a choice
     setXp(P1, 7);
     StepAgent agent{V(1), O(big)};
+    playThroughEngine(spell, &agent);
+    EXPECT_EQ(agent.missed, 0);
+    EXPECT_EQ(state.player(P1).xp, 2);
+    EXPECT_EQ(state.getObject(big).controller, P1);
+}
+
+TEST_F(C3Test, Conscription_WithOnlyABigEnemyThePaymentIsNotAsked) {
+    // No enemy unit of 3 [M] or less: spending the XP is the only way to play
+    // it, so it is not offered as a choice (CR 355.16; batch 3 — declining it
+    // left the spell with no target).
+    auto spell = addToHand(P1, kConscription);
+    auto big = addUnit(P2, kInvalidId, 6, 0);
+    setXp(P1, 7);
+    StepAgent agent{O(big)};
     playThroughEngine(spell, &agent);
     EXPECT_EQ(agent.missed, 0);
     EXPECT_EQ(state.player(P1).xp, 2);

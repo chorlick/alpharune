@@ -48,10 +48,14 @@ public:
             if (state.objectExists(gid) && isEquipment(state.getObject(gid))) out.push_back(gid);
         return out;
     }
+    // Both targets (CR 355.8): an equipped friendly unit and an enemy unit it
+    // can choose (testing phase F7: the enemy half was not asked).
     bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        bool equipped = false;
         for (auto& [id, obj] : state.objects.onBoard())
-            if (isEquippedFriendly(obj, controller, state)) return true;
-        return false;
+            if (isEquippedFriendly(obj, controller, state)) { equipped = true; break; }
+        return equipped && !chooseableUnits(state, controller, [&](const GameObject& o) {
+                                return o.controller != controller; }).empty();
     }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         std::vector<GameObjectId> equipped;

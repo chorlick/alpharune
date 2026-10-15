@@ -29,6 +29,9 @@ static_assert(sizeof(KeyedSlots<std::string>) == sizeof(void*));
 // headers and two hash tables in it. A new member that pushes it past this
 // is a new cost on every state copy: decide it knowingly.
 static_assert(sizeof(GameObject) <= 600);
+// The incarnation count of GameObject::zone (testing phase G14) sits in the
+// padding after the one-byte zone: a zone is no larger than a plain tracked one.
+static_assert(sizeof(TrackedZone) == sizeof(TrackedField<ZoneType>));
 // A T and its interned form do not convert into each other silently in both
 // directions (a conditional expression of the two is the T).
 static_assert(!std::is_convertible_v<std::string, Interned<std::string>>);

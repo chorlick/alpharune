@@ -20,13 +20,11 @@ public:
     bool entersExhausted() const override { return true; }
 
     // "Kill this, [1], [E]: [Predict 2], then draw 1. Gain 1 XP."
-    // [1] and [E] are paid by the engine. "Kill this" is a cost too: it is
-    // paid as the ability is activated (finalize pass, costDueNow), not as it
-    // resolves — ActivationCost has no kill-self field.
-    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    // The whole cost — kill this, [1], [E] — is declared and paid by the
+    // engine as the ability is activated (ActivationCost::kill_self).
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        return {.exhaust = true, .energy = 1};
+        return {.exhaust = true, .energy = 1, .kill_self = true};
     }
     // Predict 2, by hand so the draw can follow it: look at the top two cards,
     // recycle any of them, put the rest back in any order (CR 436). One
@@ -35,16 +33,6 @@ public:
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
-        if (ri.resume_point == kStart && costDueNow(ctx)) {
-            // The cost can only be paid by a Bloom that is on the board.
-            if (!ctx.state.objectExists(ctx.source) ||
-                !ctx.state.getObject(ctx.source).location.has_value()) {
-                ri.resume_point = kDone;
-                return;
-            }
-            ctx.executor.killObject(ctx.source);
-        }
-        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         if (ri.resume_point == kDone) return;
 
         auto card_at = [&](int i) { return GameObjectId::fromRaw(ri.resume_data[1 + i]); };

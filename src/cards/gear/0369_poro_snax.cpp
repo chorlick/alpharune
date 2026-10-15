@@ -20,22 +20,16 @@ public:
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "PORO SNAX: enter -> draw 1");
     }
-    // "[1][G], [E], Kill this: Draw 1." [1] + one Calm Power + exhaust are the
-    // structured cost. "Kill this" is a cost too — to the trash, not a recycle
-    // — and is paid as the ability is finalized (kFinalizeActivate +
-    // costDueNow), before anyone can respond.
-    unsigned choicesAtFinalization() const override { return kFinalizeActivate; }
+    // "[1][G], [E], Kill this: Draw 1." [1] + one Calm Power + exhaust + kill
+    // this: the whole cost is declared and paid by the engine as the ability
+    // is activated (ActivationCost::kill_self, CR 404-405), before anyone can
+    // respond.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override {
-        return {.exhaust = true, .energy = 1, .power = 1, .power_domain = Domain::Calm};
+        return {.exhaust = true, .energy = 1, .power = 1, .power_domain = Domain::Calm,
+                .kill_self = true};
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (costDueNow(ctx)) {
-            if (!ctx.state.objectExists(ctx.source) ||
-                !ctx.state.getObject(ctx.source).location.has_value()) return;   // can't be paid
-            ctx.executor.killObject(ctx.source);
-        }
-        if (finalizingChoices(ctx)) return;   // costs end here (CR 355)
         ctx.executor.drawCards(ctx.controller, 1);
         RIFT_TRACE(ctx.events, "PORO SNAX: activated -> draw 1");
     }

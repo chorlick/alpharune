@@ -254,3 +254,16 @@ Which rule wins when both apply?
 - For "yes, it was alone": the ability resolves after both have died, and nothing friendly is "here" then; the reminder text says "I'm alone if there are no other friendly units here" in the present tense.
 
 **What the engine does.** Not alone: no card is drawn. "Here" is read from the moment Lonely Poro died, from last-known information taken for all units that die together before the first leaves, so a friendly unit that arrives before the ability resolves changes nothing either (`SweepTriggersTest.LonelyPoro_UnitsThatDieTogetherDidNotDieAlone` for 777, `Batch4bTest.D80_LonelyPoro359_UnitsThatDieTogetherDidNotDieAlone` for 359; testing phase D80 — the 359 printing used to read the board as the ability resolved).
+
+## 13. Establishing control when an opposing unit arrived after the combat result
+
+**Situation.** A combat ends with a result: the attacker is the only player with units at the battlefield (CR 468.3.a), so no Showdown or Combat is staged (468.3.d.1). In the 468.4 chain (the "When I win a combat" abilities, and whatever the players play in response) a unit of the defender's comes to that battlefield. When 468.5 is performed, both players have units there.
+
+**Question.** In 468.5 ("If no Showdown or Combat is staged at this location, the player with Units remaining here Establishes Control"), does the attacker — the winner — establish control and conquer, or does nobody establish control, leaving the next Cleanup to apply Contested and stage another combat (323.10.a, 323.8)?
+
+**Rules found**
+
+- For "the winner establishes control": 468.5 follows the result, and the winner is the player the step was written for; 468.5.e says the player need not be the one who applied Contested, nothing says the step is skipped.
+- For "nobody": 468.5 names "the player with Units remaining here", which is not one player when both have units; staging is decided only at 468.3.d.1, and a battlefield with opposing units that its controller does not control is Contested by the next Cleanup (323.10.a), which stages a Combat (323.8).
+
+**What the engine does.** Nobody establishes control: the battlefield keeps its controller, there is no conquer, and the Cleanup after the combat stages the next combat with the same attacker (`Batch3Combat.J3_Pin_AUnitThatArrivesAfterAWinLeadsToANewCombatNotAConquer`, testing phase J3). No "When I win a combat" ability of a registered card brings an opposing unit; the situation arises when the defender answers in that chain with a [Reaction] that moves or plays one of their units there.

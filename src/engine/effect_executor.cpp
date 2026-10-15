@@ -1246,7 +1246,7 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
     // make a correction computed from the clamped value too small. Compute the
     // correction from the UNCLAMPED raw might instead.
     if (minimum > 0) {
-        int raw = obj.base_might + obj.buff_count + obj.temp_might_bonus +
+        int raw = obj.baseMight() + obj.buff_count + obj.temp_might_bonus +
                   obj.attachment_might_bonus + obj.aura_might_bonus;
         if (raw < minimum) {
             obj.temp_might_bonus += (minimum - raw);

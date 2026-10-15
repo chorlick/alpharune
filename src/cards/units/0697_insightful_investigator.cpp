@@ -49,7 +49,7 @@ public:
 
         std::vector<GameObjectId> hand(ops.hand.begin(), ops.hand.end());
         // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-        GameObjectId chosen = pickTarget(ctx, "Insightful Investigator: choose a card", hand);
+        GameObjectId chosen = pickUnseenCard(ctx, "Insightful Investigator: choose a card", hand);
         if (chosen == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {
             return;  // suspended

@@ -54,7 +54,7 @@ public:
         GameObjectId drawn = kInvalidId;
         if (go == 1) {
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-            drawn = pickTarget(ctx, "Double Trouble: unit to draw", units);
+            drawn = pickUnseenCard(ctx, "Double Trouble: unit to draw", units);
             if (drawn == kInvalidId) return;   // waiting
         }
 

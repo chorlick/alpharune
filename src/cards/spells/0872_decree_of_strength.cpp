@@ -38,7 +38,7 @@ public:
                 mind_cards.push_back(cid);
         }
         // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-        GameObjectId picked = pickTarget(ctx, "Decree of Strength: recycle a Mind card", mind_cards);
+        GameObjectId picked = pickUnseenCard(ctx, "Decree of Strength: recycle a Mind card", mind_cards);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         auto it = std::find(hand.begin(), hand.end(), picked);
         if (it == hand.end()) return;

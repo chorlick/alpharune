@@ -41,6 +41,13 @@ public:
                             ctx.state.getObject(unit).name);
     }
 
+    // Played again, this is a new object (CR 124.1): nothing is "banished
+    // with this" yet (testing phase R7, as Cursed Sarcophagus).
+    void onPlay(CardContext& ctx) override {
+        if (ctx.state.objectExists(ctx.source))
+            ctx.state.getObject(ctx.source).tracked_objects.clear();
+    }
+
     // ── "[3][B], Banish this: Play all units banished with this, ignoring
     //     their costs. (Use only if unattached.)" ──
     bool hasActivatedAbility() const override { return true; }
@@ -73,9 +80,11 @@ public:
         if (!ctx.state.objectExists(ctx.source)) return;
         auto& ri = ctx.state.chain.resuming;
         const auto& bfs = ctx.state.battlefields;
-        auto unitPlayableAt = [&](const BattlefieldState& bf) {
-            return bf.controller.has_value() && *bf.controller == ctx.controller &&
-                   battlefieldTakesUnitsFrom(ctx.state, ctx.controller, bf);
+        // Where `uid` may be played: a battlefield its controller controls or
+        // one its own permissions allow (CR 355.2, 420.3.b), never one units
+        // can't be played to (effectPlayAllowedAt).
+        auto unitPlayableAt = [&](GameObjectId uid, const BattlefieldState& bf) {
+            return effectPlayAllowedAt(ctx, ctx.controller, uid, bf);
         };
         auto play = [&](GameObjectId uid, std::optional<LocationId> where) {
             // playIgnoringCost takes the card out of the banishment zone itself.
@@ -96,7 +105,8 @@ public:
                 // The answer: 0 = base, 1 + i = battlefield slot i.
                 std::optional<LocationId> where;
                 const int v = takenValue(ctx, 0);
-                if (v >= 1 && static_cast<size_t>(v) <= bfs.size() && unitPlayableAt(bfs[v - 1]))
+                if (v >= 1 && static_cast<size_t>(v) <= bfs.size() &&
+                    unitPlayableAt(to_play[next], bfs[v - 1]))
                     where = LocationId{BattlefieldLocation{bfs[v - 1].id}};
                 ri->resume_point = kPlaying;
                 play(to_play[next], where);
@@ -120,7 +130,7 @@ public:
             if (ri.has_value() && ctx.state.objectExists(uid)) {
                 std::vector<Intent> where;
                 for (size_t i = 0; i < bfs.size(); ++i)
-                    if (unitPlayableAt(bfs[i]))
+                    if (unitPlayableAt(uid, bfs[i]))
                         where.push_back(valChoice(ctx.controller, static_cast<int>(i) + 1,
                             "The Zero Drive: play to battlefield " + std::to_string(i)));
                 if (!where.empty()) {

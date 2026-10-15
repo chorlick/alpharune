@@ -16,19 +16,34 @@ class DazzlingAurora : public GearCard {
 public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::AtEndOfTurn; }
+    // "... until you reveal a unit and banish it. Play it, ignoring its cost,
+    // and recycle the rest." In that order: the revealed cards wait, taken
+    // out of the deck, while the unit is banished and played, and are
+    // recycled after (testing phase R6). They are kept on the resolving item
+    // from resume_data[kRestSlot] (clear of the slots pickMode uses).
+    static constexpr size_t kRestSlot = 10;
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
+        auto recycleRest = [&]() {
+            std::vector<GameObjectId> rest;
+            for (size_t i = kRestSlot; i < ri.resume_data.size(); ++i)
+                rest.push_back(GameObjectId::fromRaw(ri.resume_data[i]));
+            if (ri.resume_data.size() > kRestSlot)   // only ever shrinks
+                ri.resume_data.erase(ri.resume_data.begin() + kRestSlot, ri.resume_data.end());
+            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+        };
 
-        // First-entry-only steps: reveal from deck until a unit, recycle
-        // the rest, banish the unit. Stash the unit id in ri.targets so
-        // subsequent re-entries from pickMode don't re-reveal. Empty
-        // ri.targets ≡ "haven't entered yet"; a single kInvalidId entry
-        // ≡ "entered, but no unit was found — nothing left to do".
+        // First-entry-only steps: reveal from deck until a unit, banish the
+        // unit. Stash the unit id in ri.targets so re-entries from pickMode
+        // don't re-reveal. Empty ri.targets = "haven't entered yet"; a single
+        // kInvalidId entry = "entered, but no unit was found".
         if (ri.targets.empty()) {
             auto [u, rest] = ctx.executor.revealUntil(ctx.controller, CardType::Unit);
-            if (!rest.empty()) ctx.executor.recycleCards(ctx.controller, rest);
+            while (ri.resume_data.size() < kRestSlot) ri.resume_data.push_back(0);
+            for (auto cid : rest) ri.resume_data.push_back(static_cast<int32_t>(cid.raw()));
             if (u == kInvalidId || !ctx.state.objectExists(u)) {
                 ri.targets.push_back(kInvalidId);
+                recycleRest();
                 return;
             }
             // It stays banished while the location is picked; playIgnoringCost
@@ -39,13 +54,12 @@ public:
         GameObjectId unit_id = ri.targets.front();
         if (unit_id == kInvalidId) return;
 
-        // Per CR 355.2.a, the controller picks the landing location: base
-        // or any battlefield they control. pickMode publishes one option
-        // per legal location so the agent records the decision (mandatory
-        // even when only base is legal — engine-wide rule).
-        // playLocations leaves out a battlefield units can't be played to
-        // (Rockfall Path; a player who may only play units to base).
-        const auto where = playLocations(ctx.state, ctx.controller);
+        // Per CR 355.2, the controller picks the landing location: base, any
+        // battlefield they control, or where the unit's own permissions allow
+        // (playLocationsFor leaves out a battlefield units can't be played to).
+        // pickMode publishes one option per location so the agent records the
+        // decision (mandatory even when only base is legal — engine-wide rule).
+        const auto where = playLocationsFor(ctx, ctx.controller, unit_id);
         const std::vector<LocationId>& locations = where.locations;
         const std::vector<std::string>& labels = where.labels;
         uint32_t legal_mask = (locations.size() >= 32)
@@ -54,13 +68,15 @@ public:
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int chosen = pickMode(ctx, "Aurora: where to play unit",
                                static_cast<int>(locations.size()),
-                               labels, legal_mask);
+                               labels, legal_mask, std::source_location::current(),
+                               PromptKind::Location);
         if (chosen == -1) return;  // yielded for agent input
         if (chosen < 0 || static_cast<size_t>(chosen) >= locations.size()) {
             chosen = 0;
         }
         ctx.executor.playIgnoringCost(ctx.controller, unit_id,
                                        locations[chosen]);
+        recycleRest();
     }
 private:
     const CardDef def_ = [] {

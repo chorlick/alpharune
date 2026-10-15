@@ -26,23 +26,20 @@ public:
                 return;
             }
             std::vector<Intent> choices;
-            std::string label = "Lunar Boon: discard 1 then draw 2 [";
-            bool first = true;
             for (auto card_id : ps.hand) {
                 Intent c;
                 c.type = IntentType::MakeChoice;
                 c.player = ctx.controller;
                 c.chosen_objects = {card_id};
                 choices.push_back(c);
-                if (!first) label += " | ";
-                first = false;
-                if (ctx.state.objectExists(card_id)) {
-                    label += ctx.state.getObject(card_id).name;
-                }
             }
-            label += "]";
+            // The prompt's header is read by both players (the DECISION and
+            // CHOICE-REQUEST lines): it names no card of the hand (testing
+            // phase R1; D11).
             // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
-            ctx.executor.requestChoice(ctx.controller, std::move(choices), label, PromptKind::Discard);
+            ctx.executor.requestChoice(ctx.controller, std::move(choices),
+                                       "Lunar Boon: discard 1, then draw 2",
+                                       PromptKind::Discard);
             ri.resume_point = 1;
             return;
         }
@@ -57,17 +54,20 @@ public:
             }
             // Wrap drawCards with a per-spell prefix so V&V can grep
             // "LUNAR BOON: drew" for the cards landed by THIS spell
-            // (vs the generic "DREW: ..." that fires for all draws).
+            // (vs the generic "DREW: ..." that fires for all draws). A drawn
+            // card is its controller's to know: the line is theirs alone
+            // (testing phase R1).
             auto& ps = ctx.state.player(ctx.controller);
             size_t before = ps.hand.size();
             ctx.executor.drawCards(ctx.controller, 2);
             for (size_t i = before; i < ps.hand.size(); ++i) {
                 auto did = ps.hand[i];
-                std::string dn = ctx.state.objectExists(did)
-                    ? ctx.state.getObject(did).name.get() : "card";
-                RIFT_TRACE(ctx.events, "LUNAR BOON: drew " + dn +
-                                     " — PRIVATE to " + toString(ctx.controller));
+                RIFT_TRACE_PRIVATE(ctx.events, ctx.controller, "LUNAR BOON: drew " +
+                    (ctx.state.objectExists(did) ? ctx.state.getObject(did).name.get()
+                                                 : std::string("card")));
             }
+            RIFT_TRACE(ctx.events, "LUNAR BOON: drew " +
+                                std::to_string(ps.hand.size() - before) + " card(s)");
             return;
         }
         }

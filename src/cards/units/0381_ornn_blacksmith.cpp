@@ -45,7 +45,7 @@ public:
         GameObjectId drafted = kInvalidId;
         if (conf == 1) {
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-            drafted = pickTarget(ctx, "Ornn, Blacksmith: choose a gear to draw", gearAmong(ctx));
+            drafted = pickUnseenCard(ctx, "Ornn, Blacksmith: choose a gear to draw", gearAmong(ctx));
             if (drafted == kInvalidId && ctx.state.chain.resuming.has_value() &&
                 ctx.state.chain.resuming->resume_point == 7)
                 return;  // suspended for the choice

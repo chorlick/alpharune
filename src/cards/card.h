@@ -522,6 +522,16 @@ public:
     GameObjectId pickTarget(CardContext& ctx, const std::string& label,
                              const std::vector<GameObjectId>& legal_targets,
                              std::source_location where = std::source_location::current());
+    /// pickTarget for a card picked out of a zone that is not public — a
+    /// hand, a deck, cards looked at, Banishment — which is not a target (CR
+    /// 355.10.a): the same prompt, slots, resume points and return values as
+    /// pickTarget (it IS the callback's pickTarget: use one or the other),
+    /// but the prompt is a PromptKind::ChooseObject that says "pick:", no
+    /// Deflect is filtered for or paid, and the card is not recorded as
+    /// chosen (commitChoice). Asked as the item resolves (testing phase R13).
+    GameObjectId pickUnseenCard(CardContext& ctx, const std::string& label,
+                                const std::vector<GameObjectId>& options,
+                                std::source_location where = std::source_location::current());
 
     /// Paired-target picker for dual-target spells (Challenge,
     /// Star-Crossed, Deathgrip, Singularity, …). Publishes TWO
@@ -566,6 +576,11 @@ public:
     /// resume_data by hand AND calls a pick* helper must leave slots 0..6 to
     /// the helpers (or finish with resume_data before the first helper call).
     static constexpr size_t kChoiceStateSlot = 6;
+private:
+    GameObjectId pickOneObject(CardContext& ctx, const std::string& label,
+                               const std::vector<GameObjectId>& options, bool as_target,
+                               std::source_location where);
+public:
 
     // ── Choosing a spell or ability on the chain (CR 355.9.a.2) ──
     /// "Counter a spell", "Choose a spell", "an enemy spell or ability that
@@ -784,6 +799,9 @@ public:
     enum : unsigned {
         kPlayToOpenBattlefield = 1,           // no controller
         kPlayToOccupiedEnemyBattlefield = 2,  // enemy-controlled, enemy units there
+                                              // (Maduli reads "occupied enemy
+                                              // battlefield" otherwise: judge
+                                              // question 17, testing phase R14)
         kPlayToAnyBattlefield = 4,
         kPlayToLoneEnemyBattlefield = 8,      // exactly one unit there, an enemy
     };

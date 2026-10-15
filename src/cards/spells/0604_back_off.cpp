@@ -39,8 +39,13 @@ public:
             ctx.executor.stunUnitBy(picked, ctx.source);
         }
         // "If you played this from your hand, draw 1." — not when it was
-        // played from facedown. The rider does not depend on the stun target.
-        if (!facedownPlayBattlefield(ctx.state, ctx.source).has_value())
+        // played from facedown, from a trash, or by an effect from anywhere
+        // but a hand (Card::kPlayedNotFromHand, written by every spell play
+        // path; testing phase R10). The rider does not depend on the stun
+        // target.
+        const auto& counters = ctx.state.getObject(ctx.source).card_counters;
+        const auto it = counters.find(kPlayedNotFromHand);
+        if (it != counters.end() && it->second == 0)
             ctx.executor.drawCards(ctx.controller, 1);
     }
 private:

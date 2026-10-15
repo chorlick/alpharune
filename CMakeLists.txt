@@ -467,6 +467,7 @@ add_library(riftbound_core
     src/engine/keyword_abilities.cpp
     src/engine/knowledge_tracker.cpp
     src/engine/deck_ops.cpp
+    src/engine/play_permissions.cpp
     src/engine/prompt_description.cpp
     src/engine/observer_view.cpp
     src/io/state_renderer.cpp

@@ -3,6 +3,7 @@
 #include "engine/resource_payment.h"
 #include "core/board_state.h"
 #include "engine/deck_ops.h"
+#include "engine/play_permissions.h"
 #include "engine/trash_replacement.h"
 #include "game_engine.h"
 #include "engine/keyword_abilities.h"
@@ -1420,6 +1421,7 @@ void GameEngine::doExpirationBody() {
         // Temp might is a separate field from buff_count (permanent buffs);
         // just clear it. recomputeMight (below / in cleanup) drops the bonus.
         obj.temp_might_bonus = 0;
+        obj.base_might_this_turn = -1;   // "base Might becomes N this turn"
         if (obj.temp_assault_value != 0) {
             obj.assault_value -= obj.temp_assault_value;
             obj.temp_assault_value = 0;
@@ -5121,13 +5123,7 @@ std::vector<LocationId> GameEngine::standardMoveDestinations(const GameObject& u
 }
 
 bool GameEngine::enemyUnitAloneAt(PlayerId player, BattlefieldId bf) const {
-    int units = 0, enemies = 0;
-    for (const auto& [id, obj] : state_.objects.atLocation(LocationId{BattlefieldLocation{bf}})) {
-        if (!obj.isUnit() || obj.battlefieldId() != bf) continue;
-        ++units;
-        if (obj.controller != player) ++enemies;
-    }
-    return units == 1 && enemies == 1;
+    return riftbound::enemyUnitAloneAt(state_, player, bf);
 }
 
 std::vector<GameObjectId> GameEngine::handAndChampion(PlayerId player) const {
@@ -5141,36 +5137,14 @@ std::vector<GameObjectId> GameEngine::handAndChampion(PlayerId player) const {
 
 bool GameEngine::ambushLocation(const Card* card_obj, PlayerId player,
                                 const BattlefieldState& bf) const {
-    if (bf.hasUnitsFrom(player, state_.objects)) return true;
-    return card_obj && card_obj->ambushToEnemyBattlefields() &&
-           bf.hasUnitsFrom(opponent(player), state_.objects);
+    return riftbound::ambushLocation(state_, card_obj, player, bf);
 }
 
 bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
                                 const BattlefieldState& bf, const GameObject* unit) const {
-    const auto& ps = state_.player(player);
-    if (bf.blocks_unit_play) return false;  // Rockfall Path
-    // [Ambush] "I may be played to a battlefield where you control Units"
-    // (CR 822.1.b): a location permission of its own, not tied to the
-    // [Reaction] timing it also grants — so it holds in the Main Phase too
-    // (testing phase D37).
-    if (unit && unit->hasKeyword(Keyword::Ambush) && ambushLocation(card_obj, player, bf))
-        return true;
-    // Play-to-location permissions the card prints (CR 355.2), and the ones
-    // another card grants every unit this player plays.
-    const unsigned extra = card_obj ? card_obj->extraPlayLocations() : 0u;
-    const bool controlled = bf.controller.has_value() && *bf.controller == player;
-    const bool open = !bf.controller.has_value();
-    const bool enemy_occupied = bf.controller.has_value() && *bf.controller != player &&
-                                bf.hasUnitsFrom(opponent(player), state_.objects);
-    if (controlled) return true;  // default: controlled BFs
-    if (open && ((extra & Card::kPlayToOpenBattlefield) ||
-                 ps.grant_friendly_units_open_bf)) return true;   // Miss Fortune, Buccaneer
-    if (enemy_occupied && (extra & Card::kPlayToOccupiedEnemyBattlefield)) return true;
-    if (extra & Card::kPlayToAnyBattlefield) return true;
-    if (((extra & Card::kPlayToLoneEnemyBattlefield) || ps.grant_units_lone_enemy_bf) &&
-        enemyUnitAloneAt(player, bf.id)) return true;             // Arachnoid Horror
-    return false;
+    // One rule for a play from a hand and a play by an effect
+    // (engine/play_permissions.h).
+    return riftbound::unitPlayableAt(state_, card_obj, player, bf, unit);
 }
 
 std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const {

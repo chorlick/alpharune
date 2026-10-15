@@ -33,6 +33,7 @@
 
 #include "agents/determinizer.h"
 #include "agents/random_player_agent.h"
+#include "cards/card_test_fixture.h"
 #include "cards/card_registry.h"
 #include "core/card_db.h"
 #include "core/events.h"
@@ -857,6 +858,67 @@ TEST_F(HiddenOrderLeak, AnOpponentWhoNeverActsCannotBeToldFromAnother) {
               << differing_hands << " with another top of deck), " << decisions
               << " decisions compared, " << log_lines << " log lines; " << ended_by_sight
               << " stopped when a differing card became visible ]\n";
+}
+
+
+// ─── 4. A card's own lines (batch 6 item R1) ────────────────────────────────
+// Lunar Boon: "discard 1, then draw 2". The cards drawn, and the hand the
+// discard is chosen from, are its controller's: the opponent reads that a
+// card was discarded (which one is public, it is in the trash) and that two
+// were drawn, and nothing else.
+class HiddenOrderLeakCards : public CardTestFixture {};
+
+TEST_F(HiddenOrderLeakCards, LunarBoon_TheOpponentReadsNoCardItDrawsOrKeeps) {
+    constexpr CardDefId kLunarBoon = 687;
+    constexpr CardDefId kIncinerate = 301;
+    constexpr CardDefId kDauntlessVanguard = 415;
+    constexpr CardDefId kShipyardSkulker = 175;
+    constexpr CardDefId kLoyalPoro = 718;
+    addToDeck(PlayerId::Player1, kIncinerate);
+    addToDeck(PlayerId::Player1, kShipyardSkulker);   // drawn
+    addToDeck(PlayerId::Player1, kLoyalPoro);         // drawn (the top card)
+    auto discard = addToHand(PlayerId::Player1, kIncinerate);
+    addToHand(PlayerId::Player1, kDauntlessVanguard);  // kept
+    auto boon = addToHand(PlayerId::Player1, kLunarBoon);
+    LogTap tap;
+    tap.attach(events);
+    EnginePathAgent me(EnginePathAgent::script({static_cast<int>(discard.raw())}));
+    playThroughEngine(boon, &me);
+    ASSERT_EQ(state.player(PlayerId::Player1).hand.size(), 3u);
+    auto reads = [&](int p, const std::string& name) {
+        return std::any_of(tap.lines[p].begin(), tap.lines[p].end(),
+                           [&](const std::string& l) { return l.find(name) != std::string::npos; });
+    };
+    for (const char* hidden : {"Dauntless Vanguard", "Shipyard Skulker", "Loyal Poro"})
+        EXPECT_FALSE(reads(1, hidden)) << "Player 2 reads \"" << hidden << "\"";
+    EXPECT_TRUE(reads(0, "Loyal Poro")) << "its controller reads what it drew";
+    EXPECT_TRUE(reads(1, "LUNAR BOON")) << "the opponent still reads that it resolved";
+}
+
+
+// Stacked Deck: "Look at the top 3 cards of your Main Deck. Put 1 into your
+// hand and recycle the rest." Its prompt's header named the three cards (the
+// Lunar Boon kind, found with it): the opponent reads none of them.
+TEST_F(HiddenOrderLeakCards, StackedDeck_TheOpponentReadsNoCardLookedAt) {
+    constexpr CardDefId kStackedDeck = 183;
+    constexpr CardDefId kDauntlessVanguard = 415;
+    constexpr CardDefId kShipyardSkulker = 175;
+    constexpr CardDefId kLoyalPoro = 718;
+    addToDeck(PlayerId::Player1, kDauntlessVanguard);
+    addToDeck(PlayerId::Player1, kShipyardSkulker);
+    auto top = addToDeck(PlayerId::Player1, kLoyalPoro);
+    auto spell = addToHand(PlayerId::Player1, kStackedDeck);
+    LogTap tap;
+    tap.attach(events);
+    EnginePathAgent me(EnginePathAgent::script({static_cast<int>(top.raw())}));
+    playThroughEngine(spell, &me);
+    auto reads = [&](int p, const std::string& name) {
+        return std::any_of(tap.lines[p].begin(), tap.lines[p].end(),
+                           [&](const std::string& l) { return l.find(name) != std::string::npos; });
+    };
+    for (const char* hidden : {"Dauntless Vanguard", "Shipyard Skulker", "Loyal Poro"})
+        EXPECT_FALSE(reads(1, hidden)) << "Player 2 reads \"" << hidden << "\"";
+    EXPECT_TRUE(reads(0, "Loyal Poro")) << "its controller reads what it looked at";
 }
 
 }  // namespace riftbound::test::hidden_order_leak

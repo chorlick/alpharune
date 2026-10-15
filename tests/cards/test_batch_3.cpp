@@ -897,7 +897,11 @@ TEST_F(Batch3Test, D78_KennenChoosesTheSpellBeforeAnyoneResponds) {
     EXPECT_EQ(me.other_priority_at[0], 0);
 }
 
-TEST_F(Batch3Test, B5_ZedChoosesWhereTheShadowCloneGoesBeforeAnyoneResponds) {
+// Reversed by batch 6 M5 (was B5_ZedChoosesWhereTheShadowCloneGoesBeforeAnyoneResponds):
+// where the token is played is a choice of the token's play, made as it is
+// finalized while the ability resolves (CR 420.3.b.2) — after the opponent's
+// priority, not at the ability's finalization.
+TEST_F(Batch3Test, B5_ZedChoosesWhereTheShadowCloneGoesAsTheAbilityResolves) {
     auto zed = addUnit(P1, kZedFromTheShadows, 0, 0);
     state.battlefields[0].controller = P1;
     o(zed).card_counters["zed_discard_paid"] = 1;
@@ -906,7 +910,7 @@ TEST_F(Batch3Test, B5_ZedChoosesWhereTheShadowCloneGoesBeforeAnyoneResponds) {
     me.other = &them;
     fireTriggerThroughEngine(zed, TriggerType::WhenYouPlayMe, &me, kInvalidId, &them);
     ASSERT_FALSE(me.other_priority_at.empty()) << "base or the battlefield P1 controls";
-    EXPECT_EQ(me.other_priority_at[0], 0);
+    EXPECT_GT(me.other_priority_at[0], 0);
 }
 
 TEST_F(Batch3Test, G17_EmperorsDivideChoosesTheUnitsAsItIsPlayed) {

@@ -43,7 +43,8 @@ public:
         if (where.count() == 0) return;                  // nowhere to play it
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
-                            where.count(), where.labels);
+                            where.count(), where.labels, ~0u,
+                            std::source_location::current(), PromptKind::Location);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
 
         GameObjectId tok = kInvalidId;
@@ -53,9 +54,11 @@ public:
             tok = GameObjectId::fromRaw(ri->resume_data[kTokenSlot] - 1);
         } else {
             // CR 187.3: a Sand Soldier token has 2 Might and the Shurima tag.
+            // The places it could have gone: an additional copy (Zilean, Time
+            // Mage) has the same choice (testing phase R5).
             tok = ctx.executor.createToken(ctx.controller, CardType::Unit,
                 "Sand Soldier", 2, {"Shurima"}, KeywordSet{},
-                where.locations[mode], /*enter_ready=*/false);
+                where.locations[mode], /*enter_ready=*/false, where.locations);
             if (ri.has_value()) {
                 while (ri->resume_data.size() <= kTokenSlot) ri->resume_data.push_back(0);
                 ri->resume_data[kTokenSlot] = static_cast<int32_t>(tok.raw()) + 1;

@@ -1297,33 +1297,41 @@ TEST_F(ReviewFixC2Test, HandBuiltUnitChoicesSkipAnUnchoosableEnemyUnit) {
     EXPECT_TRUE(shot.wasOffered(equipment));
     EXPECT_EQ(state.getObject(equipment).attached_to, std::optional<GameObjectId>{mine});
 
-    // Whirlwind: each player chooses; Baron's own controller may pick it, the
-    // caster may not.
+    // Whirlwind: each player chooses, and its picks are not targets (CR
+    // 355.10.e): "can't be chosen by enemy spells and abilities" is
+    // untargetability (Vendetta core rules patch notes), so the caster may
+    // pick it too (batch 6 R9; it was not offered to the caster).
     EnginePathAgent p1, p2;
     playThroughEngine(addToHand(P1, kWhirlwind), &p1, std::nullopt, &p2);
-    EXPECT_FALSE(p1.wasOffered(baron)) << "Whirlwind, the enemy player's pick";
+    EXPECT_TRUE(p1.wasOffered(baron)) << "Whirlwind, the enemy player's pick: not a target";
     EXPECT_TRUE(p2.wasOffered(baron)) << "Whirlwind, its controller's pick";
     (void)mine;
 }
 
-TEST_F(ReviewFixC2Test, Whirlwind_ChoosingAnOpponentsDeflectUnitCostsPower) {
+// Batch 6 R9 (was Whirlwind_ChoosingAnOpponentsDeflectUnitCostsPower): the
+// picks are not targets (CR 355.10.e), and [Deflect] taxes only spells and
+// abilities that target (CR 809.1.c). The unit is offered with no Power to
+// pay with, and choosing it spends nothing.
+TEST_F(ReviewFixC2Test, Whirlwind_ChoosingAnOpponentsDeflectUnitCostsNothing) {
     auto deflector = addUnit(P2, kInvalidId, 3, 0);
     state.getObject(deflector).keywords.set(Keyword::Deflect);
     state.getObject(deflector).deflect_value = 1;
 
-    // No Power to pay with: the unit is not offered to the caster.
+    // No Power to pay with: the unit is offered to the caster all the same.
     EnginePathAgent broke, p2a;
     playThroughEngine(addToHand(P1, kWhirlwind), &broke, std::nullopt, &p2a);
-    EXPECT_FALSE(broke.wasOffered(deflector));
-    EXPECT_TRUE(onBoard(deflector));
+    EXPECT_TRUE(broke.wasOffered(deflector));
 
-    // With one [A] floating it is offered, and choosing it spends the Power.
+    // With one [A] floating, choosing it spends nothing.
+    auto again = addUnit(P2, kInvalidId, 3, 0);
+    state.getObject(again).keywords.set(Keyword::Deflect);
+    state.getObject(again).deflect_value = 1;
     state.player(P1).rune_pool.universal_power += 1;
-    EnginePathAgent rich(script({O(deflector)}));
+    EnginePathAgent rich(script({O(again)}));
     EnginePathAgent p2b;   // declines (first option)
     playThroughEngine(addToHand(P1, kWhirlwind), &rich, std::nullopt, &p2b);
-    EXPECT_FALSE(onBoard(deflector));
-    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+    EXPECT_FALSE(onBoard(again));
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 1);
 }
 
 TEST_F(ReviewFixC2Test, GentlemensDuel_GivesTheBonusOnce) {

@@ -14,63 +14,38 @@ namespace {
 class AcceptableLosses : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Each player kills one of their gear." Each player chooses which of THEIR
-    // OWN gear to kill. Resumable: controller picks first, then opponent.
+    // "Each player kills one of their gear." Each player chooses which of
+    // THEIR OWN gear (not a target: CR 355.10.e), as the spell resolves, the
+    // controller first; then both are killed at the same time (CR 370.1.a.2;
+    // testing phase R4, as Cull the Weak does for units). The lists are in
+    // ascending object ids (boardObjects).
+    static constexpr size_t kMineSlot = 7;
+    static constexpr size_t kTheirsSlot = 9;
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ri = ctx.state.chain.resuming.value();
         auto own_gear = [&](PlayerId p) {
-            std::vector<GameObjectId> out;
-            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (!obj.isGear() || obj.controller != p) continue;
-                if (!obj.location.has_value()) continue;
-                out.push_back(id);
-            }
-            return out;
+            return boardObjects(ctx.state, [p](const GameObject& o) {
+                return o.isGear() && o.controller == p;
+            });
         };
-        auto build_choices = [&](PlayerId p, const std::vector<GameObjectId>& gear) {
-            std::vector<Intent> out;
-            for (auto gid : gear) {
-                Intent c; c.type = IntentType::MakeChoice; c.player = p;
-                c.chosen_objects = {gid}; out.push_back(std::move(c));
-            }
-            return out;
-        };
-        PlayerId opp = opponent(ctx.controller);
-        // Helper to prompt the opponent (or finish). Returns true if it
-        // published a choice (caller must return).
-        auto prompt_opponent = [&]() -> bool {
-            auto gear = own_gear(opp);
-            if (gear.empty()) return false;
-            // At resolution: each player chooses (CR 355.10.e; batch M1).
-            ctx.executor.requestChoice(opp, build_choices(opp, gear),
-                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
-            ri.resume_point = 2;
-            return true;
-        };
-        switch (ri.resume_point) {
-        case 0: {  // controller picks their gear
-            auto gear = own_gear(ctx.controller);
-            if (gear.empty()) { prompt_opponent(); return; }
-            // At resolution: each player chooses (CR 355.10.e; batch M1).
-            ctx.executor.requestChoice(ctx.controller,
-                                        build_choices(ctx.controller, gear),
-                                        "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
-            ri.resume_point = 1;
-            return;
-        }
-        case 1: {  // apply controller's kill, then prompt opponent
-            auto choice = ctx.executor.takeChoice();
-            if (choice && !choice->chosen_objects.empty())
-                ctx.executor.killObject(choice->chosen_objects[0]);
-            prompt_opponent();
-            return;
-        }
-        case 2: {  // apply opponent's kill
-            auto choice = ctx.executor.takeChoice();
-            if (choice && !choice->chosen_objects.empty())
-                ctx.executor.killObject(choice->chosen_objects[0]);
-            return;
-        }
+        const PlayerId opp = opponent(ctx.controller);
+        // At resolution: each player chooses (CR 355.10.e; batch M1).
+        const auto mine = selectObjectAs(ctx, ctx.controller,
+                                         "Acceptable Losses: kill one of your gear",
+                                         own_gear(ctx.controller), kMineSlot);
+        if (!mine.has_value()) return;   // waiting on the controller
+        // At resolution: each player chooses (CR 355.10.e; batch M1).
+        const auto theirs = selectObjectAs(ctx, opp, "Acceptable Losses: kill one of your gear",
+                                           own_gear(opp), kTheirsSlot);
+        if (!theirs.has_value()) return;   // waiting on the opponent
+        std::vector<GameObjectId> doomed;
+        for (auto [id, p] : {std::pair{*mine, ctx.controller}, std::pair{*theirs, opp}})
+            if (id != kInvalidId && ctx.state.objectExists(id) &&
+                ctx.state.getObject(id).location.has_value() &&
+                ctx.state.getObject(id).controller == p)
+                doomed.push_back(id);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, doomed);   // they die at the same time
+            for (auto id : doomed) ctx.executor.killObject(id);
         }
     }
 private:

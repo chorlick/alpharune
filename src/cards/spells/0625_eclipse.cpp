@@ -40,7 +40,8 @@ private:
         d.card_type = CardType::Spell;
         d.domains = {Domain::Mind};
         d.energy_cost = 3;
-        d.keywords.set(Keyword::Predict);
+        // No Keyword::Predict: Predict is a game action (CR 437), not a
+        // keyword the card has (testing phase R12; plans/08 8.8).
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction] (Play any time, even before spells and abilities resolve.)
 Give a unit -4 [M] this turn.

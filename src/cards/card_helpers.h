@@ -4,6 +4,7 @@
 /// bases live in their type dirs (gear/equip_base.h, units/weaponmaster_base.h).
 #include "openspiel/action_vocab.h"
 #include "engine/deck_ops.h"
+#include "engine/play_permissions.h"
 #include "engine/trash_replacement.h"
 #include "cards/card.h"
 #include "cards/card_registry.h"
@@ -1201,33 +1202,52 @@ inline bool effectCanMoveToBase(const GameState& state, PlayerId mover, const Ga
     return true;
 }
 
-// ── Where an effect plays a unit (CR 355.2.a) ───────────────────────────────
-// A unit played by an effect goes where a unit played from hand may go: its
-// controller's base or a battlefield they control. pickEffectPlayLocation
-// asks through Card::pickMode (mode 0 = base, mode 1 + i =
-// state.battlefields[i]), so it composes with confirmOptional / pickTarget
-// and can be asked at finalization — but a card that calls it must not use
+// ── Where an effect plays a unit (CR 355.2, 420.3.b) ────────────────────────
+// A unit played by an effect is played like any unit (CR 420.3.b: "Treat all
+// steps of Play as normal"): its location is a choice of ITS play (CR 355.2),
+// made as the played card is finalized, which is during the resolution of the
+// spell or ability that plays it (CR 420.3.b.2, with Rek'Sai's example;
+// testing phase M5). So a card asks where AFTER its end-of-choices marker,
+// never in its own finalize pass. The places are where a unit may be played:
+// its controller's base, a battlefield they control, and what the unit's own
+// permissions and the player's grants add (CR 355.2.b, 822.1.c;
+// engine/play_permissions.h, shared with the hand-play generators).
+// pickEffectPlayLocation asks through Card::pickMode (mode 0 = base, mode
+// 1 + i = state.battlefields[i]), so a card that calls it must not use
 // pickMode for anything else in the same callback. With no battlefield to
-// offer there is nothing to choose and nothing is asked — then or later.
+// offer there is nothing to choose and nothing is asked.
+
+/// Whether `player` may play `unit` (a card an effect plays; kInvalidId for a
+/// token with no card of its own, which has only the default and the grants)
+/// to `bf`. "Units can't be played here." and "may only play units to base"
+/// rule it out (battlefieldTakesUnitsFrom, below).
+inline bool battlefieldTakesUnitsFrom(const GameState& state, PlayerId player,
+                                      const BattlefieldState& bf);
+inline bool effectPlayAllowedAt(const CardContext& ctx, PlayerId player, GameObjectId unit,
+                                const BattlefieldState& bf) {
+    if (!battlefieldTakesUnitsFrom(ctx.state, player, bf)) return false;
+    const GameObject* obj = (unit != kInvalidId && ctx.state.objectExists(unit))
+        ? &ctx.state.getObject(unit) : nullptr;
+    const Card* card = (obj && obj->card_def_id != kInvalidId)
+        ? ctx.executor.cardFor(obj->card_def_id) : nullptr;
+    return unitPlayableAt(ctx.state, card, player, bf, obj);
+}
 
 /// Returns -1 while waiting for the agent, else the mode to hand to
-/// effectPlayLocation.
+/// effectPlayLocation. `unit`: the card being played (its permissions count).
 inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::string& label,
+                                  GameObjectId unit = kInvalidId,
                                   std::source_location where = std::source_location::current()) {
     const auto& bfs = ctx.state.battlefields;
-    const bool base_only = ctx.state.player(ctx.controller).units_play_base_only;
     uint32_t mask = 1u;
     std::vector<std::string> labels{"Base"};
     for (size_t i = 0; i < bfs.size() && i < 31; ++i) {
         labels.push_back("Battlefield #" + toString(bfs[i].id));
-        if (!base_only && !bfs[i].blocks_unit_play && bfs[i].controller.has_value() &&
-            *bfs[i].controller == ctx.controller)   // as battlefieldTakesUnitsFrom
-            mask |= 1u << (i + 1);
+        if (effectPlayAllowedAt(ctx, ctx.controller, unit, bfs[i])) mask |= 1u << (i + 1);
     }
     if (mask == 1u) {
-        // Nothing to choose: the base. Stored as the answer, so the question
-        // is not asked later — as the item resolves — should a battlefield
-        // have come under its controller's control by then.
+        // Nothing to choose: the base. Stored as the answer, so a later entry
+        // of the callback does not ask.
         card.settleMode(ctx, 0);
         return 0;
     }
@@ -1235,16 +1255,13 @@ inline int pickEffectPlayLocation(Card& card, CardContext& ctx, const std::strin
                                 PromptKind::Location);
     return m == -1 ? -1 : std::max(0, m);
 }
-/// The location a pickEffectPlayLocation mode stands for; the base if that
-/// battlefield is no longer the player's to play to.
+/// The location a pickEffectPlayLocation mode stands for (asked just before
+/// the play, so it is one the unit may be played to); the base for a mode
+/// out of range.
 inline LocationId effectPlayLocation(const GameState& state, PlayerId player, int mode) {
     const auto& bfs = state.battlefields;
-    if (mode >= 1 && static_cast<size_t>(mode) <= bfs.size() &&
-        !state.player(player).units_play_base_only) {
-        const auto& bf = bfs[mode - 1];
-        if (!bf.blocks_unit_play && bf.controller.has_value() && *bf.controller == player)
-            return BattlefieldLocation{bf.id};
-    }
+    if (mode >= 1 && static_cast<size_t>(mode) <= bfs.size())
+        return BattlefieldLocation{bfs[mode - 1].id};
     return BaseLocation{player};
 }
 
@@ -1366,6 +1383,30 @@ inline PlayLocations playLocations(const GameState& state, PlayerId player,
         if (!battlefieldTakesUnitsFrom(state, player, bf)) continue;
         out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
         out.labels.push_back(bfName(bf));
+    }
+    return out;
+}
+/// playLocations for a CARD an effect plays (`unit`, in the zone it is played
+/// from): the battlefields its own permissions and `player`'s grants add are
+/// offered too (CR 355.2.b, 822.1.c; effectPlayAllowedAt) — "Treat all steps
+/// of Play as normal" (CR 420.3.b). `player` is who plays it. Same `only_bf`
+/// and `include_base` as playLocations.
+inline PlayLocations playLocationsFor(const CardContext& ctx, PlayerId player, GameObjectId unit,
+                                      std::optional<BattlefieldId> only_bf = std::nullopt,
+                                      bool include_base = true) {
+    if (only_bf.has_value()) return playLocations(ctx.state, player, only_bf, include_base);
+    PlayLocations out;
+    if (include_base) {
+        out.locations.push_back(LocationId{BaseLocation{player}});
+        out.labels.push_back("Base");
+    }
+    for (const auto& bf : ctx.state.battlefields) {
+        if (out.locations.size() >= 32) break;   // pickMode's mask is 32 bits
+        if (!effectPlayAllowedAt(ctx, player, unit, bf)) continue;
+        out.locations.push_back(LocationId{BattlefieldLocation{bf.id}});
+        out.labels.push_back(ctx.state.objectExists(bf.card_object_id)
+            ? ctx.state.getObject(bf.card_object_id).name.get()
+            : "Battlefield #" + std::to_string(static_cast<int>(bf.id.raw())));
     }
     return out;
 }
@@ -1503,6 +1544,13 @@ inline std::vector<int> tokenPlayDests(const CardContext& ctx) {
                 out.push_back(1 + static_cast<int>(bf.id.raw()));
     return out;
 }
+/// The moveDests / tokenPlayDests code of a location: 0 = a base, 1 + i =
+/// battlefield i (the value of a location option, as destLabel numbers it).
+inline int locationCode(const LocationId& loc) {
+    if (const auto* b = std::get_if<BattlefieldLocation>(&loc))
+        return 1 + static_cast<int>(b->id.raw());
+    return 0;
+}
 /// The location a moveDests / tokenPlayDests code stands for.
 inline LocationId destLocation(PlayerId player, int dest) {
     if (dest <= 0) return LocationId{BaseLocation{player}};
@@ -1547,6 +1595,29 @@ inline int pickTokenDest(Card& card, CardContext& ctx, const std::string& label,
     std::vector<std::string> labels;
     for (int d = 0; d < modes; ++d) labels.push_back(destLabel(d));
     return card.pickMode(ctx, label, modes, labels, mask, where, PromptKind::Location);
+}
+
+/// "Choose a battlefield", "... at a battlefield" with the battlefield as the
+/// target (CR 355.10.b, 355.10.d): one mode per battlefield slot (the mode is
+/// the index into state.battlefields), labelled with its card. A spell played
+/// from facedown chooses the battlefield it was hidden at (CR 811.1.d.2,
+/// hiddenBinding). This is the callback's Card::pickMode: -1 while the agent
+/// decides, -2 with no battlefield to choose.
+inline int pickBattlefield(Card& card, CardContext& ctx, const std::string& label,
+                           std::source_location where = std::source_location::current()) {
+    const auto& bfs = ctx.state.battlefields;
+    const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
+    const HiddenBinding bind = hiddenBinding(ctx.state, ctx.source);
+    std::vector<std::string> labels;
+    uint32_t mask = 0;
+    for (int i = 0; i < n; ++i) {
+        labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+            ? ctx.state.getObject(bfs[i].card_object_id).name.get()
+            : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
+        if (!bind.bound || (bind.bf.has_value() && *bind.bf == bfs[i].id)) mask |= 1u << i;
+    }
+    if (n == 0) return card.pickMode(ctx, label, 1, {}, 0u, where, PromptKind::Target);   // -2
+    return card.pickMode(ctx, label, n, labels, mask, where, PromptKind::Target);
 }
 
 /// "Move a unit" with no destination printed: ask ctx.controller where `u`

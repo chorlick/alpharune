@@ -100,7 +100,8 @@ public:
             // controller's base or to a battlefield they control (and may be
             // played to). Asked before anything leaves the deck.
             // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
-            const int where = pickEffectPlayLocation(*this, ctx, "Baited Hook: play it to");
+            const int where = pickEffectPlayLocation(*this, ctx, "Baited Hook: play it to",
+                                                     *picked);
             if (where == -1) return;   // waiting for the agent
             // Banish it (out of the deck, counted and announced as a banish),
             // then play it from there ignoring its cost.

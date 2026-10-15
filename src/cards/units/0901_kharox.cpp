@@ -34,9 +34,10 @@ public:
         const PlayerId opp = opponent(ctx.controller);
         ctx.executor.burn(opp, 3);
         // "Then you may do this: ..." — a reflexive trigger (CR 388): after
-        // the burn it goes on the chain as an item of its own; the "may", the
-        // unit and where it goes are chosen as that item is finalized (CR
-        // 388.4), with the burned cards already in the trash.
+        // the burn it goes on the chain as an item of its own; the "may" and
+        // the unit are chosen as that item is finalized (CR 388.4), with the
+        // burned cards already in the trash; where the unit is played, as it
+        // resolves (CR 420.3.b.2).
         ctx.executor.queueReflexiveTrigger(ctx.source, ctx.controller, 0);
     }
     bool hasReflexiveTrigger() const override { return true; }
@@ -46,16 +47,16 @@ public:
         int conf = confirmOptional(ctx, "Kharox: play a unit from their trash?",
                                    [&]() { return !unitsInTrash(ctx.state, opp).empty(); });
         GameObjectId picked = kInvalidId;
-        int where = -2;
-        if (conf == 1) {
+        if (conf == 1)
             picked = pickTarget(ctx, "Kharox: unit in their trash", unitsInTrash(ctx.state, opp));
-            if (picked != kInvalidId)
-                where = pickEffectPlayLocation(*this, ctx, "Kharox: play it to");
-        }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 388.4)
-        if (conf < 1 || picked == kInvalidId || where < 0) return;
+        if (conf < 1 || picked == kInvalidId) return;
         if (!ctx.state.objectExists(picked) ||
             ctx.state.getObject(picked).zone != ZoneType::Trash) return;   // left the trash
+        // At resolution: where it is played is a choice of its play, made as
+        // it is finalized (CR 355.2, 420.3.b.2; testing phase M5).
+        const int where = pickEffectPlayLocation(*this, ctx, "Kharox: play it to", picked);
+        if (where == -1) return;              // waiting for the agent
         // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,
                                       effectPlayLocation(ctx.state, ctx.controller, where));

@@ -99,7 +99,9 @@ constexpr CardDefId kSmite = 568;
 constexpr CardDefId kVoidRush = 505;
 constexpr CardDefId kAmateurRecital = 763;
 constexpr CardDefId kTemporalBreach = 853;
-constexpr CardDefId kTWinBringsEnemy = 1930;   // test-only: see Batch3Combat
+constexpr CardDefId kTWinBringsEnemy = 1930;
+constexpr CardDefId kPoroSnax = 369;
+constexpr CardDefId kScryersBloom = 698;   // test-only: see Batch3Combat
 
 /// The chain's newest item is an ability (a spell lies under it).
 inline bool topIsAbility(const GameState& s) {
@@ -1747,6 +1749,24 @@ TEST_F(Batch3Combat, J3_Pin_AUnitThatArrivesAfterAWinLeadsToANewCombatNotAConque
     EXPECT_EQ(joined(), "combat showdown combat showdown conquer");
     EXPECT_FALSE(onBoard(late)) << "it died in the second combat";
     EXPECT_TRUE(onBoard(mine));
+}
+
+// ─── Found by this batch's checked suite: "Kill this" paid in a finalize pass ─
+// With an activation's choices made before its cost (G15), Poro Snax and
+// Scryer's Bloom killed themselves in their pass and the engine then exhausted
+// the card in the trash. "Kill this" is now their declared cost
+// (ActivationCost::kill_self), paid with the rest.
+TEST_F(Batch3Test, G15_KillThisGearsLeaveNoBoardStateOnTheCardInTheTrash) {
+    for (CardDefId def : {kPoroSnax, kScryersBloom}) {
+        SCOPED_TRACE(card_db.get(def).name);
+        deckOf(P1, 3);
+        auto gear = addGear(P1, def);
+        o(gear).is_exhausted = false;
+        fund(P1, 1, 1);
+        activate(gear, nullptr);
+        EXPECT_FALSE(onBoard(gear)) << "killed as the cost";
+        EXPECT_FALSE(o(gear).is_exhausted) << "no board state off the board (CR 124.1)";
+    }
 }
 
 }  // namespace riftbound::test::batch_3

@@ -2505,6 +2505,14 @@ bool GameEngine::payAndQueueAbility(const Intent& intent) {
 
     // 3. Its cost (CR 405.1).
     auto& source = state_.getObject(source_id);
+    // Nothing a choice does can take the source away: a card that pays a cost
+    // of leaving the board in its pass ("Kill this", "Banish this") declares it
+    // in its ActivationCost instead, paid here with the rest. One that did it
+    // in its pass would have its [E] written on a card in the trash.
+    if (!source.location.has_value() && source.zone != ZoneType::LegendZone)
+        throw std::logic_error("GameEngine::payAndQueueAbility: " + source.name.get() +
+                               " left the board while its activation's choices were made"
+                               " (a cost of leaving the board belongs in its ActivationCost)");
     if (act_cost.exhaust) {
         source.is_exhausted = true;
         events_.emit(ObjectStateChangedEvent{source_id, "exhausted"});

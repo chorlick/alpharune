@@ -356,6 +356,18 @@ void checkVariants(const GameState& state, const StepResult& step, const CardDB&
         bool hidden = named(i.card) || named(i.ability_source);
         for (auto id : i.chosen_objects) hidden = hidden || named(id);
         for (auto id : i.targets) hidden = hidden || named(id);
+        // An option that offers the decider one of its own cards it was not
+        // shown: the decider cannot tell such options apart (key 0, and the
+        // card's look was not recorded). An opponent's hidden card is fine.
+        auto own_unseen = [&](GameObjectId id) {
+            return named(id) && state.getObject(id).owner == decider;
+        };
+        bool mine = own_unseen(i.card) || own_unseen(i.ability_source);
+        for (auto id : i.chosen_objects) mine = mine || own_unseen(id);
+        for (auto id : i.targets) mine = mine || own_unseen(id);
+        if (mine)
+            t.problem(where + ": an option offers " + toString(decider) +
+                      " a card of its own it was not shown (" + i.describe() + ")");
         if (hidden) {
             ++t.ids_named;
             if (std::getenv("RIFTBOUND_LEAK_VERBOSE"))

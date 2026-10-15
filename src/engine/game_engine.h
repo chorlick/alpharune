@@ -1043,6 +1043,12 @@ private:
     // were given a continuous effect by the last aura pass: if one of them
     // is in a pile by the next pass, that pass still clears it.
     std::vector<GameObjectId> aura_outside_play_;
+    // The (card, controller) pairs an aura pass has called the hook of: kept
+    // here between passes so its storage is reused (a fresh vector grew to its
+    // size again on every pass — the most frequent allocation of a game).
+    // recalculateAuras takes it out while it runs, so a nested pass gets one
+    // of its own.
+    std::vector<std::pair<CardDefId, PlayerId>> aura_applied_buffer_;
     // The last Cleanup found nothing to do and announced nothing but
     // StateSettled, to which nothing reacted; `quiet_cleanup_activity_` is
     // EventBus::activity() as it ended and `quiet_cleanup_shape_` what

@@ -7427,6 +7427,12 @@ void GameEngine::recalculateAuras() {
     // therefore called ONCE per (card, controller) per pass — calling it per
     // instance applied every copy's effect once per copy (two Garens: +4).
     std::vector<std::pair<CardDefId, PlayerId>> aura_applied;
+    aura_applied.swap(aura_applied_buffer_);   // its storage, reused (empty)
+    struct GiveBack {
+        std::vector<std::pair<CardDefId, PlayerId>>& taken;
+        std::vector<std::pair<CardDefId, PlayerId>>& buffer;
+        ~GiveBack() { taken.clear(); buffer.swap(taken); }
+    } give_back{aura_applied, aura_applied_buffer_};
     bool piles_reached = false;   // a hook below gives cards in the piles an effect
     // Cards whose continuous effect is conditional on Might: they get a second
     // hook after the fold below (Card::applyMightDependentAura).

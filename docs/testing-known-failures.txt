@@ -4,9 +4,3 @@
 # failures; the first line that matches wins. Remove a line when its cause is
 # fixed: the fuzz then reports it as new if it comes back. The IDs are those of
 # docs/testing-findings-fuzz-2026-10.md.
-F5|runFinalizePass: Kennen, Keeper of Balance returned from its finalize pass
-F5|runFinalizePass: Sinister Poro returned from its finalize pass
-F5|runFinalizePass: Icevale Archer returned from its finalize pass
-F6|executePlaySpell: Heedless Resurrection made choices it cannot be paid for with
-F6|executePlaySpell: Sacrifice made choices it cannot be paid for with
-F7|executePlaySpell: Strike Down made choices it cannot be paid for with

@@ -1882,4 +1882,27 @@ TEST_F(Batch3Test, D8_MoonfallOffersItsMoveOnlyWithAUnitItCanPayToChoose) {
     EXPECT_FALSE(inHand(P1, card)) << "played: the battlefield is its one required choice";
 }
 
+// Gate checked-fuzz finding (seeds 1939415196651542278 13484736742490900239
+// 858947532, random-player:pass=0): Switcheroo offered a first unit with a
+// [Deflect] because a second could go with it — judged without the first one's
+// Deflect, which is paid as it is chosen. With both Deflects owed together
+// there was no pair.
+TEST_F(Batch3Test, D8_APairsFirstTargetCountsItsOwnDeflectWithTheSecondOnes) {
+    auto card = addToHand(P1, kSwitcheroo);
+    auto poro_a = addUnit(P2, kPoutyPoro, 2, 0);
+    addUnit(P2, kPoutyPoro, 3, 0);   // its only partner, a [Deflect] unit too
+    auto mine1 = addUnit(P1, kInvalidId, 2, 1);
+    auto mine2 = addUnit(P1, kInvalidId, 5, 1);
+    fund(P1, 2, 3);   // [2][C][C] and one Deflect, not two
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(mine1.raw()),
+                                                  static_cast<int>(mine2.raw()), EnginePathAgent::kRest}));
+    playThroughEngine(card, &agent, std::nullopt, nullptr, /*fund=*/false);
+    ASSERT_FALSE(agent.prompts.empty());
+    bool a_offered = false;
+    for (const auto& i : agent.prompts.front())
+        if (!i.chosen_objects.empty() && i.chosen_objects[0] == poro_a) a_offered = true;
+    EXPECT_FALSE(a_offered) << "with it, every pair owes two Deflects (CR 355.16, 809)";
+    EXPECT_EQ(o(mine1).current_might, 5);
+}
+
 }  // namespace riftbound::test::batch_3

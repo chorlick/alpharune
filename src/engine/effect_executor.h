@@ -770,6 +770,17 @@ public:
     /// helpers drop the rest (Card::offerableChoices).
     void setChoiceFilter(std::function<bool(GameObjectId)> f) { choice_filter_ = std::move(f); }
     bool choiceAllowed(GameObjectId id) const { return !choice_filter_ || choice_filter_(id); }
+    /// Objects a helper is judging as if already chosen but whose Deflect is
+    /// not paid yet (pickTargetPair asking whether a second target can go with
+    /// a first, CR 355.16): their Deflect is owed with the one being judged.
+    const std::vector<GameObjectId>& hypotheticallyUnpaid() const { return hypothetical_unpaid_; }
+    struct HypotheticallyUnpaid {
+        EffectExecutor& ex;
+        HypotheticallyUnpaid(EffectExecutor& e, std::vector<GameObjectId> ids) : ex(e) {
+            ex.hypothetical_unpaid_ = std::move(ids);
+        }
+        ~HypotheticallyUnpaid() { ex.hypothetical_unpaid_.clear(); }
+    };
     PendingChoice consumePendingChoice() {
         PendingChoice tmp = std::move(pending_);
         pending_ = PendingChoice{};
@@ -801,6 +812,7 @@ private:
     ActivateNowFn activate_now_;
     AddProbeFn add_probe_;
     std::optional<OwedCost> owed_;
+    std::vector<GameObjectId> hypothetical_unpaid_;
     bool adding_for_payment_ = false;   // an [Add] paid for inside addForPayment
     std::function<bool(const GameState&)> payment_goal_;   // set inside addForPayment
 public:

@@ -3288,9 +3288,11 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
         std::vector<GameObjectId> all;
         if (state_.chain.resuming.has_value()) all = state_.chain.resuming->chosen_objects;
         all.push_back(t);
+        std::vector<GameObjectId> unpaid = {t};
+        for (auto h : effect_executor_->hypotheticallyUnpaid()) unpaid.push_back(h);
         const auto* g = via_grant ? trashGrantFor(player, card_id) : nullptr;
-        return g ? canPayTrashGrant(player, card_id, *g, all, {t})
-                 : (!via_grant && canAffordChoosing(player, card_id, all, {t}));
+        return g ? canPayTrashGrant(player, card_id, *g, all, unpaid)
+                 : (!via_grant && canAffordChoosing(player, card_id, all, unpaid));
     });
     const FilterSet filter_set{*effect_executor_};
     const PrePlayPayable payable = [this, player, card_id, via_grant](
@@ -3584,6 +3586,7 @@ bool GameEngine::chooseSpellBeforeItsCost(PlayerId player, GameObjectId card_id,
                 all = withPlayTargets(all);
                 std::vector<GameObjectId> unpaid = pt;
                 unpaid.push_back(t);
+                for (auto h : effect_executor_->hypotheticallyUnpaid()) unpaid.push_back(h);
                 const auto* g = via_grant ? trashGrantFor(who, what) : nullptr;
                 return g ? canPayTrashGrant(who, what, *g, all, unpaid)
                          : (!via_grant && canAffordChoosing(who, what, all, unpaid));

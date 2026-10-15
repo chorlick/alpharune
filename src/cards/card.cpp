@@ -622,7 +622,10 @@ std::vector<GameObjectId> affordableWithDeflect(CardContext& ctx, const Card& ca
     for (auto t : in) {
         // A spell choosing before it is paid for: only what leaves it payable.
         if (!ctx.executor.choiceAllowed(t)) continue;
-        const int deflect = ignores ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        int deflect = ignores ? 0 : ctx.executor.deflectCostFor(ctx.controller, t);
+        if (!ignores)
+            for (auto h : ctx.executor.hypotheticallyUnpaid())
+                deflect += ctx.executor.deflectCostFor(ctx.controller, h);
         if (owing) {
             if (ctx.executor.canPayWithAdds(ctx.controller, owing->energy, owing->power,
                                             owing->mask, owing->spend_for, deflect))
@@ -938,8 +941,13 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
         const bool asking_a = choosing && !(choiceState(*ri_opt) & (kPairAwaitB | kPairDone));
         for (auto a : first) {
             if (!asking_a) { legal_a.push_back(a); continue; }
+            // As if `a` were chosen, its Deflect still owed with the second's.
             ri_opt->chosen_objects.push_back(a);
-            const bool completes = !legal_b_fn(a).empty();
+            bool completes;
+            {
+                const EffectExecutor::HypotheticallyUnpaid owed(ctx.executor, {a});
+                completes = !legal_b_fn(a).empty();
+            }
             ri_opt->chosen_objects.pop_back();
             if (completes) legal_a.push_back(a);
         }

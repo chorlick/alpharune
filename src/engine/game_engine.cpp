@@ -8281,10 +8281,16 @@ void GameEngine::processContestedBattlefields() {
     // (With the piles known inert — cleanup(), piles_inert_ — they are left
     // out: forgetBoardState takes the designation off at the move.)
     std::vector<GameObjectId> joined;
+    // With no combat under way every unit's designation is None: the
+    // battlefields are not looked up per unit.
+    bool any_combat = false;
+    for (const auto& bf : state_.battlefields) any_combat = any_combat || bf.combat_in_progress;
     forEachCleanupObject([&](GameObjectId id, GameObject& obj) {
         if (!obj.isUnit()) return;
         CombatDesignation want = CombatDesignation::None;
-        if (auto u_bf = obj.battlefieldId()) {
+        if (!any_combat) {
+            // (want stays None)
+        } else if (auto u_bf = obj.battlefieldId()) {
             for (const auto& bf : state_.battlefields) {
                 if (bf.id != *u_bf || !bf.combat_in_progress) continue;
                 if (!bf.attacker.has_value() || !bf.defender.has_value()) continue;

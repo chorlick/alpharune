@@ -46,20 +46,25 @@ public:
     // [E]: Play a unit banished with this.
     bool hasActivatedAbility() const override { return true; }
     ActivationCost getActivationCost() const override { return {.exhaust = true}; }
-    bool canActivateAbility(const GameState& state, PlayerId controller) const override {
-        // Find this gear instance and check it has any tracked banished unit
-        // still in banishment.
-        // (Every object: finds its own instances by card id, wherever they are.)
-        for (auto& [id, obj] : state.objects) {
-            if (obj.card_def_id != cardDefId() || obj.controller != controller) continue;
-            for (auto bid : obj.tracked_objects) {
-                if (state.objectExists(bid) &&
-                    state.getObject(bid).zone == ZoneType::Banishment) {
-                    return true;
-                }
-            }
-        }
+    // "a unit banished with THIS": asked of the copy that is activating, not
+    // of any copy (testing phase R7) — a copy with nothing banished with it
+    // is not offered (it would be exhausted for nothing).
+    bool canActivateAbilityAt(const GameState& state, PlayerId controller,
+                              GameObjectId source, int ability_index) const override {
+        if (!GearCard::canActivateAbilityAt(state, controller, source, ability_index))
+            return false;
+        if (!state.objectExists(source)) return false;
+        for (auto bid : state.getObject(source).tracked_objects)
+            if (state.objectExists(bid) && state.getObject(bid).zone == ZoneType::Banishment)
+                return true;
         return false;
+    }
+    // Played again, this is a new object (CR 124.1): nothing is "banished
+    // with this" yet. (tracked_objects outlives a stay off the board on
+    // purpose, for the cards that remember across one.)
+    void onPlay(CardContext& ctx) override {
+        if (ctx.state.objectExists(ctx.source))
+            ctx.state.getObject(ctx.source).tracked_objects.clear();
     }
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
@@ -83,7 +88,8 @@ public:
         // controller's base or to a battlefield they control (and may be
         // played to) — chosen as it is played (as Spectral Matron 226).
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
-        const int where = pickEffectPlayLocation(*this, ctx, "Cursed Sarcophagus: play it to");
+        const int where = pickEffectPlayLocation(*this, ctx, "Cursed Sarcophagus: play it to",
+                                                 picked);
         if (where == -1) return;   // waiting for the agent
         // "(You must pay its costs.)" — CR 356.1.b.2 / 445.2: full cost, optional.
         // playPayingCost takes the card out of banishment itself, and leaves it

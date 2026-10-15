@@ -1,10 +1,11 @@
 # Batch 5b — hidden order (T2, L2), first-player edge (T5), throughput (K3): final report
 
-Branch `fix/batch-5b`, from master `6771d7e`; master (`4dbf6ff`, a status commit) merged at `eab1581`; the gate ran on
-`944ef01`. Batch 3 had not reached master when I finished; I trial-merged `fix/batch-3` (`0346ee3`) into this branch
-(conflicts only in CLAUDE.md and the plans) and ran the suite and the leak tests on that tree (section 1).
+Branch `fix/batch-5b`, from master `6771d7e`; master with batch 3 merged at `77c1a57`; the gate ran on `212d7c4`.
 
 ## 1. Result and gate
+
+Branch `fix/batch-5b`; master with batch 3 (`582e857`, merge `8e807d5`) merged at `77c1a57`; two fixes the merged tree's
+leak tests asked for at `212d7c4` (section 3, items 13-14). **The gate below ran on `212d7c4`**, the merged tree.
 
 - **T2 / L2 done.** What a player is shown no longer depends on hidden order or on object ids (section 3). **This is a
   checkpoint break** (action ids and observation values; layout and id range unchanged): `docs/checkpoint-breaking-2026-10.md`
@@ -13,26 +14,32 @@ Branch `fix/batch-5b`, from master `6771d7e`; master (`4dbf6ff`, a status commit
 - Clean rebuild (`--target clean`, then `riftbound_tests riftbound riftbound_openspiel_tests riftbound_clone_equiv_test
   deck_fuzz search_strength balance`), lane B, `-j3`, 398 steps: **0 warnings**. Checked build (`build-checked`,
   `-DRIFTBOUND_CHECK_BOARD_INDEX=ON`): 0 warnings.
-- **`riftbound_tests`: 3,399 passed** (master 3,394; +5 new). `riftbound_openspiel_tests`: **33 passed**.
-  `riftbound_clone_equiv_test`: 10/10. Checked build: 3,399 and 33 passed. `tests/test_action_ids.cpp` green.
-- Trial merge with `fix/batch-3` (before the last commit, `944ef01`): **3,475 passed**, all three leak tests green
-  (60 + 60 + 40 games; 0 options naming an own unseen card). Batch 3's new prompts pass them.
-- Long leak run (`RIFTBOUND_LEAK_GAMES=300`): variants 300 games / 87,131 decisions; relabelled 300 pairs / 74,700
-  decisions for both players / 591,376 log lines; passive opponent 300 pairs / 40,244 decisions — all green.
-- Smoke (fiora v yi_rebuild, 200 games, seed 20261010, 3 threads): rc 0, **P1 141 / P2 59 / 0 draws / 18 turns / 293
-  decisions** (master: 135 / 65 / 17 / 282). The deals are the same (ids are dealt from a stream of their own); what
-  moves is which option a random agent takes: it picks by index in the generator's list, and that list is in object-table
-  / id order, which changed with the ids; combat damage now also offers every unit as the taker of the excess, and a
-  trigger batch is ordered before its prompt. 141 v 135 is within one standard deviation of 200 games (6.7); the +11
-  decisions are 1.5 standard errors.
-- MCTS batch (4 games, seed 7): rc 0 (3-1); with `RIFTBOUND_STEP_FAULT_AT=40` rc 1, "a game failed: game 1 [seed=7]:
+- **`riftbound_tests`: 3,479 passed** (master after batch 3 and the five new tests of this batch; 1 disabled, as on
+  master). `riftbound_openspiel_tests`: **33 passed**. `riftbound_clone_equiv_test`:
+  10/10. Checked build: **3,479 and 33 passed**. `ActionIdsWalk.*` (`tests/test_action_ids.cpp`) green.
+- **Leak tests, long run** (`RIFTBOUND_LEAK_GAMES=300`), all green on the merged tree:
+  - variants: 300 games, 84,595 decisions, 636,293 hidden cards changed, 77,353 own hands reordered; 0 options offering
+    the decider an own card it was not shown; 38,209 prompts among them, **170 of batch 3's chain-item prompts**
+    (`Card::pickChainItem`);
+  - relabelled: 300 pairs, 74,355 decisions compared for both players, 603,037 log lines (188 pairs to the end, 112
+    became other games by the table's order, N1);
+  - passive opponent: 300 pairs, 39,102 decisions, 184,908 log lines, exact lines including the `[D:]` prefix.
+  - **Batch 3's "[Add] for this payment" prompt was not reached** in these games (0 of 38,209 prompts); its options
+    are activations of [Add] abilities of permanents in play (public objects, public labels), so slot, twin order and
+    label follow from what both players see by construction. The effect-play target prompt is not told apart by the
+    census; its options go through the same slot / twin code.
+- Smoke (fiora v yi_rebuild, 200 games, seed 20261010, 3 threads): rc 0, **P1 136 / P2 64 / 0 draws / 17 turns / 288
+  decisions** (master after batch 3: 128 / 72 / 0 / 288). Same deals; the random agent picks by index in the
+  generator's list, which is in object-table (id) order, and the ids differ; the trigger-batch order, the combat-damage
+  excess options and the "up to N" target order also differ. 136 v 128 is 1.2 standard deviations of 200 games; the
+  game length is the same.
+- MCTS batch (4 games, seed 7): rc 0 (1-3); with `RIFTBOUND_STEP_FAULT_AT=40` rc 1, "a game failed: game 1 [seed=7]:
   RIFTBOUND_STEP_FAULT_AT: injected engine fault at decision 40", 0 draws.
 - ISMCTS fixed seeds, ten runs each, yi_rebuild v fiora: rc 0 twenty times, **byte-identical output run to run**.
-  `ismcts:sims=50 --agent2 random --games 2 --threads 1 --seed 20261010`: P2 6-8 in 363 decisions, P1 8-0 in 95 (T3:
-  4-8 in 321, 8-1 in 143). `ismcts:sims=20 --games 8 --seed 1`: 1-7 (T3: 4-4). Other games for the same reason as the
-  smoke (other ids, so other option lists for the random seat and other option order inside the search).
-- Fuzz (`--decks 600 --games-per-pair 10 --seed 20261915 --known docs/testing-known-failures.txt`): 6,000 games, **0
-  failures**, 0 without a winner, 0 hung.
+  `ismcts:sims=50 --agent2 random --games 2 --threads 1 --seed 20261010`: P2 3-8 in 373 decisions, P1 8-0 in 114.
+  `ismcts:sims=20 --games 8 --seed 1`: 2-6. (Other games than master's for the reason given for the smoke.)
+- Fuzz (`--decks 600 --games-per-pair 10 --seed 20261915 --known docs/testing-known-failures.txt`, F5-F7 removed by
+  batch 3): 6,000 games, **0 failures**, 0 without a winner, 0 hung.
 
 ## 2. What was not done as asked, said plainly
 
@@ -51,8 +58,7 @@ Branch `fix/batch-5b`, from master `6771d7e`; master (`4dbf6ff`, a status commit
   not something a player is shown (ids are random), but those decisions are not compared.
 - **K3 machine not idle**: the run lane was mine for each window, but other lanes were building: load 3.2-4.6 in the
   side task's two windows, 1.5-3.0 in a third window I ran myself. The three windows agree (-4% to -5%).
-- **Batch 3 was not on master** at my gate. I trial-merged its branch instead (section 1); the final merge into master
-  should re-run `HiddenOrderLeak.*` (30 s) on the merged tree.
+- Batch 3's "[Add] for this payment" prompt was not reached by the leak tests' games (section 1).
 - Log lines still print object ids (`id=N`, `chain_item=N`). With ids dealt at random they carry nothing; a history
   built from the log must not feed them to a model.
 
@@ -76,6 +82,9 @@ id of a hidden card nearly named it.
 | 10 | "Up to N" target sets in ascending-id order (generic generator; Singularity's own sets); "choose 2 to keep" (Divine Judgment) | `spellTargetSets`, Singularity, slot of multi-object answers | Sets listed by `visibleObjectDescription`; multi-object answers keyed by the object the decider sees first |
 | 11 | Two copies of a card told apart only by id when one is named by a pending chain item | `visibleDescription` | The description says which chain items name the object |
 | 12 | Ivern, Nurturer offered three deck cards its controller was not recorded as seeing | card | `knowledge::shown` before the prompt |
+
+| 13 | The `[D:NNN.NN]` log prefix counted lines a player may not read and lines written inside quiet stretches (probes): the jumps told a player how many it missed. Found on the merged tree (batch 3's [Add]-payment probe writes such lines; the passive-opponent test saw the prefix of a CONQUER line differ) | `EventBus` | The shown number counts only lines both players read, outside quiet stretches; `lineStamp` / `activity` still count every line |
+| 14 | Two copies of one card triggering in one batch were ordered by queue (table) order | `orderPendingTriggers` | Also ordered by where each source is and how it stands |
 
 Found by the relabelled-games test, not a leak but a rules defect, fixed: **combat damage offered only the first order
 the walk met for who takes the excess** — with more damage than all lethal amounts, the walk pruned every order that
@@ -105,6 +114,10 @@ Changed tests (old -> new, why):
   the hand sorted by card); the "two copies" check compares positions 0 and 1 (was 0 and 2); added: the same hand in
   another order has the same slots.
 - `ActionVocab.AHistoryTokenFindsItsIntentAmongTwins`: copies re-indexed for the new hand (`c2 = h[2], c3 = h[1]`).
+- `PerfEngineLog.AMessageNobodyReadsIsNotBuilt`: `"[D:000.04] four"` -> `"[D:000.03] four"` (the unread private line is
+  not numbered); `PerfEngineLog.EveryMacroDeliversWhatItsFunctionDelivers`: `"[D:001.01] private"` -> `"[D:001.00]
+  private"`; `PerfEngineLog.AQuietStretchBuildsNothingAndIsStillCounted`: `"[D:000.04] after"` -> `"[D:000.02] after"`,
+  plus a check that `lineStamp` still counts the quiet lines (item 13).
 - `FeaturePerspectiveGames` `mirrorSeats`: also swaps the knowledge tracker's facts and deck counters and flips group
   owners (the extractor now reads the tracker for visibility).
 

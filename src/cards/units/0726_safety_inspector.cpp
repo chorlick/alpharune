@@ -102,10 +102,15 @@ public:
             const auto& o = ctx.state.getObject(id);
             return o.isUnit() && o.location.has_value() && o.controller == p;
         };
-        const bool kill_mine = still_theirs(mine, ctx.controller);
-        const bool kill_theirs = still_theirs(*theirs, opp);
-        if (kill_mine) ctx.executor.killObject(mine);
-        if (kill_theirs) ctx.executor.killObject(*theirs);
+        // The two units die at the same time (CR 370.1.a.2; testing phase R3):
+        // one death batch, so neither sees the other die (CR 383.2.c.2).
+        std::vector<GameObjectId> doomed;
+        if (still_theirs(mine, ctx.controller)) doomed.push_back(mine);
+        if (still_theirs(*theirs, opp)) doomed.push_back(*theirs);
+        {   // the batch is for these kills only
+            DeathBatch together(ctx.executor, doomed);   // they die at the same time
+            for (auto id : doomed) ctx.executor.killObject(id);
+        }
         RIFT_TRACE(ctx.events, "SAFETY INSPECTOR: each player killed one of their units");
     }
 private:

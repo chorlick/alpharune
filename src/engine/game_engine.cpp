@@ -1268,7 +1268,9 @@ void GameEngine::mainPhaseLoop(int action_count) {
         auto adv = advanceMainPhase(action_count);
         if (adv.kind == MainPhaseAdvance::Kind::Done) return;
 
-        auto intent = queryAgent(state_.turn.turn_player);
+        // The list advanceMainPhase generated is the decision's: nothing has
+        // run since it was made.
+        auto intent = queryAgent(state_.turn.turn_player, std::move(adv.legal));
         if (!resolveMainPhaseDecision(intent, action_count)) return;
     }
 }
@@ -9489,7 +9491,10 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal,
 }
 
 Intent GameEngine::queryAgent(PlayerId player) {
-    auto actions = generateLegalActions();
+    return queryAgent(player, generateLegalActions());
+}
+
+Intent GameEngine::queryAgent(PlayerId player, std::vector<Intent> actions) {
     state_.decision_index++;
     if (player == PlayerId::Player1) state_.turn.turn_decisions_p1++;
     else state_.turn.turn_decisions_p2++;

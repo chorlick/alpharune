@@ -725,6 +725,11 @@ private:
 
     // ── Queries ──
     Intent queryAgent(PlayerId player);
+    /// The same, with the legal actions already generated for the state as it
+    /// is now (mainPhaseLoop: advanceMainPhase made the list and nothing ran
+    /// since, so generating it again would give the same list — at the cost of
+    /// a second pass over every play gate, pre-play probes included).
+    Intent queryAgent(PlayerId player, std::vector<Intent> actions);
 
     /// Append the chosen Intent's history token (action_vocab.h) to
     /// GameState::action_history. Called by askAgent, the one selectAction

@@ -73,6 +73,7 @@ public:
         uint32_t legal_mask = (locations.size() >= 32)
             ? 0xFFFFFFFFu
             : ((1u << locations.size()) - 1);
+        // At resolution: a play location, not a target (CR 355.10.b; batch 3 D3; M4; batch M1).
         int chosen = pickMode(ctx, "Thrill: which battlefield",
                               static_cast<int>(locations.size()), labels, legal_mask);
         if (chosen == -1) return;  // yielded for agent input

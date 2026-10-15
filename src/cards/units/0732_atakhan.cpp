@@ -93,6 +93,7 @@ public:
             auto bf = obj.battlefieldId();
             if (bf && *bf == *my_bf) theirs_here.push_back(id);   // "here"
         }
+        // At resolution: the other player's own pick, a "must" (CR 355.10.e-f; batch M1).
         auto victim = selectObjectAs(ctx, defender, "Atakhan: kill one of your units here",
                                      theirs_here);
         if (!victim.has_value()) return;     // waiting on the defender

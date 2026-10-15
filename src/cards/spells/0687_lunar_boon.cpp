@@ -41,6 +41,7 @@ public:
                 }
             }
             label += "]";
+            // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices), label);
             ri.resume_point = 1;
             return;

@@ -41,12 +41,14 @@ public:
 
         auto& ps = ctx.state.player(ctx.controller);
         auto still_legal = [&]() { return ps.xp >= 2 && !ops.hand.empty(); };
+        // At resolution: not the first part of the effect (CR 383.3.a.3; batch M1).
         int conf = confirmOptional(ctx, "Insightful Investigator: pay 2 XP to choose a card to discard?",
                                    still_legal);
         if (conf == -1) return;  // waiting for agent
         if (conf < 1) return;    // declined / can't pay
 
         std::vector<GameObjectId> hand(ops.hand.begin(), ops.hand.end());
+        // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
         GameObjectId chosen = pickTarget(ctx, "Insightful Investigator: choose a card", hand);
         if (chosen == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {

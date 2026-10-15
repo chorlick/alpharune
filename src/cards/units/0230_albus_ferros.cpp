@@ -29,6 +29,7 @@ public:
             for (int i = 0; i < obj.buff_count; ++i) buffs.push_back(id);
         }
         // "any number": as many as there are buffs.
+        // At resolution: a buff is not a valid target (CR 355.9.a, 355.18; batch M1).
         const auto chosen = selectSeveral(ctx, "Albus Ferros: spend a buff from", buffs);
         if (!chosen.has_value()) return;   // waiting for the agent
         int spent = 0;

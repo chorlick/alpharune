@@ -21,6 +21,7 @@ public:
     // decides for themselves: first the controller, then the opponent.
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         auto& ri = ctx.state.chain.resuming.value();
+        // At resolution: each player's own "may" (CR 383.3.a.1; judge question 14; batch M1).
         const int mine = confirmOptional(ctx, "Card Sharp: play a Gold gear token exhausted?",
                                          []() { return true; });
         if (mine == -1) return;   // waiting for the controller
@@ -31,6 +32,7 @@ public:
         if (ri.resume_data.size() <= kOppSlot) ri.resume_data.resize(kOppSlot + 1, 0);
         const PlayerId opp = opponent(ctx.controller);
         if (ri.resume_data[kOppSlot] == 0) {
+            // At resolution: another player's choice (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(opp,
                 {declineChoice(opp, "Card Sharp: no Gold"),
                  valChoice(opp, 1, "Card Sharp: play a Gold gear token exhausted")},

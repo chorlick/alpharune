@@ -30,6 +30,7 @@ public:
         // pickXAmount publishes one int-coded MakeChoice per X and the action
         // vocabulary has 16 int slots (0..15), so X is capped at 15.
         int max_x = std::min(payableEnergy(ctx.state, ctx.controller), 15);
+        // An [Add] ability resolves as it is activated (CR 401.2): no separate finalization (batch M1).
         int x = pickXAmount(ctx, "Ancient Henge: pay X energy → Add X [A]",
                              0, max_x);
         if (x < 0) return;  // pending choice

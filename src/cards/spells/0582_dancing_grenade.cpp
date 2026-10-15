@@ -94,6 +94,7 @@ public:
         if (enumerateLegalTargets(ctx.state, unit_controller).empty()) return;
         slot(kPhaseSlot) = 1;
         slot(kPlayerSlot) = static_cast<int32_t>(unit_controller);
+        // At resolution: another player's choice (CR 355.10.e; batch M1).
         ctx.executor.requestChoice(unit_controller,
             {declineChoice(unit_controller, "No — Dancing Grenade: play it again for [A]"),
              valChoice(unit_controller, 1, "Yes — Dancing Grenade: play it again for [A]")},

@@ -38,11 +38,13 @@ public:
         // The look is private; it tells the controller what is there to take.
         const auto looked = topFour(ctx);
         for (auto id : looked) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
+        // At resolution: not the first part of the effect (CR 383.3.a.3; batch M1).
         int conf = confirmOptional(ctx, "Ornn, Blacksmith: reveal a gear from the top 4 and draw it?",
                                    [&]() { return !gearAmong(ctx).empty(); });
         if (conf == -1) return;  // waiting for agent
         GameObjectId drafted = kInvalidId;
         if (conf == 1) {
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             drafted = pickTarget(ctx, "Ornn, Blacksmith: choose a gear to draw", gearAmong(ctx));
             if (drafted == kInvalidId && ctx.state.chain.resuming.has_value() &&
                 ctx.state.chain.resuming->resume_point == 7)

@@ -45,6 +45,7 @@ public:
             keep.chosen_value = 0;         // as EffectExecutor::predict names it
             keep.choice_label = "Keep it";
             choices.push_back(keep);                                    // keep it
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "predict 2: recycle or keep (Scryer's Bloom)");
         };
@@ -91,6 +92,7 @@ public:
             if (n == 2 && ri.resume_data[3] == 0 && ri.resume_data[4] == 0) {
                 std::vector<Intent> choices{objChoice(ctx.controller, card_at(0)),
                                             objChoice(ctx.controller, card_at(1))};
+                // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
                 ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                             "predict 2: which card goes on top? (Scryer's Bloom)");
                 ri.resume_point = kAskOrder;

@@ -26,6 +26,7 @@ public:
         case 0: {
             // The two answers are int-coded (0 = Cards, 1 = Runes) so each has
             // its own action-vocab slot.
+            // At resolution: another player's choice (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(opp,
                 {valChoice(opp, 0, "Cards"), valChoice(opp, 1, "Runes")},
                 "Party Favors: choose Cards or Runes");

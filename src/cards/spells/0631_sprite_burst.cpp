@@ -24,6 +24,7 @@ public:
             return ctx.executor.createToken(ctx.controller, CardType::Unit, "Sprite", 3,
                                             {"Fae"}, kw, loc, /*enter_ready=*/true);
         };
+        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
         playTokensChoosingLocations(ctx, "Sprite Burst: play a Sprite", 2, make, made);
     }
 private:

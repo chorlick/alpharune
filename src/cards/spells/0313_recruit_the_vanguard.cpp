@@ -36,6 +36,7 @@ public:
             if (ri.resume_data.size() < kTokens && dests.size() > 1) {
                 std::vector<Intent> options;
                 for (int d : dests) options.push_back(valChoice(ctx.controller, d, destLabel(d)));
+                // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
                 ctx.executor.requestChoice(ctx.controller, std::move(options),
                     "Recruit the Vanguard: where to play Recruit " +
                     std::to_string(ri.resume_data.size() + 1) + " of 4");

@@ -42,6 +42,7 @@ public:
                 c.chosen_objects = {card_id};
                 choices.push_back(c);
             }
+            // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                        "discard 1 (Ezreal, Prodigy)");
             ri.resume_point = 1;

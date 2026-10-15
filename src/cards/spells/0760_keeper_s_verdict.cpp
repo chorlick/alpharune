@@ -55,6 +55,7 @@ public:
         bool to_top = true;
         if (ri.has_value() && !ctx.state.getObject(picked).isToken()) {
             if (ri->resume_point != kAwaitOwner) {
+                // At resolution: another player's choice (CR 355.10.e; batch M1).
                 ctx.executor.requestChoice(owner,
                     {valChoice(owner, 0, "Keeper's Verdict: top of your Main Deck"),
                      valChoice(owner, 1, "Keeper's Verdict: bottom of your Main Deck")},

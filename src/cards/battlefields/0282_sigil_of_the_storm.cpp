@@ -24,6 +24,7 @@ public:
         for (auto& [id, obj] : ctx.state.objects.onBoard())
             if (obj.isRune() && obj.controller == ctx.controller && obj.location.has_value())
                 runes.push_back(id);
+        // At resolution: a "must" names no target (CR 355.10.f; batch M1).
         const auto rune = selectObject(ctx, "Sigil of the Storm: recycle which rune", runes);
         if (!rune.has_value() || *rune == kInvalidId) return;   // waiting / no rune
         if (std::find(runes.begin(), runes.end(), *rune) == runes.end()) return;

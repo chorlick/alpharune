@@ -16,6 +16,7 @@ class ChemtechEnforcer : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardThenAct(ctx, 1, "Chemtech Enforcer: discard 1", [](CardContext&){});
     }
     TriggerType triggerType() const override { return TriggerType::WhenYouPlayMe; }

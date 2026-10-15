@@ -39,6 +39,7 @@ public:
                                                      /*token_card=*/955);
             return clone_id;
         };
+        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
         playTokensChoosingLocations(ctx, "Death Mark: play the Shadow Clone", 1, make, made);
     }
     // "[Flow] [1][A][A]" — each [A] is Power of any domain: the two need not

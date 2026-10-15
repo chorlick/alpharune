@@ -58,16 +58,19 @@ public:
         };
         // Choices first (the callback is re-entered with each answer): whether,
         // which card, and — for a unit — where it is played.
+        // At resolution: a spell's "may" (CR 355.12, 355.18; batch M1).
         const int go = confirmOptional(ctx, "Void Rush: banish one and play it",
                                        [&]() { return !playable().empty(); });
         if (go == -1) return;
         GameObjectId chosen = kInvalidId;
         std::optional<LocationId> where_to;
         if (go == 1) {
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             chosen = pickTarget(ctx, "Void Rush: card to banish and play", playable());
             if (chosen == kInvalidId) return;   // waiting
             if (ctx.state.getObject(chosen).isUnit()) {
                 const auto where = playLocations(ctx.state, ctx.controller);
+                // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
                 const int mode = pickMode(ctx, "Void Rush: where to play it",
                                           where.count(), where.labels);
                 if (mode < 0 || mode >= where.count()) return;   // waiting

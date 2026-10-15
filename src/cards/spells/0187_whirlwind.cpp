@@ -38,6 +38,7 @@ public:
             decline.chosen_value = 0;   // nameable by value, not only by position
             choices.push_back(decline);
             for (auto uid : units_for(p)) choices.push_back(objChoice(p, uid));
+            // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(p, std::move(choices),
                                         "Whirlwind: you may return a unit to its owner's hand");
         };

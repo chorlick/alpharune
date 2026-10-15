@@ -39,11 +39,14 @@ public:
                                          /*include_base=*/false);
         // All three choices come before the play: this callback is re-entered
         // from the top after each answer.
+        // At resolution: a spell's "may" (CR 355.12, 355.18; batch M1).
         int go = confirmOptional(ctx, "Here to Help: play a unit from hand",
             [&]() { return where.count() > 0 && !playable().empty(); });
         if (go <= 0) return;                 // waiting, declined, or nothing to play
+        // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
         GameObjectId unit = pickTarget(ctx, "Here to Help: unit to play", playable());
         if (unit == kInvalidId) return;      // waiting
+        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
         int mode = pickMode(ctx, "Here to Help: battlefield", where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;
         if (ctx.executor.playPayingCost(ctx.controller, unit, where.locations[mode], reduced))

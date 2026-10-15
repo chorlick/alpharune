@@ -72,6 +72,7 @@ public:
             }
         }
         if (legal.empty()) return;
+        // At resolution: banishment is not public, so not a target (CR 355.10.a.1; batch M1).
         GameObjectId picked = pickTarget(ctx, "Cursed Sarcophagus (banished unit)", legal);
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7) {
@@ -81,6 +82,7 @@ public:
         // CR 355.2.a: no location is printed, so the unit goes to its
         // controller's base or to a battlefield they control (and may be
         // played to) — chosen as it is played (as Spectral Matron 226).
+        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
         const int where = pickEffectPlayLocation(*this, ctx, "Cursed Sarcophagus: play it to");
         if (where == -1) return;   // waiting for the agent
         // "(You must pay its costs.)" — CR 356.1.b.2 / 445.2: full cost, optional.

@@ -74,6 +74,7 @@ public:
         // the top with the answer.
         int go = 0;
         if (*mover != kInvalidId) {
+            // At resolution: a spell's "may" (CR 355.12, 355.18; batch M1).
             go = confirmOptional(ctx, "Zenith Blade: move that friendly unit to that battlefield?",
                 [&]() {
                     const auto now = movers(ctx.state, ctx.controller, dest);

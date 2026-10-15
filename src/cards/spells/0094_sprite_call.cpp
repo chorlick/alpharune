@@ -20,6 +20,7 @@ public:
     // facedown, at the battlefield it was hidden at and nowhere else (CR
     // 811.1.d.5 — pickTokenDest reads it off the card).
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
         const int dest = pickTokenDest(*this, ctx, "Sprite Call: play the Sprite to");
         if (dest < 0) return;   // waiting for the choice, or nowhere to play it
         KeywordSet kw; kw.set(Keyword::Temporary);

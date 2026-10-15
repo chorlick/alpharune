@@ -47,6 +47,7 @@ public:
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
             if (choices.empty()) return false;
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(p, std::move(choices),
                                         "Promising Future: banish one of your top 5");
             return true;
@@ -120,6 +121,7 @@ public:
                         "Promising Future: play to battlefield " + std::to_string(i)));
             if (where.empty()) return false;
             where.insert(where.begin(), valChoice(p, 0, "Promising Future: play to base"));
+            // At resolution: a play location is a permission, not a target (CR 355.10.b; M5; batch M1).
             ctx.executor.requestChoice(p, std::move(where),
                                        "Promising Future: where to play it");
             return true;

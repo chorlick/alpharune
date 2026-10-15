@@ -61,7 +61,8 @@ public:
         // CR 355.2.a: a played unit goes to its controller's base or to a
         // battlefield they control (and may be played to) — chosen as it is
         // played, through the shared helper (as Spectral Matron 226).
-        const int where = pickEffectPlayLocation(*this, ctx, "Glasc Mixologist: play it to");
+        const int where = pickEffectPlayLocation(*this, ctx, "Glasc Mixologist: play it to",
+                                                 picked);
         if (where == -1) return;   // waiting for the agent
         // playIgnoringCost takes it out of the trash.
         ctx.executor.playIgnoringCost(ctx.controller, picked,

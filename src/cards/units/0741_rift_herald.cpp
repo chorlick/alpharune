@@ -68,7 +68,7 @@ private:
         GameObjectId drawn = kInvalidId;
         if (conf == 1) {
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-            drawn = pickTarget(ctx, "Rift Herald: choose a unit to draw",
+            drawn = pickUnseenCard(ctx, "Rift Herald: choose a unit to draw",
                                unitsAmong(ctx, looked));
             if (drawn == kInvalidId && ri.has_value() && ri->resume_point == 7)
                 return;  // suspended for the choice
@@ -118,7 +118,7 @@ private:
     }
     void onDeath(CardContext& ctx) {
         // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-        GameObjectId picked = pickTarget(ctx, "Rift Herald (deathknell: unit from hand)",
+        GameObjectId picked = pickUnseenCard(ctx, "Rift Herald (deathknell: unit from hand)",
                                          playableHandUnits(ctx));
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;  // none / waiting
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};

@@ -60,7 +60,9 @@ private:
         d.might = 5;
         d.rarity = Rarity::Rare;
         d.ability_text = R"RB(When I become ready, choose one to give me this turn —
-[Assault 2] (+2 [M] while I'm an attacker.)[Deflect 2] (Opponents must pay [A][A] to choose me with a spell or ability.)[Ganking] (I can move from battlefield to battlefield.))RB";
+[Assault 2] (+2 [M] while I'm an attacker.)
+[Deflect 2] (Opponents must pay [A][A] to choose me with a spell or ability.)
+[Ganking] (I can move from battlefield to battlefield.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/2dcecc0aab2b62e48388177cc27d220fd70b8a78-744x1039.png)RB";
         return d;
     }();

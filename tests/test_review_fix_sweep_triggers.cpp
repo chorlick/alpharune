@@ -1301,8 +1301,10 @@ TEST_F(SweepTriggersTest, PromptLines_NamingHiddenCardsArePrivate) {
     auto spell = addToDeck(P1, kDeathFromBelow);
     const std::string name = obj(spell).name;
     int private_lines = 0, leaked = 0;
+    // A card picked from a deck is not a target (CR 355.10.a): its prompt line
+    // is PICK_PROMPT since batch 6 (R13; it was TGT_PROMPT).
     auto conn = events.on_log.connect([&](const LogEvent& e) {
-        if (e.message.find("TGT_PROMPT") == std::string::npos) return;
+        if (e.message.find("PICK_PROMPT") == std::string::npos) return;
         if (e.message.find(name) == std::string::npos) return;
         if (e.visibleTo(P1) && !e.visibleTo(P2)) ++private_lines; else ++leaked;
     });

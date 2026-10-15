@@ -372,6 +372,9 @@ TEST_F(CardTestFixture, BackOff_StunsAndDraws1) {
     state.getObject(src).owner = P1;
     state.getObject(src).controller = P1;
     state.getObject(src).card_type = CardType::Spell;
+    // Played from a hand: every play path writes where the spell was played
+    // from, and "If you played this from your hand" reads it (batch 6 R10).
+    state.getObject(src).card_counters[Card::kPlayedNotFromHand] = 0;
 
     EffectExecutor exec(state, events, card_db);
     auto* card = card_registry.get(kBackOff);

@@ -91,7 +91,7 @@ public:
         const int go = confirmOptional(ctx, "Bone Skewer: choose a unit from the revealed hand",
                                        [&]() { return !hand_units().empty(); });
         if (go <= 0) return;                 // waiting, declined, or no unit there
-        const GameObjectId chosen = pickTarget(ctx, "Bone Skewer: unit they play", hand_units());
+        const GameObjectId chosen = pickUnseenCard(ctx, "Bone Skewer: unit they play", hand_units());
         if (chosen == kInvalidId || !ctx.state.objectExists(chosen)) return;
 
         // They play it to that battlefield, ignoring all costs.

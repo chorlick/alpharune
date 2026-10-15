@@ -36,14 +36,12 @@ public:
                                    still_legal);
         if (conf < 1) return;    // waiting / declined / nothing eligible
         GameObjectId picked = pickTarget(ctx, "Soulgorger (unit from trash)", trashUnits(ctx));
-        // To my base or a battlefield I control (CR 355.2.a).
-        int where = 0;
-        if (picked != kInvalidId) {
-            where = pickEffectPlayLocation(*this, ctx, "Soulgorger: play it to");
-            if (where == -1) return;          // waiting for the agent
-        }
         if (finalizingChoices(ctx)) return;   // choices end here (CR 383.3)
         if (picked == kInvalidId) return;     // none / no longer in trash / waiting
+        // At resolution: where it is played is a choice of its play, made as
+        // it is finalized (CR 355.2, 420.3.b.2; testing phase M5).
+        const int where = pickEffectPlayLocation(*this, ctx, "Soulgorger: play it to", picked);
+        if (where == -1) return;              // waiting for the agent
         // "ignoring its Energy cost. (You must still pay its Power cost.)"
         // playPayingCost takes the unit out of the trash only if it is paid for.
         const EffectExecutor::EffectPlayCost power_only{.ignore_energy = true};

@@ -74,7 +74,8 @@ private:
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction]
 Choose one —
-Counter a spell.Play four 1 [M] Bird unit tokens with [Deflect]. (Opponents must pay [A] to choose them with a spell or ability.))RB";
+Counter a spell.
+Play four 1 [M] Bird unit tokens with [Deflect]. (Opponents must pay [A] to choose them with a spell or ability.))RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/77bd864b29f4975868e557e31a39b94d06a4ecb2-744x1039.png)RB";
         return d;
     }();

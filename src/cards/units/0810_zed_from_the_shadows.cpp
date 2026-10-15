@@ -41,17 +41,16 @@ public:
         const auto it = c.find(kPaidFlag);
         return it != c.end() && it->second != 0;
     }
-    // Where the token goes is settled as the ability is finalized, as for
-    // every ability's effect-play location in this engine (Flame Chompers,
-    // Immortal Phoenix, Soulgorger, Herald of the Arcane; testing phase B5).
-    unsigned choicesAtFinalization() const override { return kFinalizeTrigger; }
+    // The ability chooses nothing: where the token goes is a choice of the
+    // token's play, made as the token is finalized while the ability resolves
+    // (CR 420.3.b.2; testing phase M5, which reversed B5's move of it to the
+    // ability's finalization).
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // No location is printed: the controller's base or a battlefield
         // they control, their choice (CR 355.2.a).
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2).
         const int dest = pickTokenDest(*this, ctx, "Zed: play the Shadow Clone to");
-        if (dest == -1) return;   // waiting for the agent
-        if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
-        if (dest < 0) return;     // nowhere to play it
+        if (dest < 0) return;     // waiting for the agent / nowhere to play it
         {
             ctx.executor.createToken(ctx.controller, CardType::Unit, "Shadow Clone",
                                  0, std::vector<std::string>{}, KeywordSet{},

@@ -61,7 +61,8 @@ full before changing it.
 **Rule found for M5.** CR 420.3.b.1-420.3.b.2 settle item M5: an effect play's location is "checked on finalization
 of the resulting Game Object", which happens as the effect resolves. The abilities M5 lists choose it at their own
 finalization, and this rule does not support that. I added this to M5; the owner decides what to do with the
-convention.
+convention. (Batch 6 fixed it: every effect-play location is asked as the played object is finalized, during the
+resolution.)
 
 ## 3. Engine change, helper and docs
 
@@ -136,7 +137,12 @@ convention.
   - a rerun of the gate.
 - **One warning in our code** remains (`clone_breakdown.cpp`). It is pre-existing and outside M1's scope.
 
-## 7. New defects found (not fixed; `plans/remaining/10-testing-phase.md`, items R1-R14)
+## 7. New defects found (not fixed here; `plans/remaining/10-testing-phase.md`, items R1-R14)
+
+All closed by batch 6 (`plans/reports/batch-6.md`): R1-R13 FIXED, R14 a judge question (17). R1 also covered
+Stacked Deck, R6 also Promising Future's list, R7 also The Zero Drive, R12 found 12 cards with run-together
+lists and 6 with `Keyword::Predict`.
+
 
 - **R1** Lunar Boon tells the opponent which cards were drawn (the trace line is not private).
 - **R2** Two Dragon Forms on one unit stack.

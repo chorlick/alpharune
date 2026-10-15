@@ -99,7 +99,8 @@ public:
         // CR 355.2.a: the Mech goes to its controller's base or to a
         // battlefield they control (and may be played to) — chosen as it is
         // played, through the shared helper every effect play uses.
-        const int where = pickEffectPlayLocation(*this, ctx, "Rumble: play the Mech to");
+        const int where = pickEffectPlayLocation(*this, ctx, "Rumble: play the Mech to",
+                                                 trash_mech);
         if (where == -1) return;   // waiting for the agent
         // playPayingCost takes the card out of the trash only if it is played.
         if (ctx.executor.playPayingCost(ctx.controller, trash_mech,

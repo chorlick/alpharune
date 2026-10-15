@@ -71,6 +71,10 @@ public:
     }
 
 private:
+    // "An occupied enemy battlefield" read as a battlefield with enemy units,
+    // whoever controls it. "Enemy battlefield" is not defined (CR 170.11
+    // defines "occupied"); Dauntless Vanguard's permission is read as one the
+    // opponent controls: judge question 17 (testing phase R14), both pinned.
     // Battlefields that have enemy units AND where `my_might` > total enemy
     // Might there. Excludes the battlefield I'm already at.
     static std::vector<BattlefieldId> qualifyingBfs(const GameState& state,

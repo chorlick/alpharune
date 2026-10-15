@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -16,27 +17,30 @@ public:
     const CardDef& def() const override { return def_; }
     // "Choose a battlefield. Give friendly units there +1 [M] this turn and
     //  enemy units there -1 [M] this turn, to a minimum of 1 [M]."
-    // Choose a unit at a battlefield to identify the battlefield.
-    TargetRequirements getTargetRequirements() const override {
-        return TargetRequirements{.count = 1, .must_be_unit = true,
-                                  .must_be_at_battlefield = true};
+    // The battlefield is the target (CR 355.10.b / 355.10.d: "Kill all units
+    // at a battlefield" targets a battlefield, not the units), chosen as the
+    // spell is played (CR 355.5), in its finalize pass before its cost. So a
+    // battlefield with no unit can be chosen, no unit's [Deflect] is owed,
+    // and units that come or go in response are the ones there as it
+    // resolves (testing phase R8: a unit stood for the battlefield).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // a battlefield, not a unit
     }
-    bool needsPlayTimeTarget() const override { return true; }
-    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
-        GameObjectId anchor;
-        if (!targets.empty()) {
-            anchor = targets[0];
-        } else {
-            auto legal = enumerateLegalTargets(ctx.state, ctx.controller);
-            anchor = pickTarget(ctx, "Siphon Power (a unit at the battlefield)", legal);
-        }
-        if (anchor == kInvalidId || !ctx.state.objectExists(anchor)) return;
-        auto bf = ctx.state.getObject(anchor).battlefieldId();
-        if (!bf) return;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!obj.isUnit()) continue;
-            if (obj.battlefieldId() != bf) continue;
-            if (obj.controller == ctx.controller)
+    void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const int mode = pickBattlefield(*this, ctx, "Siphon Power: choose a battlefield");
+        if (mode == -1) return;               // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (mode < 0 || static_cast<size_t>(mode) >= ctx.state.battlefields.size()) return;
+        const BattlefieldId bf = ctx.state.battlefields[static_cast<size_t>(mode)].id;
+        std::vector<GameObjectId> there;
+        for (auto& [id, obj] : ctx.state.objects.onBoard())
+            if (obj.isUnit() && obj.battlefieldId() == std::optional<BattlefieldId>{bf})
+                there.push_back(id);
+        std::sort(there.begin(), there.end());
+        for (auto id : there) {
+            if (ctx.state.getObject(id).controller == ctx.controller)
                 ctx.executor.giveTemporaryMight(id, 1);
             else
                 ctx.executor.giveTemporaryMight(id, -1, /*minimum=*/1);

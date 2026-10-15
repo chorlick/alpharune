@@ -41,14 +41,19 @@
 #include <vector>
 
 // Every heap allocation of the process, counted (the (C) table below).
+// The replacements are kept out of line: inlined into a caller of this file,
+// GCC pairs the malloc of one with the free of the other and reports a
+// mismatched allocation (-Wmismatched-new-delete, testing phase R15) — a
+// false report, since every operator new here is malloc and every operator
+// delete free.
 static uint64_t g_allocs = 0;
-void* operator new(std::size_t n) {
+[[gnu::noinline]] void* operator new(std::size_t n) {
     ++g_allocs;
     if (void* p = std::malloc(n ? n : 1)) return p;
     throw std::bad_alloc();
 }
-void operator delete(void* p) noexcept { std::free(p); }
-void operator delete(void* p, std::size_t) noexcept { std::free(p); }
+[[gnu::noinline]] void operator delete(void* p) noexcept { std::free(p); }
+[[gnu::noinline]] void operator delete(void* p, std::size_t) noexcept { std::free(p); }
 
 namespace {
 

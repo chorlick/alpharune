@@ -44,7 +44,7 @@ public:
             [&]() { return where.count() > 0 && !playable().empty(); });
         if (go <= 0) return;                 // waiting, declined, or nothing to play
         // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-        GameObjectId unit = pickTarget(ctx, "Here to Help: unit to play", playable());
+        GameObjectId unit = pickUnseenCard(ctx, "Here to Help: unit to play", playable());
         if (unit == kInvalidId) return;      // waiting
         // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int mode = pickMode(ctx, "Here to Help: battlefield", where.count(), where.labels);

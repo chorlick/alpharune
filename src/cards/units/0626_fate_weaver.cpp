@@ -55,7 +55,7 @@ public:
         GameObjectId drawn = kInvalidId;
         if (conf == 1) {
             // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
-            drawn = pickTarget(ctx, "Fate Weaver: choose a spell ([4]+) to draw",
+            drawn = pickUnseenCard(ctx, "Fate Weaver: choose a spell ([4]+) to draw",
                                eligibleSpells(ctx));
             if (drawn == kInvalidId && ctx.state.chain.resuming.has_value() &&
                 ctx.state.chain.resuming->resume_point == 7) {

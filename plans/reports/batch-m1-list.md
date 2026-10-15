@@ -210,7 +210,7 @@ Verdicts:
 
 Abbreviations:
 
-- "M5" marks the location of an effect play. It is chosen as the played card or token is finalized, during the resolution (CR 420.3.b.1-420.3.b.2, with Rek'Sai's example). Item M5 asks whether to keep this convention.
+- "M5" marks the location of an effect play. It is chosen as the played card or token is finalized, during the resolution (CR 420.3.b.1-420.3.b.2, with Rek'Sai's example). Batch 6 (item M5) moved the seven abilities that settled it at their own finalization (Flame Chompers, Immortal Phoenix, Soulgorger, Kharox, Herald of the Arcane, Zed, Undying Loyalty) to the same rule, and every such list now offers the played card's own permissions (`playLocationsFor`). The picks this list marks "hidden" go through `Card::pickUnseenCard` since batch 6 (R13).
 - "hidden" is CR 355.10.a: a hand, a deck, banishment, or cards revealed while the item resolves.
 - "1v1" marks "choose an opponent". It is a target (CR 355.10.d.2), but with one opponent there is nothing to ask.
 

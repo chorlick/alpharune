@@ -114,7 +114,10 @@ private:
         d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB([Repeat] — [1] / [A] / [1][A] (You may pay each additional cost to repeat this spell's effect.)
 Choose one you haven't already chosen —
-Draw 1.Deal 2 to a unit at a battlefield.Deal 3 to a unit at a base.Give a unit at a battlefield -4 [M] this turn.)RB";
+Draw 1.
+Deal 2 to a unit at a battlefield.
+Deal 3 to a unit at a base.
+Give a unit at a battlefield -4 [M] this turn.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/01496068d9a8d5567672d802bd008297bd1fe8cc-744x1039.png?accountingTag=RB)RB";
         return d;
     }();

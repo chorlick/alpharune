@@ -49,7 +49,8 @@ private:
         d.might = 6;
         d.rarity = Rarity::Rare;
         d.ability_text = R"RB(When I move to a battlefield, choose one —
-Each player discards 1.Each player draws 1.)RB";
+Each player discards 1.
+Each player draws 1.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/30b6e4a44bcadaa53168bd4ac043fbf2136f5eb3-744x1039.png)RB";
         return d;
     }();

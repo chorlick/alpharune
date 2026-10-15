@@ -124,7 +124,9 @@ private:
         d.might = 4;
         d.rarity = Rarity::Rare;
         d.ability_text = R"RB(When I attack, reveal the top rune of your rune deck, then recycle it. Do one of the following based on its domain:
-[R] — Deal 2 to an enemy unit here and 1 to all other enemy units here.[B] — Draw 1.[Y] — Stun an enemy unit.)RB";
+[R] — Deal 2 to an enemy unit here and 1 to all other enemy units here.
+[B] — Draw 1.
+[Y] — Stun an enemy unit.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/9eff1a038528c4d633196f13259670d84b74c2a8-744x1039.png)RB";
         return d;
     }();

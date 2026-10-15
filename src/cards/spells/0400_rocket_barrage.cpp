@@ -85,7 +85,8 @@ private:
         d.keywords.set(Keyword::Repeat);
         d.ability_text = R"RB([Repeat] [4][B] (You may pay the additional cost to repeat this spell's effect, and may make different choices.)
 Choose one —
-Deal 4 to a unit in a base.Kill a gear.)RB";
+Deal 4 to a unit in a base.
+Kill a gear.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/0378f9adf9df08fed264fdd217ce0e94c3f611cb-744x1039.png)RB";
         return d;
     }();

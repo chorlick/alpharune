@@ -28,12 +28,14 @@ public:
         // if it has become payable since (CR 383.3.a).
         int conf = confirmOptional(ctx, "Flame Chompers: pay [R] to play me?", can_pay);
         if (conf < 1) return;
-        // To my base or a battlefield I control (CR 355.2.a).
-        const int where = pickEffectPlayLocation(*this, ctx, "Flame Chompers: play me to");
-        if (where == -1) return;              // waiting for the agent
         if (costDueNow(ctx) && !payOnePower(ctx, ctx.controller, Domain::Fury)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (!in_trash()) return;              // left the trash in response
+        // At resolution: where I am played is a choice of my play, made as I am
+        // finalized (CR 355.2, 420.3.b.2; testing phase M5).
+        const int where = pickEffectPlayLocation(*this, ctx, "Flame Chompers: play me to",
+                                                 ctx.source);
+        if (where == -1) return;              // waiting for the agent
         ctx.executor.playIgnoringCost(ctx.controller, ctx.source,
                                       effectPlayLocation(ctx.state, ctx.controller, where));
         RIFT_TRACE(ctx.events, "FLAME CHOMPERS: paid [R] -> play from trash");

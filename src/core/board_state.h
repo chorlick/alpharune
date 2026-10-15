@@ -89,6 +89,7 @@ inline void forgetBoardState(GameObject& obj, const CardDef* def) {
     obj.buff_count = 0;
     obj.temp_buff_count = 0;
     obj.temp_might_bonus = 0;
+    obj.base_might_this_turn = -1;
     obj.moves_this_turn = 0;
     // Keywords: the printed ones again.
     if (def) {
@@ -145,6 +146,7 @@ inline bool carriesBoardState(const GameObject& obj) {
            obj.combat_designation != CombatDesignation::None || obj.empowered != 0 ||
            obj.damage_marked != 0 || obj.buff_count != 0 ||
            obj.temp_buff_count != 0 || obj.temp_might_bonus != 0 ||
+           obj.base_might_this_turn >= 0 ||
            obj.temp_keywords.bits != 0 || obj.granted_keywords.bits != 0 ||
            obj.temp_assault_value != 0 || obj.temp_shield_value != 0 ||
            obj.temp_deflect_value != 0 || obj.control_reverts_eot ||

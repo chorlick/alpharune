@@ -84,7 +84,8 @@ private:
         d.keywords.set(Keyword::Reaction);
         d.ability_text = R"RB([Reaction] (Play any time, even before spells and abilities resolve.)
 Choose one —
-Choose up to 3 cards from opponents' trashes. Their owners recycle them.Draw 1.)RB";
+Choose up to 3 cards from opponents' trashes. Their owners recycle them.
+Draw 1.)RB";
         d.image_url = R"RB(https://cmsassets.rgpub.io/sanity/images/dsfx7636/game_data_live/de7b7c683f16a297418bc9a326178c520f17ef2b-744x1039.png)RB";
         return d;
     }();

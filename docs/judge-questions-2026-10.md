@@ -327,3 +327,26 @@ Which rule wins when both apply?
 - For "not paid": 370.1.a.1 (Zhonya's example): "A unit's death being replaced by Zhonya's Hourglass is the same as the kill action that caused that death not occurring." 405 does not repeat 357.2.a. The engine has read "kill X to do Y" this way since it introduced `Card::killAsCost` (Dusk Rose Lab, Overzealous Fan).
 
 **What the engine does.** For a triggered ability's "kill X to", it does not count a replaced death as paid: no point, no card drawn, no move (`Card::killAsCost`; `BatchM1Abilities.BottledConstellation_AReplacedDeathPaysNothingAndScoresNothing`). A spell's or permanent's additional cost follows 357.2.a and is paid (testing phase F6). The two readings differ only when a replacement applies to the kill.
+
+## 17. What is an "occupied enemy battlefield"?
+
+**Cards**
+
+- Maduli the Gatekeeper: "[P]: Move me to an occupied enemy battlefield if my Might is greater than the total Might of enemy units there."
+- Dauntless Vanguard and Deadbloom Predator: "You may play me to an occupied enemy battlefield."
+
+**Situation.** (a) Battlefield A is mine (I control it) and an enemy unit is there with one of mine. (b) Battlefield B is controlled by nobody and an enemy unit is there.
+
+**Question.** Is A, or B, an "occupied enemy battlefield"? Is an "enemy battlefield" one my opponent controls, or one where my opponent has units?
+
+**Rules found**
+
+- 170.11.a defines "occupied": "they have a Unit present". 170.11 defines "uncontrolled" and "open" too, but nothing defines "enemy battlefield".
+- The examples that use the words (359.3.f.2, 359.3.f.4, the Volibear example under 359.3.e.9.a) describe moving to "an occupied enemy battlefield" and starting combat there, which fits both readings.
+- 420.3.b.2's example ("Play a unit from your trash to an enemy occupied battlefield") does not say either.
+
+**What the engine does.** It reads the two cards two ways (batch 6 item R14), both pinned:
+- Maduli: a battlefield with enemy units, whoever controls it (A and B both qualify): `Batch6Test.R14_Maduli_ABattlefieldWithEnemyUnitsQualifiesWhoeverControlsIt`.
+- Dauntless Vanguard / Deadbloom Predator (`Card::kPlayToOccupiedEnemyBattlefield`): a battlefield the opponent controls with their units there (B does not qualify; A is allowed anyway, as a battlefield I control): `Batch6Test.R14_DauntlessVanguard_AnEnemyBattlefieldIsOneTheOpponentControls`.
+
+Whatever the answer, the two should read the same; the engine will be made to follow it.

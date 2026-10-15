@@ -107,14 +107,18 @@ public:
         const bool still_there = picked != kInvalidId && ctx.state.objectExists(picked) &&
             std::find(ps.trash.begin(), ps.trash.end(), picked) != ps.trash.end() &&
             eligible(ctx.state.getObject(picked), ctx.executor.cardDB());
-        // Its controller's base or a battlefield they control (CR 355.2.a).
-        const auto where = playLocations(ctx.state, ctx.controller);
-        // (playLocations leaves out a battlefield units can't be played to.)
-        const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
-                                  where.count(), where.labels);
-        if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
         if (!still_there) return;
+        // Its controller's base or a battlefield they control, or where the
+        // unit's own permissions allow (CR 355.2). At resolution: a choice of
+        // the unit's play, made as it is finalized (CR 420.3.b.2; testing
+        // phase M5). playLocationsFor leaves out a battlefield units can't be
+        // played to.
+        const auto where = playLocationsFor(ctx, ctx.controller, picked);
+        const int mode = pickMode(ctx, "Undying Loyalty: where to play it",
+                                  where.count(), where.labels, ~0u,
+                                  std::source_location::current(), PromptKind::Location);
+        if (mode < 0 || mode >= where.count()) return;   // waiting for the agent
         ctx.executor.playIgnoringCost(ctx.controller, picked, where.locations[mode]);
         RIFT_TRACE(ctx.events, "UNDYING LOYALTY: played a unit from trash, ignoring cost");
     }

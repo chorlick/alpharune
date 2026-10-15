@@ -26,21 +26,19 @@ public:
     // played together once all three are placed.
     // resume_point kAsking / kDone; the picks are resume_data[kFirstPick..].
     void onActivate(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto dests = [&]() {
-            std::vector<int> out{0};   // 0 = base, 1 + i = battlefield i (as destLabel)
-            for (const auto& bf : ctx.state.battlefields)
-                if (bf.controller.has_value() && *bf.controller == ctx.controller)
-                    out.push_back(1 + static_cast<int>(bf.id.raw()));
-            return out;
-        };
+        // 0 = base, 1 + i = battlefield i (as destLabel): the base and the
+        // battlefields its controller controls that units may be played to
+        // (tokenPlayDests; testing phase R5).
+        auto dests = [&]() { return tokenPlayDests(ctx); };
         auto play_all = [&](const std::vector<int>& where) {
+            // The places it could have gone: an additional copy of a Recruit
+            // (Zilean, Time Mage) has the same choice.
+            const auto choices = tokenPlayLocations(ctx);
             for (int d : where) {
-                const LocationId loc = d <= 0
-                    ? LocationId{BaseLocation{ctx.controller}}
-                    : LocationId{BattlefieldLocation{BattlefieldId::fromRaw(d - 1)}};
                 ctx.executor.createToken(ctx.controller, CardType::Unit, "Recruit",
                                          /*might=*/1, /*tags=*/{"Recruit"}, KeywordSet{},
-                                         loc, /*enter_ready=*/false);
+                                         destLocation(ctx.controller, d), /*enter_ready=*/false,
+                                         choices);
             }
             RIFT_TRACE(ctx.events, "VANGUARD ARMORY: [E] -> three 1[M] Recruit tokens");
         };

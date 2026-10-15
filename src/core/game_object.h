@@ -189,6 +189,13 @@ struct GameObject {
                                  // giveTemporaryKeyword); added to deflect_value by
                                  // deflectCostFor, zeroed at the expiration step
     int temp_might_bonus = 0;    // temporary +N might applied "this turn"
+    // "Its base Might becomes N this turn" (Dragon Form): a trait-altering
+    // effect (CR 143.2.a, 479.2), applied after copy effects and before
+    // arithmetic ones, so it replaces base_might (printed or copied) and
+    // buffs and "+N this turn" still count on top of it. -1 = none. Cleared
+    // at the Expiration Step and as the object leaves the board
+    // (forgetBoardState). Read through baseMight().
+    int base_might_this_turn = -1;
     int moves_this_turn = 0;     // times this unit moved this turn (Kayn, Unleashed)
     // immune_to_damage (declared in the aura block below): recomputed each recalculateAuras; set by a
                                    // card's applyPassiveAura when its condition
@@ -442,12 +449,18 @@ struct GameObject {
 
     /// Compute current might from base + buffs + assault/shield (Phase 1 simple version).
     /// Full layer system will replace this later.
+    /// The base Might now (CR 143.2.a): base_might, or what a "base Might
+    /// becomes N this turn" effect made it.
+    int baseMight() const {
+        return base_might_this_turn >= 0 ? base_might_this_turn : base_might;
+    }
+
     void recomputeMight() {
         // buff_count = permanent +1 buff counters (CR); temp_might_bonus =
         // this-turn temporary might (expires at the expiration step). Tracked
         // separately so "spend a buff" / "if it has a buff" gates read only the
         // permanent counters, not transient temp might.
-        current_might = base_might + buff_count + temp_might_bonus +
+        current_might = baseMight() + buff_count + temp_might_bonus +
                         attachment_might_bonus + aura_might_bonus;
         // Assault applies only while attacking (base + aura-granted)
         if (combat_designation == CombatDesignation::Attacker) {

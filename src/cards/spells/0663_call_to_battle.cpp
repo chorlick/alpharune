@@ -64,6 +64,18 @@ public:
         return out;
     }
 
+    // The unit (its play-time target) and the battlefield it moves to (CR
+    // 355.4) are chosen as the spell is played, in its finalize pass, before
+    // its cost. "Choose an opponent": 1v1, one choice. "They move a unit they
+    // control to the same battlefield" is their choice as it resolves (CR
+    // 355.10.e).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object, [&](const GameObject& u) {
+            return destinationMask(state, controller, u.id) != 0;
+        });
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         auto& ri = ctx.state.chain.resuming;
         auto slot = [&](size_t i) -> int32_t& {
@@ -91,22 +103,35 @@ public:
         const GameObjectId unit = locked ? *locked
             : pickTarget(ctx, "Call to Battle: move a unit you control",
                          enumerateLegalTargets(ctx.state, ctx.controller));
-        if (unit == kInvalidId || !ctx.state.objectExists(unit)) return;
+        if (unit == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
 
         // Which battlefield you control it moves to.
         const auto& bfs = ctx.state.battlefields;
         const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
-        std::vector<std::string> labels;
-        for (int i = 0; i < n; ++i)
-            labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
-                ? ctx.state.getObject(bfs[i].card_object_id).name
-                : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
-        const int mode = pickMode(ctx, "Call to Battle: battlefield", n, labels,
-                                  destinationMask(ctx.state, ctx.controller, unit));
-        if (mode < 0 || mode >= n) return;   // -1 waiting, -2 no battlefield to move to
+        int mode = -2;
+        if (unit != kInvalidId) {
+            std::vector<std::string> labels;
+            for (int i = 0; i < n; ++i)
+                labels.push_back(ctx.state.objectExists(bfs[i].card_object_id)
+                    ? ctx.state.getObject(bfs[i].card_object_id).name
+                    : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
+            mode = pickMode(ctx, "Call to Battle: battlefield", n, labels,
+                            destinationMask(ctx.state, ctx.controller, unit));
+            if (mode == -1) return;   // waiting for the agent
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        if (mode < 0 || mode >= n) return;    // no unit / no battlefield to move to
         const BattlefieldId dest = bfs[mode].id;
-        ctx.executor.moveToBattlefield(unit, dest);
-        RIFT_TRACE(ctx.events, "CALL TO BATTLE: moved a friendly unit to a controlled BF");
+        // My unit moves if it is still a legal target and the battlefield is
+        // still one I control that it is not at (CR 355.4.a); "the same
+        // battlefield" for the opponent is the one chosen either way.
+        if (unit != kInvalidId &&
+            (destinationMask(ctx.state, ctx.controller, unit) & (1u << mode)) != 0) {
+            ctx.executor.moveToBattlefield(unit, dest);
+            RIFT_TRACE(ctx.events, "CALL TO BATTLE: moved a friendly unit to a controlled BF");
+        }
 
         // "Then, choose an opponent. They move a unit they control to the same
         //  battlefield." — their choice among their units that are not there.
@@ -118,6 +143,7 @@ public:
         for (auto id : theirs) opts.push_back(objChoice(opp, id));
         slot(kPhaseSlot) = 1;
         slot(kBfSlot) = static_cast<int32_t>(dest.raw());
+        // CR 355.10.e: chosen by the other player, as the spell resolves.
         ctx.executor.requestChoice(opp, std::move(opts),
                                    "Call to Battle: move a unit you control to that battlefield", PromptKind::ChooseObject);
     }

@@ -54,6 +54,7 @@ public:
         // Choose a revealed card and banish it.
         std::vector<GameObjectId> legal(opp_ps.hand.begin(), opp_ps.hand.end());
         if (legal.empty()) return;
+        // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
         GameObjectId picked = pickTarget(ctx, "Ashe Focused: banish a revealed card",
                                          legal);
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;

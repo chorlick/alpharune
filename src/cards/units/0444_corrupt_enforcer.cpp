@@ -30,6 +30,7 @@ public:
             ctx.executor.discardCards(ctx.controller, 1);
             return;
         }
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardThenAct(ctx, 1, "Corrupt Enforcer: discard 1", [](CardContext&) {});
     }
 private:

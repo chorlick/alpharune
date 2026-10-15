@@ -72,6 +72,7 @@ public:
             const GameObjectId id =
                 GameObjectId::fromRaw(ri.resume_data[++ri.resume_data[0]]);
             if (!has_buff(id)) continue;
+            // At resolution: "for each" chooses no object (CR 355.10.d); a spell's may (355.18; batch M1).
             ctx.executor.requestChoice(ctx.controller,
                 {declineChoice(ctx.controller, "Keep its buff"),
                  valChoice(ctx.controller, 1, "Spend its buff to ready it")},

@@ -24,6 +24,14 @@ public:
     }
     bool needsPlayTimeTarget() const override { return true; }
 
+    // The unit (its play-time target) and the battlefield — a chosen object
+    // too (CR 355.5, 355.7) — are chosen as the spell is played, in its
+    // finalize pass, before its cost and before anyone can respond.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         const auto locked = lockedPlayTarget(ctx, targets);
         const GameObjectId chosen = locked ? *locked
@@ -31,7 +39,7 @@ public:
                          enumerateLegalTargets(ctx.state, ctx.controller));
         if (chosen == kInvalidId && ctx.state.chain.resuming.has_value() &&
             ctx.state.chain.resuming->resume_point == 7)
-            return;   // waiting for the agent (the XP below is gained once)
+            return;   // waiting for the agent
         // "and a battlefield": the controller's choice among all of them.
         const auto& bfs = ctx.state.battlefields;
         const int n = static_cast<int>(std::min<size_t>(bfs.size(), 32));
@@ -42,6 +50,7 @@ public:
                 : "Battlefield #" + std::to_string(static_cast<int>(bfs[i].id.raw())));
         const int mode = pickMode(ctx, "Stare Down: battlefield", n, labels);
         if (mode == -1) return;   // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
 
         if (chosen != kInvalidId && ctx.state.objectExists(chosen) && mode >= 0 && mode < n) {
             const int threshold = ctx.state.getObject(chosen).current_might;
@@ -53,6 +62,7 @@ public:
                 if (!at.has_value() || *at != bf) continue;
                 if (obj.current_might < threshold) weaker.push_back(id);
             }
+            std::sort(weaker.begin(), weaker.end());
             for (auto id : weaker) ctx.executor.moveToBase(id);
             RIFT_TRACE(ctx.events, "STARE DOWN: moved enemy units (< " +
                                  std::to_string(threshold) + "M) at a BF to base");

@@ -1269,8 +1269,11 @@ TEST_F(C3Test, ArcaneShift_ReplaysTheUnitOnceAndBanishesItself) {
     auto conn = events.on_entered_board.connect(
         [&](const EnteredBoardEvent& e) { if (e.object == unit) ++unit_plays; });
     control(P1, 1);
-    StepAgent agent{O(enemy), V(1)};   // the enemy unit; the unit comes back at the battlefield
-    playAt(spell, {unit}, &agent);
+    // Batch M1: both units are chosen as the spell is played, as a pair (the
+    // friendly unit was the intent's target): the unit, the enemy unit; the
+    // unit comes back at the battlefield.
+    StepAgent agent{O(unit), O(enemy), V(1)};
+    playAt(spell, {}, &agent);
     conn.disconnect();
     EXPECT_EQ(agent.missed, 0);
     EXPECT_LE(unit_plays, 1) << "banished and replayed once, not once per pass";

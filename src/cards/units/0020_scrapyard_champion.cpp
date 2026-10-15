@@ -23,6 +23,7 @@ public:
         return legionActive(state, controller);
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardThenAct(ctx, 2, "Scrapyard Champion: discard 2 then draw 2",
             [](CardContext& c) { c.executor.drawCards(c.controller, 2); });
     }

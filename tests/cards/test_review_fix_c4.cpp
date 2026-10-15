@@ -599,15 +599,31 @@ TEST_F(C4Test, DrMundoExpert_ChoosesWhichThreeCardsToRecycle) {
     EXPECT_EQ(trashSize(P1), 2);
 }
 
-TEST_F(C4Test, DrMundoExpert_ThreeOrFewerAreAllRecycledUnasked) {
+// Batch M1: the three cards are targets chosen as the ability is finalized
+// (CR 355.10.a, 403.2), one prompt each like every target (exactly three
+// there: all three, in the order the player names them); with fewer than
+// three the ability is removed (CR 403.4, judge question 15). This test was
+// "ThreeOrFewerAreAllRecycledUnasked" (two cards: both recycled, nothing asked).
+TEST_F(C4Test, DrMundoExpert_ExactlyThreeAreAllRecycled) {
+    auto mundo = addUnit(P1, kDrMundoExpert);
+    inTrashOf(P1, kIncinerate);
+    inTrashOf(P1, kIncinerate);
+    inTrashOf(P1, kIncinerate);
+    EnginePathAgent agent;
+    fireTriggerThroughEngine(mundo, TriggerType::AtStartOfBeginning, &agent);
+    EXPECT_EQ(agent.prompts.size(), 3u);
+    EXPECT_EQ(trashSize(P1), 0);
+    EXPECT_EQ(deckSize(P1), 3);
+}
+
+TEST_F(C4Test, DrMundoExpert_Pin_FewerThanThreeAreNotRecycled) {
     auto mundo = addUnit(P1, kDrMundoExpert);
     inTrashOf(P1, kIncinerate);
     inTrashOf(P1, kIncinerate);
     EnginePathAgent agent;
     fireTriggerThroughEngine(mundo, TriggerType::AtStartOfBeginning, &agent);
-    EXPECT_TRUE(agent.prompts.empty());
-    EXPECT_EQ(trashSize(P1), 0);
-    EXPECT_EQ(deckSize(P1), 2);
+    EXPECT_EQ(trashSize(P1), 2);
+    EXPECT_EQ(deckSize(P1), 0);
 }
 
 // ─── 03 / 07: choices, costs and re-entry ───────────────────────────────────

@@ -17,54 +17,38 @@ public:
     const CardDef& def() const override { return def_; }
     // [vendetta-E]
     // "Return up to 2 units from trashes to their owners' hands."
-    // Resumable: up to two sequential picks over the units in BOTH players'
-    // trashes, each with a "Done" option.
+    // The units are targets in public zones (CR 355.10.a.1), up to two, zero
+    // allowed (CR 355.13), chosen as the spell is played, in its finalize
+    // pass, before its cost: one prompt each over the units in BOTH players'
+    // trashes, with "None". A chosen unit that has left its trash as the
+    // spell resolves is a mistarget; the other is still returned.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // cards in trashes, not units on the board
+    }
+    static std::vector<GameObjectId> trashUnits(const GameState& state) {
+        std::vector<GameObjectId> out;
+        for (const auto& ps : state.players)
+            for (auto cid : ps.trash)
+                if (state.objectExists(cid) && state.getObject(cid).isUnit()) out.push_back(cid);
+        return out;
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        if (!ctx.state.chain.resuming.has_value()) return;
-        auto& ri = *ctx.state.chain.resuming;
-        auto candidates = [&]() {
-            std::vector<GameObjectId> out;
-            for (const auto& ps : ctx.state.players)
-                for (auto cid : ps.trash)
-                    if (ctx.state.objectExists(cid) && ctx.state.getObject(cid).isUnit())
-                        out.push_back(cid);
-            return out;
-        };
-        auto prompt = [&]() {
-            auto c = candidates();
-            if (c.empty()) return false;
-            std::vector<Intent> opts;
-            for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
-            // "up to 2" includes none (CR 355.13): "Done" is on every prompt,
-            // and with no unit in a trash the spell still resolves.
-            opts.push_back(valChoice(ctx.controller, 0, "Done"));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Shadows of the Past: return a unit from a trash", PromptKind::ChooseObject);
-            ri.resume_point = 1;
-            return true;
-        };
-        if (ri.resume_point == 0) {
-            ri.resume_data = {0};
-            if (!prompt()) ri.resume_point = 2;
-            return;
+        const auto picks = selectSeveralTargets(*this, ctx,
+            "Shadows of the Past: return a unit from a trash (up to two)",
+            trashUnits(ctx.state), /*max_picks=*/2);
+        if (!picks.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        for (auto picked : *picks) {
+            auto& obj = ctx.state.getObject(picked);
+            auto& owner = ctx.state.player(obj.owner);
+            owner.trash.erase(std::remove(owner.trash.begin(), owner.trash.end(), picked),
+                              owner.trash.end());
+            deck::putInHand(ctx.state, picked);
+            RIFT_TRACE(ctx.events, "SHADOWS OF THE PAST: returned " + obj.name +
+                                " from trash to its owner's hand");
         }
-        if (ri.resume_point != 1) return;
-        GameObjectId picked = takenObject(ctx);
-        auto legal = candidates();
-        if (picked == kInvalidId ||
-            std::find(legal.begin(), legal.end(), picked) == legal.end()) {
-            ri.resume_point = 2;   // "Done"
-            return;
-        }
-        auto& obj = ctx.state.getObject(picked);
-        auto& owner = ctx.state.player(obj.owner);
-        owner.trash.erase(std::remove(owner.trash.begin(), owner.trash.end(), picked),
-                          owner.trash.end());
-        deck::putInHand(ctx.state, picked);
-        RIFT_TRACE(ctx.events, "SHADOWS OF THE PAST: returned " + obj.name +
-                            " from trash to its owner's hand");
-        if (ri.resume_data.empty()) ri.resume_data = {0};
-        if (++ri.resume_data[0] >= 2 || !prompt()) ri.resume_point = 2;
     }
 private:
     const CardDef def_ = [] {

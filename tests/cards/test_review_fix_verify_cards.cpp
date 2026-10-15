@@ -2703,15 +2703,21 @@ TEST_F(VerifyCardsTest, ArcaneShift_DoesNotOfferABattlefieldUnitsCannotBePlayedT
     state.battlefields[1].controller = P1;
     addUnit(P1, kInvalidId, 1, 0);                            // a unit holding each
     addUnit(P1, kInvalidId, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({1}));     // no enemy unit: only "where"
-    playAt(spell, {unit}, &agent);
-    ASSERT_EQ(agent.prompts.size(), 1u);
-    EXPECT_TRUE(promptOffersValue(agent, 0, 0)) << "base";
+    // Batch M1: both units are targets chosen as the spell is played, as a
+    // pair (CR 355.5, 355.8): the friendly unit, then "an enemy unit at a
+    // battlefield", which the test now provides; the location prompt follows
+    // as it resolves (it was the only prompt, the unit named in the intent).
+    auto enemy = addUnit(P2, kInvalidId, 9, 1);
+    EnginePathAgent agent(EnginePathAgent::script(
+        {static_cast<int>(unit.raw()), static_cast<int>(enemy.raw()), 1}));
+    playAt(spell, {}, &agent);
+    ASSERT_EQ(agent.prompts.size(), 3u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 0)) << "base";
     // Options are numbered over what is offered (playLocations leaves the
     // blocked battlefield out — plans/09 item 9.G1): base, then battlefield #1.
-    EXPECT_TRUE(promptOffersValue(agent, 0, 1)) << "battlefield #1";
-    EXPECT_FALSE(promptOffersValue(agent, 0, 2)) << "units can't be played to battlefield #0";
-    EXPECT_EQ(agent.prompts[0].size(), 2u);
+    EXPECT_TRUE(promptOffersValue(agent, 2, 1)) << "battlefield #1";
+    EXPECT_FALSE(promptOffersValue(agent, 2, 2)) << "units can't be played to battlefield #0";
+    EXPECT_EQ(agent.prompts[2].size(), 2u);
     ASSERT_TRUE(onBoard(unit));
     EXPECT_EQ(bfOf(unit), std::optional<BattlefieldId>{BattlefieldId::fromRaw(1)});
 }
@@ -3153,7 +3159,10 @@ TEST_F(VerifyCardsTest, Pin_Batch08_ConvergentMutation108_AUnitThatLeftInRespons
         removeFromBoard(live, chosen);
     });
     EXPECT_FALSE(inHand(P1, spell)) << "the spell was played";
-    EXPECT_TRUE(agent.prompts.empty()) << "no target left: the other unit is never asked for";
+    // Batch M1: the other unit is the spell's second target, chosen as it is
+    // played (CR 355.5), before the response — one prompt then, none as it
+    // resolves (was: no prompt at all, asked only as it resolved).
+    EXPECT_EQ(agent.prompts.size(), 1u) << "the other unit, asked as the spell was played";
     EXPECT_EQ(o(chosen).temp_might_bonus, 0) << "a card in the trash gets no Might";
     EXPECT_EQ(o(chosen).current_might, 1);
     EXPECT_EQ(o(big).temp_might_bonus, 0);
@@ -3200,15 +3209,17 @@ TEST_F(VerifyCardsTest, ArcaneShift_APlayerWhoMayOnlyPlayUnitsToBaseIsOfferedOnl
     addUnit(P1, kInvalidId, 1, 0);                            // holds battlefield #0
     auto warden = addUnit(P2, kMageseekerWarden, 0, 1);
     ps(P1).units_play_base_only = true;
-    // Two prompts, both asked as the spell resolves (the friendly unit is the
-    // play-time target handed to playAt).
+    // Batch M1: the two units are chosen as the spell is played, as a pair
+    // (the friendly unit was the play-time target handed to playAt), then
+    // the location as it resolves.
     EnginePathAgent agent(EnginePathAgent::script({
+        static_cast<int>(unit.raw()),     // the friendly unit
         static_cast<int>(warden.raw()),   // "Deal 3 to an enemy unit at a battlefield": the Warden,
                                     // the only enemy unit
         0,                          // where the banished unit is played: option 0 = base,
                                     // the only place on offer (asserted below)
     }));
-    playAt(spell, {unit}, &agent);
+    playAt(spell, {}, &agent);
     for (size_t n = 0; n < agent.prompts.size(); ++n)
         for (const auto& i : agent.prompts[n])
             if (i.chosen_objects.empty()) {
@@ -4394,9 +4405,11 @@ TEST_F(VerifyCardsTest, CorruptedDragon_DoesNotOfferAnEnemyUnitItCannotMoveToBas
     auto rooted = addUnit(P2, kInvalidId, 2, 0);
     o(rooted).cant_move_to_base = true;                  // as Determined Sentry sets it
     auto free_unit = addUnit(P2, kInvalidId, 2, 0);
-    EnginePathAgent agent(EnginePathAgent::choosing(free_unit));
+    // Batch M1: the leading "you may" is a prompt of its own (CR 383.3.a):
+    // yes, then the unit (was one prompt).
+    EnginePathAgent agent(EnginePathAgent::choosing(free_unit, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &agent);
-    EXPECT_EQ(agent.prompts.size(), 1u) << "once the free unit is gone nothing is left to offer";
+    EXPECT_EQ(agent.prompts.size(), 2u) << "once the free unit is chosen nothing is left to offer";
     EXPECT_FALSE(agent.wasOffered(guarded)) << "can't be moved by enemy spells and abilities";
     EXPECT_FALSE(agent.wasOffered(rooted)) << "can't move to base";
     EXPECT_TRUE(agent.wasOffered(free_unit));
@@ -6265,12 +6278,17 @@ TEST_F(VerifyCardsTest, Pin_FaeDragon_NoneOnTheFirstPrompt_AndFewerThanFour) {
     EXPECT_EQ(o(dragon).buff_count, 0);
 }
 
-TEST_F(VerifyCardsTest, Pin_FaeDragon_NoUnbuffedFriendlyUnit_NothingAsked) {
+// Batch M1: was Pin_FaeDragon_NoUnbuffedFriendlyUnit_NothingAsked (only
+// unbuffed units were offered). The units are targets chosen as the ability
+// is finalized, and a unit with a buff can still be chosen for an action that
+// buffs; it is just not buffed again (CR 427.1.c).
+TEST_F(VerifyCardsTest, Pin_FaeDragon_ABuffedUnitIsOfferedAndNotBuffedAgain) {
     auto dragon = addUnit(P1, kFaeDragon, 0);
     o(dragon).buff_count = 1;
-    EnginePathAgent agent(EnginePathAgent::script({}));
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(dragon.raw())}));
     fireTriggerThroughEngine(dragon, TriggerType::WhenYouPlayMe, &agent);
-    EXPECT_TRUE(agent.prompts.empty());
+    EXPECT_EQ(agent.prompts.size(), 1u);
+    EXPECT_TRUE(agent.wasOffered(dragon));
     EXPECT_EQ(o(dragon).buff_count, 1);
 }
 
@@ -6564,14 +6582,18 @@ TEST_F(VerifyCardsTest, Pin_CorruptedDragon_ZeroUnitsMoved) {
 
     auto small1 = addUnit(P2, kInvalidId, 2, 0);
     auto small2 = addUnit(P2, kInvalidId, 3, 0);
+    // Batch M1: the leading "you may" is a prompt of its own (CR 383.3.a):
+    // yes, then "stop" on the first unit prompt (was one prompt).
     EnginePathAgent stop([](const std::vector<Intent>& legal) {
+        for (const auto& i : legal)
+            if (i.choice_label.rfind("Yes", 0) == 0) return i;
         for (const auto& i : legal)
             if (i.chosen_objects.empty()) return i;
         ADD_FAILURE() << "no 'stop' option";
         return legal.front();
     });
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &stop);
-    EXPECT_EQ(stop.prompts.size(), 1u);
+    EXPECT_EQ(stop.prompts.size(), 2u);
     EXPECT_TRUE(stop.wasOffered(small1));
     EXPECT_TRUE(stop.wasOffered(small2));
     EXPECT_FALSE(stop.wasOffered(big));
@@ -7392,9 +7414,13 @@ TEST_F(VerifyCardsTest, Pin_AccelerationGate_OffersAnOpponentsExhaustedRuneUnitA
     EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(their_rune.raw()), 0}));
     playThroughEngine(gate, &agent);
     ASSERT_EQ(agent.prompts.size(), 2u);
+    // Batch M1: chosen as the spell is played, when nothing says what will be
+    // exhausted as it resolves, and the text has no "exhausted" restriction
+    // (CR 355.9): a ready rune is offered too (was left out).
     EXPECT_EQ(promptObjects(agent, 0),
-              (std::vector<GameObjectId>{my_rune, their_rune, their_unit, their_gear}));
-    EXPECT_FALSE(agent.wasOffered(their_ready_rune));
+              (std::vector<GameObjectId>{my_rune, their_rune, their_ready_rune, their_unit,
+                                         their_gear}));
+    EXPECT_TRUE(agent.wasOffered(their_ready_rune));
     EXPECT_FALSE(o(their_rune).is_exhausted);
     EXPECT_TRUE(o(my_rune).is_exhausted);
     EXPECT_TRUE(o(their_unit).is_exhausted);

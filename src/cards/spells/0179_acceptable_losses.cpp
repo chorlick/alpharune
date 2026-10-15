@@ -41,6 +41,7 @@ public:
         auto prompt_opponent = [&]() -> bool {
             auto gear = own_gear(opp);
             if (gear.empty()) return false;
+            // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(opp, build_choices(opp, gear),
                                         "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);
             ri.resume_point = 2;
@@ -50,6 +51,7 @@ public:
         case 0: {  // controller picks their gear
             auto gear = own_gear(ctx.controller);
             if (gear.empty()) { prompt_opponent(); return; }
+            // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(ctx.controller,
                                         build_choices(ctx.controller, gear),
                                         "Acceptable Losses: kill one of your gear", PromptKind::ChooseObject);

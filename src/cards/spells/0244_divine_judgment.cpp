@@ -77,6 +77,7 @@ public:
                     keep_two.chosen_objects.push_back(in_category[b]);
                     options.push_back(std::move(keep_two));
                 }
+            // At resolution: each player chooses (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(p, std::move(options),
                 std::string("Divine Judgment: choose 2 ") + kWhat[step % 4] + " to keep", PromptKind::ChooseObject);
             ri.resume_point = kAwait;

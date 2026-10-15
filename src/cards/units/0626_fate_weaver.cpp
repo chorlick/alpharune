@@ -44,6 +44,7 @@ public:
         // "Look at the top 4 cards": a private look, which is what the offer
         // below is made from.
         for (auto id : topFour(ctx)) knowledge::shown(ctx.state, id, knowledge::only(ctx.controller));
+        // At resolution: not the first part of the effect (CR 383.3.a.3; batch M1).
         int conf = confirmOptional(ctx, "Fate Weaver: reveal a spell ([4]+) from the top 4 and draw it?",
                                    [&]() { return !eligibleSpells(ctx).empty(); });
         if (conf == -1) return;  // waiting for agent
@@ -53,6 +54,7 @@ public:
 
         GameObjectId drawn = kInvalidId;
         if (conf == 1) {
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             drawn = pickTarget(ctx, "Fate Weaver: choose a spell ([4]+) to draw",
                                eligibleSpells(ctx));
             if (drawn == kInvalidId && ctx.state.chain.resuming.has_value() &&

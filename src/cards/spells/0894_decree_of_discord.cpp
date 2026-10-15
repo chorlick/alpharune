@@ -18,73 +18,110 @@ public:
     // [vendetta-E]
     // "Return any number of enemy Order ([Y]) units with total Might 5 or less
     //  to their owners' hands."
-    // Resumable: repeated picks (each with a "Done" option) against a Might
-    // budget of 5; all chosen units are returned together at the end.
-    // resume_data = {remaining budget, picked ids...}. The picks are built by
-    // hand, so each goes through offerableChoices / commitChosenObject.
+    // The units are targets chosen as a group (CR 355.11.a; zero allowed,
+    // 355.13) as the spell is played, in its finalize pass, before its cost:
+    // one prompt per unit (each with "Done") against the Might budget, built
+    // by hand, so each goes through offerableChoices / commitChosenObject. As
+    // it resolves, the chosen units still legal are returned together; if
+    // they no longer have total Might 5 or less, the controller chooses a
+    // legal subset of them (CR 355.11.b).
+    // Progress: resume_point kPicking / kAwait / kChosen / kDone;
+    // resume_data[kCountSlot] = units picked, then the units; the subset
+    // helper's slots follow them.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // enemy units only
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
-        auto candidates = [&]() {
-            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                if (o.controller == ctx.controller) return false;
-                if (std::find(o.domains.begin(), o.domains.end(), Domain::Order) ==
-                    o.domains.end()) return false;
-                if (o.current_might > ri.resume_data[0]) return false;
-                for (size_t i = 1; i < ri.resume_data.size(); ++i)
-                    if (GameObjectId::fromRaw(ri.resume_data[i]) == o.id) return false;
-                return true;
+        if (ri.resume_point == kDone) return;
+        if (ri.resume_point != kPicking && ri.resume_point != kAwait && ri.resume_point != kChosen) {
+            ri.resume_data.assign(kCountSlot + 1, 0);
+            ri.resume_point = kPicking;
+        }
+        auto picked = [&]() {
+            std::vector<GameObjectId> out;
+            const auto n = static_cast<size_t>(ri.resume_data[kCountSlot]);
+            for (size_t i = 0; i < n; ++i)
+                out.push_back(GameObjectId::fromRaw(ri.resume_data[kCountSlot + 1 + i]));
+            return out;
+        };
+        auto mightOf = [&](const std::vector<GameObjectId>& units) {
+            int total = 0;
+            for (auto id : units) total += std::max(0, ctx.state.getObject(id).current_might);
+            return total;
+        };
+        auto orderUnits = [&]() {
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller &&
+                       std::find(o.domains.begin(), o.domains.end(), Domain::Order) !=
+                           o.domains.end();
             });
-            std::sort(out.begin(), out.end());
-            // Deflect (CR 809): only units whose cost the controller can pay.
-            return offerableChoices(ctx, out);
         };
-        auto prompt = [&]() {
-            auto c = candidates();
-            if (c.empty()) return false;
-            std::vector<Intent> opts;
-            for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
-            // "any number" includes zero (CR 355.13): "Done" is on every
-            // prompt, and with no unit to choose the spell still resolves.
-            opts.push_back(valChoice(ctx.controller, 0, "Done"));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                "Decree of Discord: return an enemy Order unit (Might left: " +
-                std::to_string(ri.resume_data[0]) + ")", PromptKind::ChooseObject);
-            ri.resume_point = 1;
-            return true;
+        auto candidates = [&]() {
+            const auto have = picked();
+            const int budget = kTotalMight - mightOf(have);
+            std::vector<GameObjectId> out;
+            for (auto id : orderUnits())
+                if (std::find(have.begin(), have.end(), id) == have.end() &&
+                    ctx.state.getObject(id).current_might <= budget)
+                    out.push_back(id);
+            return offerableChoices(ctx, out);   // Deflect (CR 809)
         };
-        auto finish = [&]() {
-            ri.resume_point = 2;
-            for (size_t i = 1; i < ri.resume_data.size(); ++i) {
-                auto id = GameObjectId::fromRaw(ri.resume_data[i]);
-                if (!ctx.state.objectExists(id)) continue;
-                auto& unit = ctx.state.getObject(id);
-                if (!unit.location.has_value()) continue;
-                for (auto gid : std::vector<GameObjectId>(unit.attachments))
-                    ctx.executor.unattachGear(gid);
-                ctx.executor.bounceToHand(id);
+        if (ri.resume_point == kAwait) {
+            const GameObjectId unit = takenObject(ctx);
+            const auto legal = candidates();
+            if (std::find(legal.begin(), legal.end(), unit) != legal.end()) {
+                commitChosenObject(ctx, unit);   // Deflect, "chosen" bookkeeping
+                ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
+                ++ri.resume_data[kCountSlot];
+                ri.resume_point = kPicking;
+            } else {
+                ri.resume_point = kChosen;   // "Done"
             }
-        };
-        if (ri.resume_point == 0) {
-            ri.resume_data = {5};
-            if (!prompt()) finish();
-            return;
         }
-        if (ri.resume_point != 1 || ri.resume_data.empty()) return;
-        GameObjectId picked = takenObject(ctx);
-        auto legal = candidates();
-        if (picked == kInvalidId ||
-            std::find(legal.begin(), legal.end(), picked) == legal.end()) {
-            finish();   // "Done"
-            return;
+        if (ri.resume_point == kPicking) {
+            const auto c = candidates();
+            if (!c.empty()) {
+                std::vector<Intent> opts;
+                for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
+                opts.push_back(valChoice(ctx.controller, 0, "Done"));
+                ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                    "Decree of Discord: return an enemy Order unit (Might left: " +
+                    std::to_string(kTotalMight - mightOf(picked())) + ")", PromptKind::ChooseObject);
+                ri.resume_point = kAwait;
+                return;
+            }
+            ri.resume_point = kChosen;
         }
-        // The unit is chosen: Deflect is paid and the choice recorded, as
-        // Card::pickTarget would.
-        commitChosenObject(ctx, picked);
-        ri.resume_data[0] -= ctx.state.getObject(picked).current_might;
-        ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
-        if (!prompt()) finish();
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+
+        const auto chosen = picked();
+        std::vector<GameObjectId> originals;
+        const auto now = orderUnits();
+        for (auto id : chosen)
+            if (std::find(now.begin(), now.end(), id) != now.end() &&
+                ctx.state.stillTheChosenObject(ri, id))
+                originals.push_back(id);
+        const auto group = chooseFittingSubset(ctx,
+            "Decree of Discord: the chosen units no longer have total Might 5 or less -"
+            " choose which of them to return",
+            originals, [&](const std::vector<GameObjectId>& set) {
+                return mightOf(set) <= kTotalMight;
+            }, kCountSlot + 1 + chosen.size());
+        if (!group.has_value()) return;   // waiting for the agent
+        ri.resume_point = kDone;
+        for (auto id : *group) {
+            if (!ctx.state.getObject(id).location.has_value()) continue;
+            ctx.executor.bounceToHand(id);
+        }
     }
+private:
+    static constexpr int kTotalMight = 5;
+    enum : int { kPicking = 40, kAwait = 41, kChosen = 42, kDone = 43 };
+    static constexpr size_t kCountSlot = 7;
 private:
     const CardDef def_ = [] {
         CardDef d;

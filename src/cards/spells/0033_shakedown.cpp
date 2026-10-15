@@ -29,6 +29,7 @@ public:
             auto& ri = *ctx.state.chain.resuming;
             if (ri.resume_point == kDone) return;
             if (ri.resume_point != kAwait) {
+                // At resolution: another player's choice (CR 355.10.e; batch M1).
                 ctx.executor.requestChoice(unit_controller,
                     {valChoice(unit_controller, 0, "Take 6 damage"),
                      valChoice(unit_controller, 1, "Opponent draws 2")},

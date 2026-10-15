@@ -15,27 +15,38 @@ namespace {
 class TheHarrowing : public SpellCard {
 public:
     const CardDef& def() const override { return def_; }
-    // "Play a unit from your trash, ignoring its Energy cost." (Power cost
-    // approximated as free.) Target lives in trash — defer to resolve-time pick.
-    bool needsPlayTimeTarget() const override { return true; }
+    // "Play a unit from your trash, ignoring its Energy cost." The trash is a
+    // public zone, so the unit is a target (CR 355.10.a), chosen as the spell
+    // is played (CR 355.5) — in its finalize pass, before its cost. It is not
+    // playable with no unit there (CR 355.8).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // a card in a trash, not a unit on the board
+    }
+    static std::vector<GameObjectId> trashUnits(const GameState& state, PlayerId controller) {
+        std::vector<GameObjectId> out;
+        for (auto cid : state.player(controller).trash)
+            if (state.objectExists(cid) && state.getObject(cid).isUnit()) out.push_back(cid);
+        return out;
+    }
+    bool hasLegalTargets(const GameState& state, PlayerId controller) const override {
+        return !trashUnits(state, controller).empty();
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
-        auto& ps = ctx.state.player(ctx.controller);
-        std::vector<GameObjectId> trash_units;
-        for (auto cid : ps.trash) {
-            if (!ctx.state.objectExists(cid)) continue;
-            if (ctx.state.getObject(cid).isUnit()) trash_units.push_back(cid);
-        }
-        if (trash_units.empty()) return;
-        GameObjectId picked = pickTarget(ctx, "The Harrowing (unit from trash)",
-                                          trash_units);
+        // No unit: pickTarget stores "no target", so nothing is asked later.
+        const GameObjectId picked = pickTarget(ctx, "The Harrowing (unit from trash)",
+                                               trashUnits(ctx.state, ctx.controller));
         if (picked == kInvalidId && ctx.state.chain.resuming.has_value() &&
-            ctx.state.chain.resuming->resume_point == 7) {
-            return;  // suspended
-        }
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+        // A unit no longer in the trash is a mistarget (CR 359.3.e.5).
         if (picked == kInvalidId || !ctx.state.objectExists(picked)) return;
         // CR 355.2.a: no location is printed, so the unit goes to its
         // controller's base or to a battlefield they control (and may be
-        // played to) — chosen as it is played (as Spectral Matron 226).
+        // played to) — chosen as the unit is played and finalized, at
+        // resolution (CR 420.3.b.2).
         const int where = pickEffectPlayLocation(*this, ctx, "The Harrowing: play it to");
         if (where == -1) return;   // waiting for the agent
         // "ignoring its Energy cost. (You must still pay its Power cost.)"

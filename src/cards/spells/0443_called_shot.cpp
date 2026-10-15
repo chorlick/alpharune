@@ -44,6 +44,7 @@ public:
                 c.chosen_objects = {cid}; choices.push_back(std::move(c));
             }
             if (choices.empty()) return;
+            // At resolution: a card in a hidden zone is not a target (CR 355.10.a; batch M1).
             ctx.executor.requestChoice(ctx.controller, std::move(choices),
                                         "Called Shot: draw one (recycle the other)", PromptKind::ChooseObject);
             ri.resume_point = 1;

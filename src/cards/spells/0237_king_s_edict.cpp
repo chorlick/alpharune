@@ -33,6 +33,7 @@ public:
             if (units.empty()) { ri.resume_point = kDone; return; }
             std::vector<Intent> options;
             for (auto id : units) options.push_back(objChoice(opp, id));
+            // At resolution: another player's choice (CR 355.10.e; batch M1).
             ctx.executor.requestChoice(opp, std::move(options),
                                        "King's Edict: choose one of your units to be killed", PromptKind::ChooseObject);
             ri.resume_point = kAwait;

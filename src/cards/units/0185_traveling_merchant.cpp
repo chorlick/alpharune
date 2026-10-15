@@ -16,6 +16,7 @@ class TravelingMerchant : public UnitCard {
 public:
     const CardDef& def() const override { return def_; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardThenAct(ctx, 1, "Traveling Merchant: discard 1 then draw 1",
             [](CardContext& c) { c.executor.drawCards(c.controller, 1); });
     }

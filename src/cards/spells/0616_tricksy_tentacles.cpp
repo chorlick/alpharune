@@ -17,87 +17,154 @@ public:
     const CardDef& def() const override { return def_; }
     // "Move any number of enemy units with the same controller and a total
     //  Might of 8 or less to a single location."
-    // Resumable: repeated unit picks (each with a "Done" option) against a
-    // Might budget of 8, then the one location they all move to (their
-    // controller's base or any battlefield). 1v1: every enemy unit has the
-    // same controller. resume_data = {remaining budget, picked ids...};
-    // resume_point 1 = a unit is being asked, 2 = the location, 3 = done.
+    // The units are targets chosen as a group (CR 355.11.a, 355.13: zero
+    // allowed) and the location is the move's destination (CR 355.4): both
+    // are chosen as the spell is played, in its finalize pass, before its
+    // cost and before anyone can respond. One unit per prompt (each with
+    // "Done") against the Might budget, then the location. 1v1: every enemy
+    // unit has the same controller. As it resolves, the chosen units that are
+    // still legal targets move; if they no longer have total Might 8 or less
+    // the controller chooses a legal subset of them (CR 355.11.b).
+    // Progress: resume_point kPicking / kAwaitUnit / kAskDest / kAwaitDest /
+    // kChosen / kDone; resume_data[kDestSlot] = the location (moveDests code, -1 none),
+    // [kCountSlot] = units picked, then the units; the subset helper's slots
+    // follow them.
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState&, PlayerId,
+                                           GameObjectId) const override {
+        return FinalizeChoice::No;   // enemy units only
+    }
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.chain.resuming.has_value()) return;
         auto& ri = *ctx.state.chain.resuming;
-        auto candidates = [&]() {
-            auto out = chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
-                if (o.controller == ctx.controller) return false;
-                if (o.current_might > ri.resume_data[0]) return false;
-                for (size_t i = 1; i < ri.resume_data.size(); ++i)
-                    if (GameObjectId::fromRaw(ri.resume_data[i]) == o.id) return false;
-                return true;
-            });
-            std::sort(out.begin(), out.end());
-            // Deflect (CR 809): only units whose cost the controller can pay.
-            return offerableChoices(ctx, out);
-        };
-        auto promptUnit = [&]() {
-            auto c = candidates();
-            if (c.empty()) return false;
-            std::vector<Intent> opts;
-            for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
-            // "any number" includes zero (CR 355.13): "Done" is on every
-            // prompt, and with no unit to choose the spell still resolves.
-            opts.push_back(valChoice(ctx.controller, 0, "Done"));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                "Tricksy Tentacles: move an enemy unit (Might left: " +
-                std::to_string(ri.resume_data[0]) + ")", PromptKind::ChooseObject);
-            ri.resume_point = 1;
-            return true;
-        };
-        const int n = 1 + static_cast<int>(ctx.state.battlefields.size());
-        auto promptLocation = [&]() {
-            if (ri.resume_data.size() <= 1) { ri.resume_point = 3; return; }   // nothing chosen
-            std::vector<Intent> opts;
-            for (int d = 0; d < n; ++d)
-                opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
-            ctx.executor.requestChoice(ctx.controller, std::move(opts),
-                                       "Tricksy Tentacles: move them where?", PromptKind::Location);
-            ri.resume_point = 2;
-        };
-        if (ri.resume_point == 0) {
-            ri.resume_data = {8};
-            if (!promptUnit()) ri.resume_point = 3;
-            return;
+        if (ri.resume_point == kDone) return;
+        const bool ours = ri.resume_point == kPicking || ri.resume_point == kAwaitUnit ||
+                          ri.resume_point == kAskDest || ri.resume_point == kAwaitDest ||
+                          ri.resume_point == kChosen;
+        if (!ours) {
+            ri.resume_data.assign(kCountSlot + 1, 0);
+            ri.resume_data[kDestSlot] = -1;
+            ri.resume_point = kPicking;
         }
-        if (ri.resume_data.empty()) return;
-        if (ri.resume_point == 1) {
-            GameObjectId picked = takenObject(ctx);
-            auto legal = candidates();
-            if (picked == kInvalidId ||
-                std::find(legal.begin(), legal.end(), picked) == legal.end()) {
-                promptLocation();   // "Done"
+        auto picked = [&]() {
+            std::vector<GameObjectId> out;
+            const auto n = static_cast<size_t>(ri.resume_data[kCountSlot]);
+            for (size_t i = 0; i < n; ++i)
+                out.push_back(GameObjectId::fromRaw(ri.resume_data[kCountSlot + 1 + i]));
+            return out;
+        };
+        auto enemies = [&]() {
+            return chooseableUnits(ctx.state, ctx.controller, [&](const GameObject& o) {
+                return o.controller != ctx.controller;
+            });
+        };
+        auto mightOf = [&](const std::vector<GameObjectId>& units) {
+            int total = 0;
+            for (auto id : units) total += std::max(0, ctx.state.getObject(id).current_might);
+            return total;
+        };
+        auto candidates = [&]() {
+            const auto have = picked();
+            const int budget = kTotalMight - mightOf(have);
+            std::vector<GameObjectId> out;
+            for (auto id : enemies())
+                if (std::find(have.begin(), have.end(), id) == have.end() &&
+                    ctx.state.getObject(id).current_might <= budget)
+                    out.push_back(id);
+            return offerableChoices(ctx, out);   // Deflect (CR 809)
+        };
+        // Locations at least one chosen unit can move to (CR 355.4.a).
+        auto destinations = [&]() {
+            std::vector<int> out;
+            for (auto id : picked())
+                for (int d : moveDests(ctx.state, ctx.state.getObject(id)))
+                    if (std::find(out.begin(), out.end(), d) == out.end()) out.push_back(d);
+            std::sort(out.begin(), out.end());
+            return out;
+        };
+        if (ri.resume_point == kAwaitUnit) {
+            const GameObjectId unit = takenObject(ctx);
+            const auto legal = candidates();
+            if (std::find(legal.begin(), legal.end(), unit) != legal.end()) {
+                commitChosenObject(ctx, unit);   // Deflect, "chosen" bookkeeping
+                ri.resume_data.push_back(static_cast<int32_t>(unit.raw()));
+                ++ri.resume_data[kCountSlot];
+                ri.resume_point = kPicking;
+            } else {
+                ri.resume_point = kAskDest;   // "Done": on to the location
+            }
+        }
+        if (ri.resume_point == kPicking) {
+            const auto c = candidates();
+            if (!c.empty()) {
+                std::vector<Intent> opts;
+                for (auto id : c) opts.push_back(objChoice(ctx.controller, id));
+                opts.push_back(valChoice(ctx.controller, 0, "Done"));
+                ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                    "Tricksy Tentacles: move an enemy unit (Might left: " +
+                    std::to_string(kTotalMight - mightOf(picked())) + ")", PromptKind::ChooseObject);
+                ri.resume_point = kAwaitUnit;
                 return;
             }
-            commitChosenObject(ctx, picked);   // Deflect, "chosen" bookkeeping
-            ri.resume_data[0] -= ctx.state.getObject(picked).current_might;
-            ri.resume_data.push_back(static_cast<int32_t>(picked.raw()));
-            if (!promptUnit()) promptLocation();
-            return;
+            ri.resume_point = kAskDest;
         }
-        if (ri.resume_point == 2) {
-            ri.resume_point = 3;
-            int d = takenValue(ctx, 0);
-            if (d < 0 || d >= n) d = 0;
-            for (size_t i = 1; i < ri.resume_data.size(); ++i) {
-                auto id = GameObjectId::fromRaw(ri.resume_data[i]);
-                if (!ctx.state.objectExists(id)) continue;
-                const auto& u = ctx.state.getObject(id);
-                if (!u.location.has_value()) continue;
-                // Already there: it does not move.
-                const auto dests = moveDests(ctx.state, u);
-                if (std::find(dests.begin(), dests.end(), d) == dests.end()) continue;
-                moveTo(ctx, id, d);
+        if (ri.resume_point == kAskDest) {
+            const auto dests = destinations();
+            if (dests.empty()) {
+                ri.resume_point = kChosen;   // nothing chosen, or nowhere to go
+            } else {
+                std::vector<Intent> opts;
+                for (int d : dests) opts.push_back(valChoice(ctx.controller, d, destLabel(d)));
+                ctx.executor.requestChoice(ctx.controller, std::move(opts),
+                                           "Tricksy Tentacles: move them where?", PromptKind::Location);
+                ri.resume_point = kAwaitDest;
+                return;
             }
-            RIFT_TRACE(ctx.events, "TRICKSY TENTACLES: moved the chosen enemy units to " + destLabel(d));
         }
+        if (ri.resume_point == kAwaitDest) {
+            const auto dests = destinations();
+            int d = takenValue(ctx, dests.empty() ? -1 : dests.front());
+            if (std::find(dests.begin(), dests.end(), d) == dests.end())
+                d = dests.empty() ? -1 : dests.front();
+            ri.resume_data[kDestSlot] = d;
+            ri.resume_point = kChosen;
+        }
+        if (finalizingChoices(ctx)) return;   // choices end here (CR 355)
+
+        const int d = ri.resume_data[kDestSlot];
+        const auto chosen = picked();
+        if (d < 0 || chosen.empty()) { ri.resume_point = kDone; return; }
+        // The chosen units that are still legal targets (CR 359.3.e.4-5).
+        std::vector<GameObjectId> originals;
+        const auto now = enemies();
+        for (auto id : chosen)
+            if (std::find(now.begin(), now.end(), id) != now.end() &&
+                ctx.state.stillTheChosenObject(ri, id))
+                originals.push_back(id);
+        const auto group = chooseFittingSubset(ctx,
+            "Tricksy Tentacles: the chosen units no longer have total Might 8 or less -"
+            " choose which of them to move",
+            originals, [&](const std::vector<GameObjectId>& set) {
+                return mightOf(set) <= kTotalMight;
+            }, kCountSlot + 1 + chosen.size());
+        if (!group.has_value()) return;   // waiting for the agent
+        ri.resume_point = kDone;
+        for (auto id : *group) {
+            const auto& u = ctx.state.getObject(id);
+            if (!u.location.has_value()) continue;
+            // Already there, or unable to go there: it does not move.
+            const auto dests = moveDests(ctx.state, u);
+            if (std::find(dests.begin(), dests.end(), d) == dests.end()) continue;
+            moveTo(ctx, id, d);
+        }
+        RIFT_TRACE(ctx.events, "TRICKSY TENTACLES: moved the chosen enemy units to " + destLabel(d));
     }
+private:
+    static constexpr int kTotalMight = 8;
+    enum : int { kPicking = 40, kAwaitUnit = 41, kAskDest = 42, kChosen = 43, kDone = 44,
+                 kAwaitDest = 45 };
+    static constexpr size_t kDestSlot = 7;
+    static constexpr size_t kCountSlot = 8;
 private:
     const CardDef def_ = [] {
         CardDef d;

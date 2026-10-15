@@ -859,8 +859,10 @@ TEST_F(C7Test, CorruptedDragon_MovesOnlyUnitsItCanChooseAndPaysDeflect) {
     auto deflector = addUnit(P2, kPoutyPoro, 0, 0);
     ASSERT_TRUE(o(deflector).keywords.has(Keyword::Deflect));
 
-    // No Power: the [Deflect] unit can't be chosen.
-    EnginePathAgent agent(EnginePathAgent::choosing(small));
+    // No Power: the [Deflect] unit can't be chosen. (Batch M1: the leading
+    // "you may" is its own prompt now, asked as the ability is finalized,
+    // CR 383.3.a.)
+    EnginePathAgent agent(EnginePathAgent::choosing(small, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &agent);
     EXPECT_FALSE(agent.wasOffered(big)) << "5 [M] or less";
     EXPECT_FALSE(agent.wasOffered(hidden)) << "can't be chosen by enemy abilities";
@@ -870,7 +872,7 @@ TEST_F(C7Test, CorruptedDragon_MovesOnlyUnitsItCanChooseAndPaysDeflect) {
 
     // With [A] to pay, it can — and the Power is spent.
     state.player(P1).rune_pool.universal_power = 1;
-    EnginePathAgent pays(EnginePathAgent::choosing(deflector));
+    EnginePathAgent pays(EnginePathAgent::choosing(deflector, EnginePathAgent::May::Yes));
     fireTriggerThroughEngine(dragon, TriggerType::WhenIAttack, &pays);
     EXPECT_TRUE(o(deflector).isAtBase());
     EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0) << "Deflect paid (CR 809)";

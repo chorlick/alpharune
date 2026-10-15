@@ -18,6 +18,7 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& targets) override {
         GameObjectId target = targets.empty() ? kInvalidId : targets[0];
         GameObjectId source = ctx.source;
+        // At resolution: the discard is chosen from a hidden hand (CR 355.10.a; batch M1).
         discardOneThenAct(ctx, "Get Excited!: discard 1",
             [target, source](CardContext& c, GameObjectId discarded) {
                 if (target == kInvalidId || !c.state.objectExists(target)) return;

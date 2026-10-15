@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1681,6 +1682,95 @@ inline std::optional<std::vector<GameObjectId>> selectSeveralTargets(
         options.erase(std::find(options.begin(), options.end(), *one));
     }
     return picked;
+}
+
+// ── A group of targets that no longer meets its requirement (CR 355.11.b) ───
+/// "Move any number of enemy units ... with a total Might of 8 or less": the
+/// units are chosen as a group as the item is finalized (CR 355.11.a). As it
+/// resolves, `originals` are those of them that are still legal targets; if
+/// they no longer meet the requirement together (`fits(set)` false), the
+/// controller chooses a legal subset of them, one that holds as many of them
+/// as any legal subset does (CR 355.11.b.1). One prompt per member, offering
+/// only the originals with which such a subset can still be completed; a lone
+/// option is taken without asking. Returns the set to affect, or nullopt while
+/// the agent is being asked (the caller returns and is re-entered). Progress
+/// lives in resume_data[slot] (1 + members picked; 0 = not started),
+/// resume_data[slot + 1] (a prompt is out) and the members from slot + 2.
+/// `originals` must not change between entries (nothing happens between the
+/// prompts of a resolution). Brute force over subsets, for the small groups
+/// cards choose: more than 16 throws.
+template <typename Fits>
+std::optional<std::vector<GameObjectId>> chooseFittingSubset(
+        CardContext& ctx, const std::string& label, std::vector<GameObjectId> originals,
+        Fits&& fits, size_t slot,
+        std::source_location where = std::source_location::current()) {
+    std::sort(originals.begin(), originals.end());
+    if (fits(originals)) return originals;
+    if (originals.size() > 16)
+        throw std::logic_error("chooseFittingSubset (" + label + "): more than 16 targets");
+    auto& ri_opt = ctx.state.chain.resuming;
+    const size_t n = originals.size();
+    auto setOf = [&](uint32_t mask) {
+        std::vector<GameObjectId> out;
+        for (size_t i = 0; i < n; ++i) if (mask & (1u << i)) out.push_back(originals[i]);
+        return out;
+    };
+    // The largest legal subset containing `must`, by size.
+    auto best = [&](uint32_t must) {
+        int top = -1;
+        for (uint32_t m = 0; m < (1u << n); ++m) {
+            if ((m & must) != must) continue;
+            const int c = __builtin_popcount(m);
+            if (c > top && fits(setOf(m))) top = c;
+        }
+        return top;
+    };
+    const int goal = best(0);
+    if (goal <= 0) return std::vector<GameObjectId>{};
+    uint32_t chosen = 0;
+    auto viable = [&]() {
+        std::vector<size_t> out;
+        for (size_t i = 0; i < n; ++i)
+            if (!(chosen & (1u << i)) && best(chosen | (1u << i)) == goal) out.push_back(i);
+        return out;
+    };
+    if (!ri_opt.has_value()) {
+        // Direct invocation: nobody to ask; the first legal subset of the most.
+        for (auto v = viable(); !v.empty(); v = viable()) chosen |= 1u << v.front();
+        return setOf(chosen);
+    }
+    auto& ri = *ri_opt;
+    while (ri.resume_data.size() < slot + 2) ri.resume_data.push_back(0);
+    const auto picks = static_cast<size_t>(std::max(0, ri.resume_data[slot] - 1));
+    for (size_t k = 0; k < picks && slot + 2 + k < ri.resume_data.size(); ++k) {
+        const auto id = GameObjectId::fromRaw(ri.resume_data[slot + 2 + k]);
+        for (size_t i = 0; i < n; ++i) if (originals[i] == id) chosen |= 1u << i;
+    }
+    auto record = [&](size_t i) {
+        chosen |= 1u << i;
+        if (ri.resume_data[slot] == 0) ri.resume_data[slot] = 1;
+        ri.resume_data.resize(slot + 2 + static_cast<size_t>(ri.resume_data[slot] - 1));
+        ri.resume_data.push_back(static_cast<int32_t>(originals[i].raw()));
+        ++ri.resume_data[slot];
+    };
+    if (ri.resume_data[slot + 1] == 1) {
+        ri.resume_data[slot + 1] = 0;
+        const GameObjectId answer = takenObject(ctx);
+        const auto v = viable();
+        size_t pick = v.empty() ? n : v.front();
+        for (size_t i : v) if (originals[i] == answer) pick = i;
+        if (pick < n) record(pick);
+    }
+    for (auto v = viable(); !v.empty(); v = viable()) {
+        if (v.size() == 1) { record(v.front()); continue; }
+        std::vector<Intent> options;
+        for (size_t i : v) options.push_back(objChoice(ctx.controller, originals[i]));
+        ctx.executor.requestChoice(ctx.controller, std::move(options), label,
+                                   PromptKind::ChooseObject, where);
+        ri.resume_data[slot + 1] = 1;
+        return std::nullopt;
+    }
+    return setOf(chosen);
 }
 
 /// "Gain N XP." Every card effect that gives XP goes through here so

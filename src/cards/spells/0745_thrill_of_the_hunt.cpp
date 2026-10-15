@@ -70,6 +70,7 @@ public:
                                 " can't be played to any battlefield — it stays banished");
             return;
         }
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         // The OWNER plays it, so the owner chooses where it goes (CR 355.2:
         // the location is a choice of the play; testing phase M4) — which is
         // not the spell's controller when the unit is one it took control of.

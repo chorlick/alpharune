@@ -50,6 +50,7 @@ public:
         // while the card is still the revealed top card. Gear goes to base.
         std::optional<LocationId> where_to;
         if (ctx.state.getObject(top).isUnit()) {
+            // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
             const int where = pickEffectPlayLocation(*this, ctx, "Blind Fury: play it to");
             if (where == -1) return;   // waiting for the agent
             where_to = effectPlayLocation(ctx.state, ctx.controller, where);

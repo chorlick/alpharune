@@ -26,6 +26,7 @@ public:
                                             {"Bilgewater"}, KeywordSet{}, loc,
                                             /*enter_ready=*/false);
         };
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         playTokensChoosingLocations(ctx, "Up from the Deep: play a Tentacle", 2, make, made);
     }
     // "[Flow] [3]"

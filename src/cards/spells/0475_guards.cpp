@@ -41,6 +41,7 @@ public:
         // (judge ruling 2026-10-11: confirmed — nothing happens, the Sand Soldier is not played and
         // the reflexive "pay [C] to ready it" is never reached; plans/09 9.I7.)
         if (where.count() == 0) return;                  // nowhere to play it
+        // At resolution: an effect play's location is chosen as it plays (CR 420.3.b.2; batch M1).
         int mode = pickMode(ctx, "Guards!: where to play the Sand Soldier",
                             where.count(), where.labels);
         if (mode < 0 || mode >= where.count()) return;   // waiting for the agent

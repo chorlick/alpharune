@@ -24,78 +24,70 @@ public:
     }
     bool needsPlayTimeTarget() const override { return true; }
 
+    // "Stun an enemy unit at a battlefield. You may move a friendly unit to
+    // that enemy unit's battlefield." Both units are targets chosen as the
+    // spell is played: the enemy as its play-time target, the friendly unit
+    // in its finalize pass — "may perform an action on objects": the objects
+    // are targets, chosen independently of the decision (CR 355.12). The
+    // "may" is the spell's, decided as it resolves (CR 355.12, 355.18).
+    unsigned choicesAtFinalization() const override { return kFinalizeResolve; }
+    FinalizeChoice mayChooseAtFinalization(const GameState& state, PlayerId controller,
+                                           GameObjectId object) const override {
+        return friendlyUnitChoice(state, controller, object);
+    }
+    static std::vector<GameObjectId> enemiesAtBattlefields(const GameState& state,
+                                                           PlayerId controller) {
+        return chooseableUnits(state, controller, [&](const GameObject& u) {
+            return u.controller != controller && u.isAtBattlefield();
+        });
+    }
+    /// Friendly units that could move to `bf`: on the board, not already there.
+    static std::vector<GameObjectId> movers(const GameState& state, PlayerId controller,
+                                            std::optional<BattlefieldId> bf) {
+        if (!bf.has_value()) return {};
+        return chooseableUnits(state, controller, [&](const GameObject& u) {
+            return u.controller == controller && u.battlefieldId() != bf;
+        });
+    }
     void onResolve(CardContext& ctx,
                    const std::vector<GameObjectId>& /*targets*/) override {
-        PlayerId opp = opponent(ctx.controller);
-        std::vector<GameObjectId> enemy_at_bf;
-        for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-            if (!obj.isUnit() || obj.controller != opp) continue;
-            if (!obj.isAtBattlefield()) continue;
-            if (obj.untargetable_by_enemy) continue;
-            enemy_at_bf.push_back(id);
-        }
-        std::sort(enemy_at_bf.begin(), enemy_at_bf.end());
-        GameObjectId stunned = pickTarget(ctx, "Zenith Blade: stun enemy unit",
-                                          enemy_at_bf);
-        if (stunned == kInvalidId) return;  // suspended, or no legal target — fizzle
-        if (!ctx.state.objectExists(stunned)) return;
-        // The stun comes after every choice below: each one suspends and this
-        // callback is re-entered from the top with the answer, so anything
-        // done before them would be done once per pass.
-        std::optional<LocationId> dest = ctx.state.getObject(stunned).location;
-
-        // "You may move a friendly unit to that enemy unit's battlefield."
-        auto movable = [&]() {
-            std::vector<GameObjectId> out;
-            if (!dest.has_value() ||
-                !std::holds_alternative<BattlefieldLocation>(*dest)) return out;
-            for (auto& [id, obj] : ctx.state.objects.onBoard()) {
-                if (!obj.isUnit() || obj.controller != ctx.controller) continue;
-                if (!obj.location.has_value()) continue;
-                if (obj.location == dest) continue;  // already there
-                out.push_back(id);
-            }
-            std::sort(out.begin(), out.end());
-            return out;
-        };
-        int conf = confirmOptional(ctx,
-            "Zenith Blade: move a friendly unit to that battlefield?",
-            [&]() { return !movable().empty(); });
-        if (conf == -1) return;  // waiting on agent
-
-        // Which friendly unit moves is the controller's choice (asked only
-        // when there is more than one). resume_point kAwait marks that prompt.
-        GameObjectId mover = kInvalidId;
-        if (conf == 1) {
-            const auto units = movable();
-            auto* ri = ctx.state.chain.resuming.has_value() ? &*ctx.state.chain.resuming : nullptr;
-            if (ri && ri->resume_point == kAwait) {
-                mover = takenObject(ctx);
-                if (std::find(units.begin(), units.end(), mover) == units.end())
-                    mover = units.empty() ? kInvalidId : units.front();
-                ri->resume_point = kDone;
-            } else if (ri && ri->resume_point == kDone) {
-                return;
-            } else if (ri && units.size() > 1) {
-                std::vector<Intent> options;
-                for (auto id : units) options.push_back(objChoice(ctx.controller, id));
-                ctx.executor.requestChoice(ctx.controller, std::move(options),
-                    "Zenith Blade: friendly unit to move to that battlefield", PromptKind::ChooseObject);
-                ri->resume_point = kAwait;
-                return;
-            } else if (!units.empty()) {
-                mover = units.front();
-            }
+        const GameObjectId stunned = pickTarget(ctx, "Zenith Blade: stun enemy unit",
+                                                enemiesAtBattlefields(ctx.state, ctx.controller));
+        if (stunned == kInvalidId && ctx.state.chain.resuming.has_value() &&
+            ctx.state.chain.resuming->resume_point == 7)
+            return;   // waiting for the agent
+        // "that enemy unit's battlefield": where it is now (none once it is no
+        // longer a legal target: a mistarget, CR 359.3.e.12).
+        std::optional<BattlefieldId> dest;
+        if (stunned != kInvalidId && ctx.state.objectExists(stunned))
+            dest = ctx.state.getObject(stunned).battlefieldId();
+        // Chosen when there is one (it is not optional, CR 355.12); with
+        // none the spell still stuns — the "may" has nothing to act on.
+        const auto candidates = movers(ctx.state, ctx.controller, dest);
+        const auto mover = selectTargetOrNone(*this, ctx,
+            "Zenith Blade: friendly unit that may move to that battlefield",
+            candidates, 7, /*allow_none=*/candidates.empty());
+        if (!mover.has_value()) return;          // waiting for the agent
+        if (finalizingChoices(ctx)) return;      // choices end here (CR 355)
+        if (stunned == kInvalidId || !dest.has_value()) return;
+        // The "may" before anything is done: this callback is re-entered from
+        // the top with the answer.
+        int go = 0;
+        if (*mover != kInvalidId) {
+            // At resolution: a spell's "may" (CR 355.12, 355.18; batch M1).
+            go = confirmOptional(ctx, "Zenith Blade: move that friendly unit to that battlefield?",
+                [&]() {
+                    const auto now = movers(ctx.state, ctx.controller, dest);
+                    return std::find(now.begin(), now.end(), *mover) != now.end();
+                });
+            if (go == -1) return;                // waiting for the agent
         }
         ctx.executor.stunUnitBy(stunned, ctx.source);
-        if (mover == kInvalidId) return;   // declined / nothing to move
-        commitChosenObject(ctx, mover);
-        ctx.executor.moveToBattlefield(mover, std::get<BattlefieldLocation>(*dest).id);
+        if (go != 1) return;                     // declined / nothing to move
+        ctx.executor.moveToBattlefield(*mover, *dest);
         RIFT_TRACE(ctx.events, "ZENITH BLADE: stunned enemy + moved a friendly "
                             "unit to that battlefield");
     }
-private:
-    enum : int { kAwait = 21, kDone = 22 };
 private:
     const CardDef def_ = [] {
         CardDef d;

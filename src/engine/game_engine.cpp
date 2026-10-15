@@ -8362,9 +8362,13 @@ void GameEngine::processLethalDamage() {
             RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
         to_kill.push_back(id);
     }
-    // They die at the same time: each one's last-known information is taken
-    // while all of them are still on the board. (The order they go to the
-    // trash in is the batch's, not this list's: endDeathBatch, batch 5d N1.)
+    // They die at the same time; the engine kills them one after another, in
+    // an order of what the players see (they are on the board), not in the
+    // object table's: which dies "first" decides what the others' abilities
+    // see as they leave (batch 5d N1; the trash order is the batch's,
+    // endDeathBatch). Each one's last-known information is taken while all of
+    // them are still on the board.
+    if (to_kill.size() > 1) openspiel::sortObjectsAsSeen(state_, to_kill, state_.turn.turn_player);
     const DeathBatchMark batch = effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);

@@ -2028,7 +2028,7 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
                      [](const auto& x, const auto& y) { return x.first < y.first; });
     std::vector<ChainItemId> canonical;
     for (auto& [k, id] : keyed) canonical.push_back(id);
-    placeInOrder(canonical);
+    if (canonical != ids) placeInOrder(canonical);   // (most batches are already in order)
     return canonical;
 }
 
@@ -2038,9 +2038,15 @@ void GameEngine::orderPendingTriggers() {
     // anything is asked: a prompt met while finalizing an older item must not
     // show the later batches in the order they were queued (batch 5d N1).
     {
+        // (The oldest pending item's batch is ordered below; only later ones,
+        // rare, are put in order here.)
+        uint32_t oldest_batch = 0;
+        for (const auto& ci : state_.chain.items)
+            if (isPending(ci)) { oldest_batch = ci.trigger_batch; break; }
         std::vector<uint32_t> waiting;
         for (const auto& ci : state_.chain.items)
-            if (isPending(ci) && ci.trigger_batch != 0 && !ci.batch_ordered &&
+            if (isPending(ci) && ci.trigger_batch != 0 && ci.trigger_batch != oldest_batch &&
+                !ci.batch_ordered &&
                 std::find(waiting.begin(), waiting.end(), ci.trigger_batch) == waiting.end())
                 waiting.push_back(ci.trigger_batch);
         for (uint32_t b : waiting) {
@@ -8356,12 +8362,9 @@ void GameEngine::processLethalDamage() {
             RIFT_TRACE(events_, "ELDER_DRAGON: " + obj.name + " killed by any-damage rule");
         to_kill.push_back(id);
     }
-    // They die at the same time; the engine kills them one after another, in
-    // an order of what the players see (they are on the board), not in the
-    // object table's (batch 5d N1: it is the order they enter the trash).
-    openspiel::sortObjectsAsSeen(state_, to_kill, state_.turn.turn_player);
-    // Each one's last-known information is taken while all of them are still
-    // on the board.
+    // They die at the same time: each one's last-known information is taken
+    // while all of them are still on the board. (The order they go to the
+    // trash in is the batch's, not this list's: endDeathBatch, batch 5d N1.)
     const DeathBatchMark batch = effect_executor_->beginDeathBatch(to_kill);
     for (auto id : to_kill) {
         killUnit(id);

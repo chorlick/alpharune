@@ -404,3 +404,28 @@ Tests: `HiddenOrderLeak.*` (`tests/test_hidden_order_leak.cpp`),
 `ActionVocab.APromptNamesAHiddenCardByNoCard`,
 `ActionVocab.MulliganSlotsSayWhichCards` (hand order), and the seat-swap test
 (its mirror now swaps the knowledge tracker's facts too).
+
+## 9. Batch 5d (testing phase T1, T4, T6, N1, M2-M4, 2026-10-15): what a decision asks, per-observer queries
+
+No change to the layout, `kStateFeatureDim`, `kNumActions`, the slot ranges or the
+history token. No trainer checkpoint existed. What a trainer consumes that changed:
+
+| What | Before | After |
+|---|---|---|
+| `StepResult` | kind, perspective, legal | + `prompt` (`core/prompt.h`): what the decision asks. Holds object ids: never a feature; read it through `describePrompt` |
+| Decision API | — | `GameEngine::pendingPrompt()`, `AgentInterface::decide(state, legal, prompt)`, `RiftboundState::decisionPrompt()` / `describeDecision(player)` |
+| Per-observer queries | `KnowledgeView` | + `KnowledgeView::knownRuneDeckTop` / `knownRuneDeckBottom` / `ownRuneDeckComposition`; `ObserverView` (`engine/observer_view.h`): public piles in full, the chain with its links, derived facts (Might, keywords, lethal, combat, resources, timing, the opponent's legal pool) |
+| `openspiel::visibleDescription` / twin order | a card in a Main Deck: zone and card | + the slot the decider knows it at (two copies among looked-at cards are different choices): the twin number of such an option may differ |
+| Engine games | — | other games than before for the same seed where things happen at once (trash order of units dying together, trigger batch order, recycle shuffles, the mulligan's set-aside order) and where M2 / M3 / M4 change what is offered or who is asked |
+
+`describePrompt` (`engine/prompt_description.h`) is the decision's question as one
+player may be shown it: `PromptKind` (a stable categorical; new kinds are added at
+the end), who decides and who asks (relative: 1 = the observer), the asking card if
+visible, which ability, where on the chain, the words, and the options in action-id
+order with role, value, the objects as `visibleObjectDescription` has them, the named
+card and the action id. Equal descriptions in positions a player cannot tell apart
+(`HiddenOrderLeak.*`); one description never means two questions (`PromptCensus`).
+
+Trainer notes: key a prompt by `PromptKind` + the asking card + `promptKey`, never by
+the index in `StepResult::legal`; a `ChainItem` option is named by its place on the
+chain (`chain_position`), not its id.

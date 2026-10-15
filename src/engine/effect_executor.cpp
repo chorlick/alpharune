@@ -247,8 +247,7 @@ DeathBatchMark EffectExecutor::beginDeathBatch(const std::vector<GameObjectId>& 
     mark.oc_state = state_.turn.oc_state;
     mark.chain_was_empty = state_.chain.items.empty();
     if (units.size() > 1) {
-        mark.seen_order = units;
-        openspiel::sortObjectsAsSeen(state_, mark.seen_order, state_.turn.turn_player);
+        mark.several = true;
         for (int p = 0; p < 2; ++p) mark.trash_size[p] = state_.players[p].trash.size();
     }
     // The units of a batch die at the same time: what their deaths trigger is
@@ -480,12 +479,10 @@ void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
     if (items.size() != before && items.empty() && mark.chain_was_empty &&
         !state_.chain.resuming.has_value())
         state_.turn.oc_state = mark.oc_state;
-    // The members that went to a trash, in the batch's seen order (N1).
-    if (!mark.seen_order.empty()) {
-        auto rank = [&](GameObjectId id) {
-            return std::find(mark.seen_order.begin(), mark.seen_order.end(), id) -
-                   mark.seen_order.begin();
-        };
+    // The members that went to a trash, in an order of what the players see
+    // of them there (N1). In a trash a card is its card: copies of one card
+    // cannot be told apart, so the card decides.
+    if (mark.several) {
         for (int p = 0; p < 2; ++p) {
             auto& trash = state_.players[p].trash;
             std::vector<size_t> at;
@@ -496,8 +493,9 @@ void EffectExecutor::endDeathBatch(const std::vector<GameObjectId>& units,
                     members.push_back(trash[i]);
                 }
             if (members.size() < 2) continue;
-            std::stable_sort(members.begin(), members.end(),
-                             [&](GameObjectId a, GameObjectId b) { return rank(a) < rank(b); });
+            std::stable_sort(members.begin(), members.end(), [&](GameObjectId a, GameObjectId b) {
+                return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
+            });
             for (size_t k = 0; k < at.size(); ++k) trash[at[k]] = members[k];
         }
     }
@@ -1918,8 +1916,8 @@ void EffectExecutor::recycleCards(PlayerId effect_controller,
     auto byCard = [&](GameObjectId a, GameObjectId b) {
         return state_.getObject(a).card_def_id < state_.getObject(b).card_def_id;
     };
-    std::stable_sort(shuffleable.begin(), shuffleable.end(), byCard);
-    std::stable_sort(rune_ordered.begin(), rune_ordered.end(), byCard);
+    if (shuffleable.size() > 1) std::stable_sort(shuffleable.begin(), shuffleable.end(), byCard);
+    if (rune_ordered.size() > 1) std::stable_sort(rune_ordered.begin(), rune_ordered.end(), byCard);
     if (rng_) {
         std::shuffle(shuffleable.begin(), shuffleable.end(), *rng_);
     }

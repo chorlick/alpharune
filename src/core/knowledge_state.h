@@ -14,6 +14,7 @@
 
 #include <array>
 #include <map>
+#include <utility>
 #include <vector>
 
 namespace riftbound {
@@ -57,6 +58,27 @@ struct DeckCounters {
     int bottom_seq = 0;
 };
 
+/// The runes one observer knows in Rune Decks and the end each was seen at: a
+/// few entries at most (a Rune Deck holds 12), so a small vector, not a map
+/// (a recycle for Power writes here; it is on the payment path).
+struct RuneFacts {
+    std::vector<std::pair<GameObjectId, DeckEnd>> known;
+    const DeckEnd* find(GameObjectId id) const {
+        for (const auto& [r, e] : known) if (r == id) return &e;
+        return nullptr;
+    }
+    bool count(GameObjectId id) const { return find(id) != nullptr; }
+    void set(GameObjectId id, DeckEnd end) {
+        for (auto& [r, e] : known) if (r == id) { e = end; return; }
+        known.push_back({id, end});
+    }
+    void erase(GameObjectId id) {
+        for (size_t i = 0; i < known.size(); ++i)
+            if (known[i].first == id) { known.erase(known.begin() + static_cast<long>(i)); return; }
+    }
+    bool empty() const { return known.empty(); }
+};
+
 struct KnowledgeState {
     /// Indexed by playerIndex(observer).
     std::array<std::map<GameObjectId, HiddenCardFact>, 2> facts;
@@ -70,7 +92,7 @@ struct KnowledgeState {
     /// taken from at its top, and how many runes go each way is public, so a
     /// known rune's slot is read from the deck itself (GameKnowledgeView);
     /// a shuffle forgets them (knowledge::runeDeckShuffled).
-    std::array<std::map<GameObjectId, DeckEnd>, 2> runes;
+    std::array<RuneFacts, 2> runes;
 };
 
 } // namespace riftbound

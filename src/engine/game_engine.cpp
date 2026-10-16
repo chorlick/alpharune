@@ -2371,6 +2371,11 @@ void GameEngine::announcePermanentPlayed(GameObjectId card_id, PlayerId player) 
         not_from_hand = n->second != 0;
         card.card_counters.erase(n);
     }
+    // One play is one event for the rules: "When you play me" and "when you
+    // play a card from anywhere other than your hand" trigger together, and
+    // their controller orders them (CR 383.3.d; testing phase U4). The two
+    // announcements are one trigger batch.
+    const SimultaneousTriggers together(state_.chain);
     events_.emit(CardPlayedEvent{card_id, player, state_.getObject(card_id).card_type,
                                  ordinal, energy});
     if (not_from_hand && state_.objectExists(card_id))

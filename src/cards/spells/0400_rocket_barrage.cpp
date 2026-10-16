@@ -51,7 +51,11 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         const auto units = unitsInBases(ctx.state, ctx.controller);
         const auto gear = gearOnBoard(ctx.state, ctx.controller);
-        const uint32_t legal = (units.empty() ? 0u : 1u) | (gear.empty() ? 0u : 2u);
+        // A mode is offered only if its target can be chosen now (the list
+        // pickTarget offers: Deflect payable, the spell still payable before
+        // its cost; CR 355.8; testing phase U3).
+        const uint32_t legal = (offerableChoices(ctx, units).empty() ? 0u : 1u) |
+                               (offerableChoices(ctx, gear).empty() ? 0u : 2u);
         int mode = pickMode(ctx, "Rocket Barrage", 2,
                             {"Deal 4 to a unit in a base", "Kill a gear"}, legal);
         if (mode < 0) return;  // -1 waiting, -2 no legal mode

@@ -9,6 +9,7 @@
 #include "cards/card_helpers.h"
 
 #include <algorithm>
+#include <random>
 #include <functional>
 #include <optional>
 #include <string>
@@ -24,6 +25,8 @@ constexpr CardDefId kSeatOfPower = 531;        // "When you conquer here, draw 1
 constexpr CardDefId kBrush = 561;              // "When you score here, you may replace this with the battlefield it replaced."
 constexpr CardDefId kGreenFather = 753;        // "When you conquer or hold, you may exhaust me to replace that battlefield with a Brush"
 constexpr CardDefId kPoutyPoro = 13;
+constexpr CardDefId kKennenStorm = 900;        // "When you play me, [Burn 2]."
+constexpr CardDefId kHeartOfTheTempest = 942;  // legend: "When you play a card from anywhere other than your hand, empower me."
 
 /// EnginePathAgent that counts priority windows and the prompts it is asked.
 class Counting : public EnginePathAgent {
@@ -271,6 +274,159 @@ TEST_F(Batch8Test, U5_GreenFatherAfterASwapBackReplacesThatBattlefield) {
     EXPECT_TRUE(state.battlefields[0].is_token)
         << "\"that battlefield\" is the card swapped back in its place: it is replaced again";
     EXPECT_NE(state.battlefields[0].card_object_id, peak);
+}
+
+
+// ═══ U4: two abilities triggered by one play are ordered together ══════════
+//
+// CR 383.3.d: "If more than one Triggered Ability is Triggered
+// simultaneously, then the player that controls the Abilities selects the
+// order to place them on the Chain." A play is one event: Kennen's "When you
+// play me" and Heart of the Tempest's "When you play a card from anywhere
+// other than your hand" trigger together (round 2 g03, SNAP 136-137).
+
+TEST_F(Batch8Test, U4_APlayFromTheChampionZoneAsksTheOrderOfItsTwoPlayAbilities) {
+    addLegend(P1, kHeartOfTheTempest);
+    const auto kennen = addToHand(P1, kKennenStorm);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), kennen), h.end());
+        o(kennen).zone = ZoneType::ChampionZone;
+        state.player(P1).champion_zone = kennen;
+        state.player(P1).chosen_champion = kennen;
+    }
+    for (int i = 0; i < 6; ++i) addToDeck(P1, kPoutyPoro);
+    state.player(P1).rune_pool.energy += 3;
+    state.player(P1).rune_pool.universal_power += 1;
+    EnginePathAgent p1, p2;
+    withEngine([&](GameEngine& e) {
+        Intent play;
+        play.type = IntentType::PlayCard;
+        play.player = P1;
+        play.card = kennen;
+        play.play_location = LocationId{BaseLocation{P1}};
+        e.testHook_executeIntent(play);
+        settleLikeTheEngine(e);
+    }, &p1, &p2);
+    ASSERT_TRUE(o(kennen).location.has_value());
+    EXPECT_EQ(p1.order_prompts.size(), 1u) << "P1 orders the two abilities of one play";
+}
+
+TEST_F(Batch8Test, U4_AnEffectPlayAsksTheOrderOfItsTwoPlayAbilities) {
+    addLegend(P1, kHeartOfTheTempest);
+    const auto kennen = addToHand(P1, kKennenStorm);
+    for (int i = 0; i < 6; ++i) addToDeck(P1, kPoutyPoro);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), kennen), h.end());
+        o(kennen).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(kennen);
+    }
+    EnginePathAgent p1, p2;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().playIgnoringCost(P1, kennen);
+        settleLikeTheEngine(e);
+    }, &p1, &p2);
+    ASSERT_TRUE(o(kennen).location.has_value());
+    EXPECT_EQ(p1.order_prompts.size(), 1u);
+}
+
+
+// ═══ U3: a modal spell offered a mode whose target cannot be chosen ════════
+//
+// Curtain Call / Rocket Barrage built their mode mask from the units they may
+// choose by text (chooseableUnits), while the target prompt offers only the
+// units that can be chosen now (Card::offerableChoices: a [Deflect] unit only
+// if its [A] can be paid, and before the cost only what leaves the spell
+// payable). With 10 floating Energy and no Power, an enemy Rengar, Unseen
+// ([Deflect]) at a battlefield made "Deal 2 to a unit at a battlefield" a
+// mode with no target: executePlaySpell threw (round 2, the only fuzz
+// failure; CR 355.8). The sweep plays every spell that chooses as it is
+// played, on random boards with [Deflect] units, funded with Energy and Power
+// and with Energy only, answering its first prompt with EACH of its options
+// (so every mode is tried) and every later prompt with the first.
+TEST_F(Batch8Test, U3_Sweep_EveryOptionOfASpellsFirstChoiceCanBeCompleted) {
+    std::vector<CardDefId> spells;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* c = card_registry.get(id);
+        if (!c || def.card_type != CardType::Spell || id.raw() >= 1000) continue;
+        if (c->needsPlayTimeTarget() || c->needsPlayTimeTargetPair() ||
+            (c->choicesAtFinalization() & Card::kFinalizeResolve))
+            spells.push_back(id);
+    }
+    std::sort(spells.begin(), spells.end());
+    ASSERT_GE(spells.size(), 40u);
+    std::mt19937 rng(20261015);
+    std::vector<std::string> misses;
+    int plays = 0;
+    for (int board = 0; board < 24; ++board) {
+        const unsigned seed = rng();
+        for (int power = 0; power < 3; ++power)
+        for (CardDefId id : spells) {
+            for (int option = 0; option < 8; ++option) {
+                state = GameState{};
+                state.players[0].id = P1;
+                state.players[1].id = P2;
+                addBattlefield();
+                addBattlefield();
+                std::mt19937 b(seed);
+                for (PlayerId p : {P1, P2}) {
+                    const int n = 1 + static_cast<int>(b() % 3);
+                    for (int k = 0; k < n; ++k) {
+                        const int where = static_cast<int>(b() % 3) - 1;   // base, bf0, bf1
+                        auto u = addUnit(p, b() % 2 == 0 ? kPoutyPoro : kInvalidId,
+                                         1 + static_cast<int>(b() % 6), where);
+                        (void)u;
+                    }
+                    if (b() % 2 == 0) addGear(p, kLongSword);
+                    for (int k = 0; k < 4; ++k) addToDeck(p, kPoutyPoro);
+                }
+                auto card = addToHand(P1, id);
+                state.player(P1).rune_pool.energy += 12;
+                // Energy only; exactly the spell's own Power (a Deflect then
+                // cannot be paid on top); plenty of both.
+                state.player(P1).rune_pool.universal_power +=
+                    power == 0 ? 0 : power == 1 ? card_db.get(id).power_cost : 12;
+                Intent play;
+                bool offered = false;
+                withEngine([&](GameEngine& e) {
+                    e.testHook_cleanup();
+                    for (const auto& i : e.generateLegalActions())
+                        if (i.card == card) { offered = true; play = i; break; }
+                });
+                if (!offered) break;
+                int first_size = 0;
+                bool first_seen = false;
+                EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+                    if (!first_seen) {
+                        first_seen = true;
+                        first_size = static_cast<int>(legal.size());
+                        if (option < first_size) return legal[static_cast<size_t>(option)];
+                    }
+                    return legal.front();
+                });
+                ++plays;
+                try {
+                    withEngine([&](GameEngine& e) {
+                        e.testHook_executeIntent(play);
+                        settleLikeTheEngine(e);
+                    }, &agent);
+                } catch (const std::exception& ex) {
+                    misses.push_back(card_db.get(id).name + " (option " + std::to_string(option) +
+                                     (power == 0 ? ", Energy only" : power == 1
+                                          ? ", its own Power only" : ", Energy and Power") +
+                                     "): " + ex.what());
+                }
+                if (!first_seen || option + 1 >= first_size) break;
+            }
+        }
+    }
+    EXPECT_GT(plays, 2000);
+    std::sort(misses.begin(), misses.end());
+    misses.erase(std::unique(misses.begin(), misses.end()), misses.end());
+    std::string all;
+    for (const auto& m : misses) all += "\n  " + m;
+    EXPECT_TRUE(misses.empty()) << misses.size() << " plays could not be completed:" << all;
 }
 
 }  // namespace riftbound::test::batch_8

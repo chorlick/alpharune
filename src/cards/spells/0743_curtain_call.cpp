@@ -52,12 +52,19 @@ public:
         const auto at_base = chooseableUnits(ctx.state, ctx.controller,
             [](const GameObject& o) { return o.isAtBase(); });
         // Mode 0 (Draw) needs no target; 1 and 3 a unit at a battlefield, 2 a
-        // unit at a base.
+        // unit at a base. A mode is offered only if its target can be chosen
+        // NOW — the list pickTarget will offer: a [Deflect] unit only if its
+        // [A] can be paid, and before the cost only what leaves the spell
+        // payable (offerableChoices; CR 355.8; testing phase U3: an enemy
+        // Rengar, Unseen with no Power to pay its Deflect left "Deal 2" with
+        // no target and the play threw).
+        const bool bf_ok = !offerableChoices(ctx, at_bf).empty();
+        const bool base_ok = !offerableChoices(ctx, at_base).empty();
         uint32_t legal = 0;
         if (!(used_mask & (1 << 0))) legal |= (1u << 0);
-        if (!(used_mask & (1 << 1)) && !at_bf.empty())   legal |= (1u << 1);
-        if (!(used_mask & (1 << 2)) && !at_base.empty()) legal |= (1u << 2);
-        if (!(used_mask & (1 << 3)) && !at_bf.empty())   legal |= (1u << 3);
+        if (!(used_mask & (1 << 1)) && bf_ok)   legal |= (1u << 1);
+        if (!(used_mask & (1 << 2)) && base_ok) legal |= (1u << 2);
+        if (!(used_mask & (1 << 3)) && bf_ok)   legal |= (1u << 3);
 
         int mode = pickMode(ctx, "Curtain Call", 4,
                              {"Draw 1", "Deal 2 (BF)",

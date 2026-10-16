@@ -3267,6 +3267,8 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     // will then observe the final post-onPlay state.
     LocationId final_loc = obj.location.value_or(BaseLocation{player});
 
+    // One play: its play triggers are one batch (CR 383.3.d; testing phase U4).
+    const SimultaneousTriggers together(state_.chain);
     events_.emit(CardPlayedEvent{card, player, obj.card_type,
         ps.cards_played_this_turn});
     if (!from_hand && state_.objectExists(card))

@@ -3431,7 +3431,34 @@ TEST_F(SweepCostsTest, Removal_NoRegisteredTriggerWithNothingToDecideIsFinalized
         }
     }
     state = blank;
+    // (Trigger numbers: TriggerType in effects/effect_types.h.)
     const std::set<std::string> listed = {
+        // "When one or more enemy units die, ready me." — already ready.
+        "Battle Mistress (517) trigger 34",
+        // "At the end of your turn, ready up to 2 runes." — "up to": none is
+        // a legal choice (CR 355.13), not a missing one; no exhausted rune.
+        "Dark Child - Starter (315) trigger 18",
+        // "choose up to one enemy unit at each location. Deal 1 to them." —
+        // up to one: none chosen with no enemy unit (CR 355.13).
+        "Elder Dragon (680) trigger 1",
+        // "When you play me or another Dragon, ready up to 2 runes." — as
+        // Dark Child.
+        "Gentle Gemdragon (666) trigger 1",
+        // "When you hide a card, ready me." — already ready.
+        "Katarina, Reckless (585) trigger 32",
+        // "The first time I conquer each turn, ready me." — already ready.
+        "Lucian, Merciless (435) trigger 11",
+        // "When I hold, the next time you play a unit this turn, ready it and
+        // [Buff] it." — it arms a delayed effect (a card_counters mark this
+        // digest does not read): it did something.
+        "Nami, Headstrong (614) trigger 12",
+        // "At the end of your turn, if I'm at a battlefield, ready up to 4
+        // friendly runes." — as Dark Child (the sweep's source is at a
+        // battlefield).
+        "Sona, Harmonious (73) trigger 18",
+        // "When I attack, deal 5 damage split among any number of enemy units
+        // here." — any number: none is legal with no enemy unit there.
+        "Volibear, Furious (41) trigger 4",
     };
     std::string extra, gone;
     for (const auto& d : idle) if (!listed.count(d)) extra += "\n  " + d;

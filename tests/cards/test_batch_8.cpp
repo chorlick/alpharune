@@ -1366,37 +1366,53 @@ TEST_F(Batch8Test, U17_ATokenCopyAndTheCardAreDescribedApart) {
 }
 
 
-// U11 (found by the coverage run): with the [Repeat] decided before the cost,
-// the card's own rune picks must leave the tranche payable. Bellows Breath
-// ([1][B], [Repeat] [1][B]) with two Mind runes: both are exhausted for the
-// two [1] and both recycled for the two [B] — but recycling the READY rune
-// for the card's [B] left the Repeat's [1] unpayable (an engine error in 56
-// coverage games). Only picks that keep the Repeat payable are offered.
-TEST_F(Batch8Test, U11_TheCardsRunePicksKeepTheRepeatPayable) {
-    const CardDefId kBellowsBreath = 402;
-    addUnit(P2, kInvalidId, 4, 0);
-    addRune(P1, Domain::Mind);
-    addRune(P1, Domain::Mind);
-    const auto spell = addToHand(P1, kBellowsBreath);
-    class Last : public EnginePathAgent {
+// U11 (found by the coverage run, 56 engine errors; replay: deck_fuzz --replay
+// 5871507741656108816 15204749613451164449 882878808 --focus
+// 205,546,803,852,347,806 --agent1 random-player --agent2 random-player).
+// With the [Repeat] decided before the cost, the card's cost and the tranche
+// must be paid as one cost. Upstage Comedy ([2], [Repeat] [2]) with three
+// runes and Dragonsoul Sage ([E]: [Add] [1]) is payable with the Repeat; paid
+// in two steps, the card's [2] offered Butcher of the Sands' [Add] ([A][A],
+// [E]: [Add] [2] for units only) to pay, its [A][A] recycled the two runes the
+// tranche needed, and payRepeats threw "offered as payable and could not be
+// paid".
+TEST_F(Batch8Test, U11_TheCardsCostAndTheRepeatArePaidAsOneCost) {
+    const CardDefId kUpstageComedy = 571, kDragonsoulSage = 655, kButcherOfTheSands = 928;
+    const auto butcher = addLegend(P1, kButcherOfTheSands);
+    const auto sage = addUnit(P1, kDragonsoulSage, 2, 0);
+    o(sage).is_exhausted = false;
+    addRune(P1, Domain::Fury);
+    addRune(P1, Domain::Fury);
+    addRune(P1, Domain::Body);
+    const auto spell = addToHand(P1, kUpstageComedy);
+    class Payer : public EnginePathAgent {
     public:
-        int rune_prompts = 0, repeat_prompts = 0;
+        explicit Payer(GameObjectId b) : butcher(b) {}
+        GameObjectId butcher;
+        int repeat_prompts = 0;
         Intent decide(const GameState& st, const std::vector<Intent>& legal,
                       const Prompt& prompt) override {
             if (prompt.kind == PromptKind::Repeat) {
                 ++repeat_prompts;
                 for (const auto& i : legal) if (i.chosen_value.value_or(0) == 1) return i;
             }
-            if (prompt.kind == PromptKind::RuneForEnergy || prompt.kind == PromptKind::RuneForPower) {
-                ++rune_prompts;
-                return legal.back();   // the pick that broke it
-            }
+            // Take Butcher's [Add] whenever it is offered to pay.
+            if (prompt.kind == PromptKind::AddForPayment)
+                for (const auto& i : legal)
+                    if (i.ability_source == butcher) return i;
+            // Recycle the READY rune first for [Add]'s [A][A] (the fuzz game's pick).
+            if (prompt.kind == PromptKind::RuneForPower)
+                for (const auto& i : legal)
+                    for (const auto r : i.chosen_objects)
+                        if (st.objects.count(r) && !st.objects.at(r).is_exhausted) return i;
+            if (prompt.kind == PromptKind::RuneForEnergy || prompt.kind == PromptKind::RuneForPower)
+                return legal.front();
             return selectAction(st, legal);
         }
-    } p1;
+    } p1(butcher);
     EXPECT_NO_THROW(playThroughEngine(spell, &p1, std::nullopt, nullptr, /*fund=*/false));
     EXPECT_EQ(p1.repeat_prompts, 1);
-    EXPECT_GE(p1.rune_prompts, 2);
+    EXPECT_EQ(state.player(P1).trash.size(), 1u) << "the spell resolved";
 }
 
 

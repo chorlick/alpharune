@@ -2280,8 +2280,9 @@ TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
     // Source scan. A card that kills "what the damage killed" calls
     // EffectExecutor::killLethallyDamagedTogether (21 sites) and has no loop
     // or lethal test of its own; a DeathBatch in card code is followed by a
-    // loop that kills every listed unit (9 sites in 8 files: Safety Inspector
-    // and Acceptable Losses joined in batch 6, R3 / R4).
+    // loop that kills every listed unit (10 sites in 9 files: Safety Inspector
+    // and Acceptable Losses joined in batch 6, R3 / R4; Thermo Beam in batch
+    // 8, S1).
     namespace fs = std::filesystem;
     const char* root = std::getenv("RIFTBOUND_ROOT");
     ASSERT_NE(root, nullptr);
@@ -2305,7 +2306,7 @@ TEST_F(PerfEngineDeathBatch, EveryCardBatchSaysWhoDies) {
         }
     }
     EXPECT_EQ(helper, 22);   // + Falling Star (D20: both instructions, then the kills)
-    EXPECT_EQ(everyone, 9);
+    EXPECT_EQ(everyone, 10);
 }
 
 // ─── 9.OO1: which dying unit a single replacement saves ─────────────────────

@@ -263,7 +263,8 @@ TEST_F(Batch2Combat, D23_TrifarianWarCamp_ATokenMovedInByAzirsAttackAbilityHasTh
     o(token).is_token = true;
     named(addUnit(P2, kInvalidId, 30, 0), "Wall");
     stageCombat(0, P1);
-    Watcher p1(EnginePathAgent::choosing(token)), p2;
+    // Azir's "you may" (batch 8 U2: asked first), then the token.
+    Watcher p1(EnginePathAgent::choosing(token, EnginePathAgent::May::Yes)), p2;
     runCombat(0, P1, &p1, &p2);
     ASSERT_EQ(damage_steps.size(), 1u);
     EXPECT_NE(damage_steps[0].find("Sand Soldier(3M)"), std::string::npos) << damage_steps[0];

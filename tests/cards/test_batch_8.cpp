@@ -25,6 +25,11 @@ constexpr CardDefId kSeatOfPower = 531;        // "When you conquer here, draw 1
 constexpr CardDefId kBrush = 561;              // "When you score here, you may replace this with the battlefield it replaced."
 constexpr CardDefId kGreenFather = 753;        // "When you conquer or hold, you may exhaust me to replace that battlefield with a Brush"
 constexpr CardDefId kPoutyPoro = 13;
+constexpr CardDefId kJhinMeticulous = 651;     // "If you've spent [4] or more to play a spell this turn, you may play me for [B]."
+constexpr CardDefId kPykeDockside = 590;       // [Hidden]; "You may pay [R] as an additional cost to play me. When you play me, if you paid ..., ready me and give me +2 [M] this turn."
+constexpr CardDefId kPiercingLight = 346;      // "[Repeat] [2][R] Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
+constexpr CardDefId kViktorLeader = 246;       // "When another non-Recruit unit you control dies, play a 1 [M] Recruit unit token into your base."
+constexpr CardDefId kTheRuination = 742;       // "Kill all units."
 constexpr CardDefId kKennenStorm = 900;        // "When you play me, [Burn 2]."
 constexpr CardDefId kHeartOfTheTempest = 942;  // legend: "When you play a card from anywhere other than your hand, empower me."
 
@@ -99,6 +104,23 @@ protected:
         l.zone = ZoneType::LegendZone;
         state.player(owner).legend_zone = id;
         return id;
+    }
+    /// Execute `play` as the main-phase loop does, then settle.
+    void playThroughEngineIntent(const Intent& play, AgentInterface* p1 = nullptr,
+                                 AgentInterface* p2 = nullptr) {
+        withEngine([&](GameEngine& e) {
+            e.testHook_executeIntent(play);
+            settleLikeTheEngine(e);
+        }, p1, p2);
+    }
+    void hideAt(GameObjectId card, int bf) {
+        auto& hand = state.player(o(card).owner).hand;
+        hand.erase(std::remove(hand.begin(), hand.end(), card), hand.end());
+        o(card).zone = ZoneType::FacedownZone;
+        o(card).is_hidden = true;
+        o(card).hidden_at = BattlefieldId::fromRaw(bf);
+        o(card).hidden_on_turn = state.turn.turn_number - 1;
+        state.battlefields[bf].facedown.push_back(card);
     }
     int finalizedDuring(const std::function<void()>& body) {
         int n = 0;
@@ -427,6 +449,323 @@ TEST_F(Batch8Test, U3_Sweep_EveryOptionOfASpellsFirstChoiceCanBeCompleted) {
     std::string all;
     for (const auto& m : misses) all += "\n  " + m;
     EXPECT_TRUE(misses.empty()) << misses.size() << " plays could not be completed:" << all;
+}
+
+
+// ═══ U6: Jhin, Meticulous Killer's "play me for [B]" ═══════════════════════
+//
+// "If you've spent [4] or more to play a spell this turn, you may play me for
+// [B]." No zone is named, so it is a way to pay for any play of the card: from
+// the hand too, and to every location the unit may be played to (CR 355.2).
+// It was offered only from the Champion Zone and only to base (round 2 g13).
+
+TEST_F(Batch8Test, U6_JhinsAlternativeCostIsOfferedFromTheHandToEveryLocation) {
+    const auto jhin = addToHand(P1, kJhinMeticulous);
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 1, 0);
+    state.player(P1).max_spell_spent_this_turn = 4;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;   // [B], nothing else
+    std::vector<Intent> alt;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == jhin && i.type == IntentType::PlayCard) {
+                EXPECT_TRUE(i.use_alt_play_cost) << "the printed [4] cannot be paid";
+                alt.push_back(i);
+            }
+    });
+    ASSERT_EQ(alt.size(), 2u) << "base and the battlefield P1 controls";
+    EXPECT_TRUE(std::holds_alternative<BaseLocation>(*alt[0].play_location));
+    EXPECT_TRUE(std::holds_alternative<BattlefieldLocation>(*alt[1].play_location));
+    playThroughEngineIntent(alt[1]);
+    EXPECT_EQ(o(jhin).battlefieldId(), std::optional<BattlefieldId>(BattlefieldId::fromRaw(0)));
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)], 0) << "paid [B]";
+}
+
+TEST_F(Batch8Test, U6_NotOfferedBeforeFourWasSpentOnASpell) {
+    const auto jhin = addToHand(P1, kJhinMeticulous);
+    state.player(P1).max_spell_spent_this_turn = 3;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Mind)] = 1;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions()) EXPECT_NE(i.card, jhin);
+    });
+}
+
+// Dragon Roost's pay-to-play-here offer is judged with the printed cost
+// (GameEngine::generateMainPhaseActions); no card with an alternative cost
+// is a Dragon, so none is withheld it.
+TEST_F(Batch8Test, U6_NoCardWithAnAlternativeCostIsADragon) {
+    GameState probe;
+    probe.player(P1).max_spell_spent_this_turn = 99;
+    int with_alt = 0;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* c = card_registry.get(id);
+        if (!c || !c->alternativePlayCost(probe, P1).valid) continue;
+        ++with_alt;
+        EXPECT_EQ(std::find(def.tags.begin(), def.tags.end(), "Dragon"), def.tags.end()) << def.name;
+    }
+    EXPECT_GE(with_alt, 1);
+}
+
+
+// ═══ U7: an optional additional cost on a play from face down ══════════════
+//
+// A play from face down ignores the base cost (CR 811.1.b); an Optional
+// Additional Cost is still offered (CR 356.1.b and its example). Pyke,
+// Dockside Butcher's [R] was never asked (round 2 g15, SNAP 64).
+
+TEST_F(Batch8Test, U7_PykePlayedFromFaceDownIsOfferedItsAdditionalCost) {
+    state.turn.turn_number = 3;
+    state.battlefields[0].controller = P1;
+    addUnit(P1, kInvalidId, 2, 0);
+    const auto pyke = addToHand(P1, kPykeDockside);
+    hideAt(pyke, 0);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;   // [R]
+    Intent play;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == pyke) { play = i; break; }
+    });
+    ASSERT_EQ(play.card, pyke) << "the hidden play is offered";
+    EnginePathAgent p1(EnginePathAgent::script({1})), p2;   // pay [R]
+    playThroughEngineIntent(play, &p1, &p2);
+    ASSERT_EQ(o(pyke).battlefieldId(), std::optional<BattlefieldId>(BattlefieldId::fromRaw(0)));
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)], 0) << "[R] paid";
+    EXPECT_FALSE(o(pyke).is_exhausted) << "ready me";
+    EXPECT_EQ(o(pyke).current_might, 4) << "+2 [M] this turn";
+}
+
+TEST_F(Batch8Test, U7_NoHiddenCardPrintsAMandatoryAdditionalCost) {
+    // executePlayFromHidden offers the optional additional cost only: a
+    // mandatory one ("As an additional cost to play me, ...") would need the
+    // hidden-play gate too. None exists.
+    GameState probe;
+    probe.players[0].id = P1;
+    probe.players[1].id = P2;
+    for (const auto& [id, def] : card_db.all()) {
+        if (!def.keywords.has(Keyword::Hidden)) continue;
+        const Card* c = card_registry.get(id);
+        ASSERT_NE(c, nullptr);
+        GameState st = probe;
+        const auto obj = st.createObject();
+        st.getObject(obj).card_def_id = id;
+        st.getObject(obj).owner = st.getObject(obj).controller = P1;
+        const auto addl = c->additionalPlayCost(st, card_db, P1, obj);
+        EXPECT_FALSE(addl.exists && addl.mandatory) << def.name;
+    }
+}
+
+
+// ═══ U8 / U9: Piercing Light's two different targets ═══════════════════════
+//
+// "Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
+// U8: a [Repeat] execution chooses again following the card's requirements
+// (CR 820.2, 820.2.a; 355.13 "up to"): it went through the generic re-choice,
+// which offered base units for the first unit and no "none" for the second
+// (round 2 g15, SNAP 197-198). U9: played by an effect it was offered "No
+// target" for its required first unit (CR 355.8; g15 SNAP 316).
+
+namespace {
+/// Answers Piercing Light's prompts: the first unit `first`, the other one
+/// none; pays any [Repeat]; checks that no unit in a base is offered as the
+/// first, and that "none" is offered for the other one and never for the first.
+class PiercingAgent : public EnginePathAgent {
+public:
+    GameObjectId first = kInvalidId;
+    const GameState* st = nullptr;
+    int first_prompts = 0, other_prompts = 0, repeats = 0;
+    std::vector<std::string> wrong;
+    std::vector<int> energy_at_prompt;   // P1's floating Energy at each card prompt
+    std::string question;                // the asking code's words (Prompt::question)
+    PromptKind kind = PromptKind::Unspecified;
+    Intent decide(const GameState& state, const std::vector<Intent>& legal,
+                  const Prompt& prompt) override {
+        question = prompt.question;
+        kind = prompt.kind;
+        return selectAction(state, legal);
+    }
+    Intent selectAction(const GameState& state, const std::vector<Intent>& legal) override {
+        const bool is_choice = !legal.empty() && std::all_of(legal.begin(), legal.end(),
+            [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+        if (!is_choice) return EnginePathAgent::selectAction(state, legal);
+        energy_at_prompt.push_back(state.player(PlayerId::Player1).rune_pool.energy);
+        bool any_object = false, none = false;
+        for (const auto& i : legal) {
+            if (!i.chosen_objects.empty()) any_object = true;
+            else if (i.chosen_value.value_or(-1) == 0) none = true;
+        }
+        const std::string label = question;
+        if (kind == PromptKind::Repeat) {
+            ++repeats;
+            for (const auto& i : legal) if (i.chosen_value.value_or(0) == 1) return i;
+        }
+        if (any_object && label.find("at a battlefield") != std::string::npos) {
+            ++first_prompts;
+            if (none) wrong.push_back("\"none\" offered for the first unit");
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && !state.getObject(i.chosen_objects.front()).isAtBattlefield())
+                    wrong.push_back("a unit in a base offered as the first unit");
+            for (const auto& i : legal)
+                if (!i.chosen_objects.empty() && i.chosen_objects.front() == first) return i;
+        }
+        if (any_object && label.find("other unit") != std::string::npos) {
+            ++other_prompts;
+            if (!none) wrong.push_back("no \"none\" for the other unit");
+            for (const auto& i : legal) if (i.chosen_objects.empty()) return i;
+        }
+        return legal.front();
+    }
+};
+}  // namespace
+
+TEST_F(Batch8Test, U8_PiercingLightsRepeatChoosesByTheCardsOwnRequirements) {
+    const auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    const auto in_base = addUnit(P2, kInvalidId, 5);
+    const auto spell = addToHand(P1, kPiercingLight);
+    state.player(P1).rune_pool.energy += 2;   // the spell's [2]... and the Repeat's [2][R]
+    state.player(P1).rune_pool.energy += 2;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 2;
+    PiercingAgent p1;
+    p1.first = at_bf;
+    playThroughEngine(spell, &p1, std::nullopt, nullptr, /*fund=*/false);
+    for (const auto& w : p1.wrong) ADD_FAILURE() << w;
+    EXPECT_EQ(p1.repeats, 1) << "the Repeat was offered and paid";
+    EXPECT_EQ(p1.first_prompts, 2) << "the first unit is asked for each execution";
+    EXPECT_EQ(p1.other_prompts, 2);
+    EXPECT_EQ(o(at_bf).damage_marked, 4) << "both executions dealt 2 to it";
+    EXPECT_EQ(o(in_base).damage_marked, 0);
+}
+
+TEST_F(Batch8Test, U9_PiercingLightPlayedByAnEffectIsNotOfferedNoTargetForItsFirstUnit) {
+    const auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    addUnit(P2, kInvalidId, 5);
+    const auto spell = addToHand(P1, kPiercingLight);
+    state.player(P1).rune_pool.energy += 2;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 1;
+    PiercingAgent p1;
+    p1.first = at_bf;
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_executor().playPayingCost(P1, spell));
+        settleLikeTheEngine(e);
+    }, &p1);
+    for (const auto& w : p1.wrong) ADD_FAILURE() << w;
+    EXPECT_EQ(p1.first_prompts, 1);
+    EXPECT_EQ(o(at_bf).damage_marked, 2);
+}
+
+
+// ═══ U11: [Repeat] is a choice of the Make Relevant Choices step ═══════════
+//
+// CR 355.1.a: "This includes the choice of whether or not to pay an Optional
+// Additional Cost"; CR 820.2: an extra execution's choices are made "at the
+// usual time during the Make Relevant Choices step". Both before any cost
+// (CR 356 / 357) — they came after the base cost (round 2 g03 Hard Bargain,
+// g08 / g11 Blood Rush, g19 Bellows Breath).
+TEST_F(Batch8Test, U11_TheRepeatAndItsChoicesComeBeforeAnyCostIsPaid) {
+    const auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    addUnit(P2, kInvalidId, 5);   // a choice for "up to one other unit" too
+    const auto spell = addToHand(P1, kPiercingLight);
+    state.player(P1).rune_pool.energy += 4;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 2;
+    PiercingAgent p1;
+    p1.first = at_bf;
+    playThroughEngine(spell, &p1, std::nullopt, nullptr, /*fund=*/false);
+    // first unit, other unit, Repeat, first unit again, other unit again
+    ASSERT_EQ(p1.energy_at_prompt.size(), 5u);
+    for (size_t k = 0; k < p1.energy_at_prompt.size(); ++k)
+        EXPECT_EQ(p1.energy_at_prompt[k], 4) << "prompt " << k << ": nothing paid yet";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0) << "then [2] and the Repeat's [2] paid";
+    EXPECT_EQ(o(at_bf).damage_marked, 4);
+}
+
+TEST_F(Batch8Test, U11_TheRepeatIsNotOfferedWhenItAndTheBaseCostCannotBothBePaid) {
+    addUnit(P2, kInvalidId, 5, 0);
+    const auto spell = addToHand(P1, kPiercingLight);
+    state.player(P1).rune_pool.energy += 3;   // [2] + [2] would be 4
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 2;
+    PiercingAgent p1;
+    p1.first = kInvalidId;
+    playThroughEngine(spell, &p1, std::nullopt, nullptr, /*fund=*/false);
+    EXPECT_EQ(p1.repeats, 0) << "not offered";
+}
+
+// U10: an effect play that pays is a play: its [Repeat] is offered (CR
+// 820.1.d "as you play this"; round 2 g15 Fizz, Trickster).
+TEST_F(Batch8Test, U10_AnEffectPlayThatPaysIsOfferedTheRepeat) {
+    const auto at_bf = addUnit(P2, kInvalidId, 5, 0);
+    const auto spell = addToHand(P1, kPiercingLight);
+    state.player(P1).rune_pool.energy += 4;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Fury)] = 2;
+    PiercingAgent p1;
+    p1.first = at_bf;
+    withEngine([&](GameEngine& e) {
+        EXPECT_TRUE(e.testHook_executor().playPayingCost(P1, spell));
+        settleLikeTheEngine(e);
+    }, &p1);
+    for (const auto& w : p1.wrong) ADD_FAILURE() << w;
+    EXPECT_EQ(p1.repeats, 1);
+    EXPECT_EQ(o(at_bf).damage_marked, 4);
+}
+
+
+// ═══ X1 (found by batch 8): a death batch's triggers followed the kill order ═
+//
+// The Ruination ("Kill all units") kills its batch one after another in
+// object-table order. Viktor, Leader, dying in the same batch, put his "when
+// another unit dies" ability on the chain when a friendly unit happened to
+// be killed before him, and endDeathBatch took it back (CR 383.2.c.2) — with
+// a TRIGGER line in the log only in that order: the relabelled-games test
+// (HiddenOrderLeak) told two numberings of one game apart. A batch member
+// that will die in the batch does not trigger on another member's death at
+// all (TriggerManager::fireTrigger), whichever is killed first.
+TEST_F(Batch8Test, X1_AUnitDyingInTheSameBatchNeverTriggersOnAnotherMembersDeath) {
+    for (int viktor_first = 0; viktor_first < 2; ++viktor_first) {
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        GameObjectId viktor, other;
+        if (viktor_first) {
+            viktor = addUnit(P1, kViktorLeader, 0, 0);
+            other = addUnit(P1, kInvalidId, 2, 0);
+        } else {
+            other = addUnit(P1, kInvalidId, 2, 0);
+            viktor = addUnit(P1, kViktorLeader, 0, 0);
+        }
+        const auto spell = addToHand(P2, kTheRuination);
+        std::vector<std::string> lines;
+        auto conn = events.on_log.connect([&](const LogEvent& e) {
+            if (e.message.find("Viktor, Leader") != std::string::npos) lines.push_back(e.message);
+        });
+        state.turn.turn_player = P2;
+        playThroughEngine(spell);
+        conn.disconnect();
+        EXPECT_FALSE(o(viktor).location.has_value());
+        EXPECT_FALSE(o(other).location.has_value());
+        for (const auto& l : lines)
+            EXPECT_EQ(l.find("fires ability"), std::string::npos) << l;
+        int recruits = 0;
+        for (const auto& [id, obj] : state.objects)
+            if (obj.name == "Recruit" && obj.location.has_value()) ++recruits;
+        EXPECT_EQ(recruits, 0) << "Viktor died with the unit he watched (CR 383.2.c.2)";
+    }
+}
+
+// The control: Viktor outside the batch sees the unit die.
+TEST_F(Batch8Test, X1_AUnitOutsideTheBatchStillTriggers) {
+    addUnit(P1, kViktorLeader, 0, 0);
+    const auto other = addUnit(P1, kInvalidId, 2, 0);
+    withEngine([&](GameEngine& e) {
+        {
+            DeathBatch together(e.testHook_executor(), {other});
+            e.testHook_executor().killObject(other);
+        }
+        settleLikeTheEngine(e);
+    });
+    int recruits = 0;
+    for (const auto& [id, obj] : state.objects)
+        if (obj.name == "Recruit" && obj.location.has_value()) ++recruits;
+    EXPECT_EQ(recruits, 1);
 }
 
 }  // namespace riftbound::test::batch_8

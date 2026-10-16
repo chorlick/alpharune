@@ -3144,6 +3144,9 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
     // card paid is forgotten (Card::forgetPlayPayments).
     Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     makeAsYouPlayChoices(player, card);   // CR 355.1
+    // Ignoring its cost, the play may still pay the card's optional
+    // additional cost (CR 356.1.b; testing phase U7).
+    if (offer_optional_cost_) offer_optional_cost_(player, card);
     return playIgnoringCostDecided(player, card, location, -1);
 }
 

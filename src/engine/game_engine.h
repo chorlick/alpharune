@@ -67,6 +67,14 @@ struct StepResult {
     Prompt prompt;
 };
 
+/// One [Repeat] cost (CR 820.1.c): see GameEngine::repeatTranchesFor.
+struct RepeatTranche {
+    int energy = 0;
+    int power = 0;
+    resource::DomainMask domains = resource::kAnyDomain;
+    int discard_cards = 0;
+};
+
 class GameEngine {
 public:
     GameEngine(const CardDB& card_db, EventBus& event_bus,
@@ -687,12 +695,16 @@ private:
     bool effectPlayAffordable(PlayerId player, GameObjectId card_id) const;
     /// An effect play of a spell that pays (EffectExecutor::playPayingCost):
     /// the targets chosen before its cost, for its chain item.
+    using RepeatTranche = ::riftbound::RepeatTranche;
     struct EffectPlayedSpell {
         GameObjectId card = kInvalidId;
         std::vector<GameObjectId> targets;
         bool target_chosen_at_play = false;
+        int repeats = 0;                                        // [Repeat] paid (U10)
+        std::vector<ChainItem::ExecutionChoices> repeat_choices;
     };
     std::optional<EffectPlayedSpell> effect_played_spell_;
+    std::vector<RepeatTranche> effect_repeats_;   // accepted on an effect play, paid after its cost
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);
@@ -1157,6 +1169,55 @@ private:
     std::optional<ChainItem> prefinalized_spell_;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
+
+    // ── [Repeat] (CR 820) ── A Repeat cost is an Optional Additional Cost
+    // decided in the Make Relevant Choices step with the play's other choices
+    // (CR 355.1.a), and each extra execution's choices are made then too (CR
+    // 820.2) — before any cost is paid (testing phase U11), on a play from a
+    // hand, from the trash and by an effect that pays (U10).
+    /// The spell's Repeat costs now: its own (Card::repeatCosts) or, with
+    /// none printed, a granted one (The Academy / Temporal Portal, Syndra),
+    /// with Marai Spire's reduction.
+    std::vector<RepeatTranche> repeatTranchesFor(PlayerId player, GameObjectId card) const;
+    /// Asks, for each tranche, whether to pay it. Offered only if the cost
+    /// step can still be paid in full: on a copy of the game, `pay_base`
+    /// pays the play's own cost (the engine's way, nobody asked), then the
+    /// tranches accepted so far and this one are paid. Nothing is paid here.
+    std::vector<RepeatTranche> decideRepeats(PlayerId player, GameObjectId card,
+                                             const std::function<bool()>& pay_base);
+    /// `fn` run on a copy of the game, quiet, thrown away (parkGame): a
+    /// payment tried before it is offered.
+    bool tryOnACopy(const std::function<bool()>& fn);
+    /// Pays `card`'s own cost with `adj` and `extra_any` [A] on top (a
+    /// Deflect owed with it) the engine's way, asking nobody (a copy of the
+    /// game being tried); false if it cannot be paid.
+    bool payCardCostQuietly(PlayerId player, GameObjectId card, const Card::PlayCostAdjust& adj,
+                            int extra_any);
+    /// Pays the tranches the engine's way, one payment per Domain group
+    /// (a copy of the game being tried); the nets used in `nets_out`.
+    bool payTranchesQuietly(PlayerId player, const std::vector<RepeatTranche>& tranches,
+                            std::vector<std::pair<int, int>>* nets_out);
+    /// Pays the accepted tranches (after the play's own cost); the Energy
+    /// they took.
+    int payRepeats(PlayerId player, GameObjectId card, const std::vector<RepeatTranche>& accepted);
+    /// The choices of each extra execution, made before the costs (CR 820.2)
+    /// on a stand-in for the spell's chain item that holds the first
+    /// execution's choices. A choice is offered only if, with its Deflect
+    /// paid, the cost step (`pay_base`, then the tranches) can still be paid
+    /// (EffectExecutor::setChoiceFilter); a Deflect is paid from what that
+    /// cost cannot use (`owed`: EffectExecutor::setOwedCost).
+    std::vector<ChainItem::ExecutionChoices> chooseRepeatsBeforeCost(
+        PlayerId player, GameObjectId card, const std::vector<GameObjectId>& play_targets,
+        bool target_chosen_at_play, const std::vector<RepeatTranche>& accepted,
+        const std::function<bool()>& pay_base, EffectExecutor::OwedCost owed);
+    /// The extra executions' choices of chain item `item_id` (CR 820.2), made
+    /// the way "make new choices" makes them; the first execution's are put
+    /// back afterwards.
+    void chooseRepeatExecutions(ChainItemId item_id);
+    /// Extra executions chosen before the cost, waiting for the spell's chain
+    /// item (adopted with prefinalized_spell_).
+    std::optional<std::vector<ChainItem::ExecutionChoices>> prechosen_repeats_;
+    int prechosen_repeat_count_ = 0;
     /// One agent decision among `options` for `player`, logged like any other.
     Intent decideNow(PlayerId player, const std::vector<Intent>& options, PromptKind kind,
                      GameObjectId source, const std::string& what,

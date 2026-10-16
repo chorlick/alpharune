@@ -266,7 +266,8 @@ TEST_F(C6Test, AzirSovereign_MovesOnlyTheTokensThePlayerNames) {
     auto azir = addUnit(P1, kAzirSovereign, 0, 0);
     auto t1 = token(P1, 1);
     auto t2 = token(P1, 1, 1);
-    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(t1.raw()), 0}));
+    // The leading "you may" (batch 8 U2), then the tokens.
+    EnginePathAgent agent(EnginePathAgent::script({1, static_cast<int>(t1.raw()), 0}));
     fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &agent);
     EXPECT_TRUE(atBf(t1, 0));
     EXPECT_TRUE(atBf(t2, 1)) << "the token holding the other battlefield stays";

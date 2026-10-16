@@ -23,6 +23,8 @@ pre-batch-1 rate (783 games/s x 278 decisions = 218k decisions/s, measured on a 
 is what P1's unsafe part names (section 7). Master `c2615e4` measured at the start: 602 games/s mean (571-622),
 10.36M instructions/game.
 
+Re-check after merging master `2804411` (round 2 tooling; merge `637d53e`): incremental rebuild of riftbound_tests, riftbound_openspiel_tests, deck_fuzz and prompt_trace 0 warnings; riftbound_tests 3,585 and openspiel 34 passed; HiddenOrderLeak (default size, 6 tests) passed, relabelled 60 of 60 to the end; smoke 136 / 64 / 0 / 289 equal to the pre-merge final; `deck_fuzz --rows` 3 x 3,200 (random, random-player, pass=0, seed 5150) identical to the pre-merge final.
+
 Fuzz (3 threads, 100,000 games each, same seeds): random 1,851 -> 1,915 games/s, random-player 1,893 -> 1,843,
 pass=0 1,760 -> 1,858 (single runs beside other streams; ±5% noise).
 

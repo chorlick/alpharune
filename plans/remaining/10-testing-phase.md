@@ -69,18 +69,21 @@ All closed by batch 6 (R1-R14), with M5: `plans/completed/10-testing-phase.md` (
 
 ## Found by batch 5c-perf (2026-10-15, `plans/reports/batch-5c-perf.md` section 5)
 
-- [ ] **P1** (owner decision on scope) Throughput is still 14% short of the pre-batch-1 rate per decision (187k against 218k decisions/s). What is left, by size: the Cleanup after every chain step (27%; 94% change nothing, but skipping a pass needs write tracking of the ~100 fields aura hooks read — a project); signals2 dispatch (17%, about 6% the library's own machinery; reworking the bus was ruled out earlier by the owner); allocation (13%: `Intent` holds 7 vectors — small-vector storage would cut most per-decision allocations); a `GameState` copy per pre-play probe and optional cost (2.7%, and the main cost of search, where every node copies); `refreshFlowGrants` reading every trash card each pass (2.9%); `canAffordWith` walking base runes per card per generation (3%) — perf
+- [ ] **P1** (owner decision on scope; the safe part done by batch 7-perf, `plans/reports/batch-7-perf.md`) What is left is the part that needs a decision: the Cleanup after every chain step (~26%; most change nothing, but skipping a pass needs write tracking of the ~100 fields aura hooks read — a project), signals2 dispatch and the per-game bus setup and teardown (~17% and ~3%; reworking the bus was ruled out by the owner), and the GameState copy of search (`RiftboundState` clones and resumed snapshots copy-construct a state into a new engine; the probes' copies now reuse a parking slot's nodes). Measured and not worth doing on their own: small-vector storage for `Intent`'s id lists (-12.6% mallocs, no time), `refreshFlowGrants` facts from the card's class (no time), a per-generation summary of the base runes for `canAffordWith` (+0.8% instructions) — perf
   - **Owner, 2026-10-15: "lets keep the gap for now."** No structural throughput work (write tracking, event bus). Revisit only if profiling during real training shows engine time matters. Closed as an owner decision once batch 7-perf lands.
 
 
 ## Found by batch 5d (2026-10-15, `plans/reports/batch-5d.md` section 8)
 
-- [ ] **Q1** (N1 tail) Under other object ids 1 to 3 game pairs in 300 still become other games (the relabelled test allows 1 in 50): cards returned to a hand together enter it in the order the effect listed them; two Zero Drives triggering for one death track the banished unit by trigger order; an effect that buffed one of several identical tokens. Each is a list a card builds in id order — CODE-ONLY
-- [ ] **Q2** (perf) Batch 5d costs +1.9% instructions on the throughput benchmark (T1's prompt carried at every decision: +0.7% on identical games; the rest the N1 orderings and other games); wall -2.6% at load 3.1-3.7 — perf
+All closed by batch 7-perf (Q1, Q2): `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-7-perf.md`).
 
 ## Found by batch 6 (2026-10-15, `plans/reports/batch-6.md` section 9)
 
 - [ ] **S1** Thermo Beam ("Kill all gear") kills the gear one after another, with no `DeathBatch`: they do not die together (CR 370.1.a.2), so a gear's "when a gear dies" ability can see another die in the same kill (CR 383.2.c.2), and their death abilities are not one simultaneous batch (383.3.d). Batch 6's R4 put Acceptable Losses' two gear in one batch; Thermo Beam is the other card that kills several gear in one effect — CODE-ONLY
+
+## Found by batch 7-perf (2026-10-15, `plans/reports/batch-7-perf.md` section 8)
+
+- [ ] **Q3** (QUESTION if the owner wants one) Reckoner's Arena "activates the conquer effects of units here": each ability is put on the chain "as if it had just triggered" (CR 383.4.g.1), so two or more of them may be simultaneous triggers whose controller orders them (CR 383.3.d). The engine queues them one by one (`queueTriggeredAbility`, no trigger batch, no order prompt), now in an order of what the players see (batch 7 Q1) instead of id order — RULES
 
 ## Found by round 2 (2026-10-15, `plans/reports/round2.md`, detail in `docs/testing-findings-round2-2026-10.md` section 4) — batch 8
 

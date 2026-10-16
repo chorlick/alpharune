@@ -4,6 +4,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -88,7 +89,9 @@ public:
             auto ubf = obj.battlefieldId();
             if (ubf && *ubf == *my_bf) units.push_back(id);
         }
-        std::sort(units.begin(), units.end());
+        // Their abilities go on the chain in an order of what the players see
+        // of the units, not of their ids (Q1).
+        inSeenOrder(ctx.state, units);
         int activated = 0;
         for (auto uid : units) {
             if (!ctx.state.objectExists(uid)) continue;

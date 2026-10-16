@@ -52,6 +52,20 @@ inline float visibleCardId(const GameState& state, GameObjectId id, PlayerId per
     return safeCardId(state.getObject(id).card_def_id);
 }
 
+// The gear a unit's slot names: the lowest card among its attachments. Its
+// attachments are a set (the order they were attached in follows which of two
+// identical gear an earlier choice took, i.e. ids: batch 7 Q1); none gives the
+// invalid id, which safeCardId writes as 0.
+CardDefId representativeGear(const GameState& state, const GameObject& u) {
+    CardDefId gear;
+    for (auto aid : u.attachments) {
+        if (!state.objectExists(aid)) continue;
+        const CardDefId c = state.getObject(aid).card_def_id;
+        if (gear == kInvalidId || (c != kInvalidId && safeCardId(c) < safeCardId(gear))) gear = c;
+    }
+    return gear;
+}
+
 // The one order of units (and base gear) everywhere in the vector: Might
 // descending, then every other field the vector writes about a unit, so that
 // two units that tie on Might come out in the same order whatever their ids
@@ -60,10 +74,7 @@ inline float visibleCardId(const GameState& state, GameObjectId id, PlayerId per
 struct UnitOrderKey {
     std::array<int64_t, 18> k{};
     explicit UnitOrderKey(const GameState& state, const GameObject& u) {
-        CardDefId gear;
-        for (auto aid : u.attachments) {
-            if (state.objectExists(aid)) { gear = state.getObject(aid).card_def_id; break; }
-        }
+        const CardDefId gear = representativeGear(state, u);
         k = {-static_cast<int64_t>(u.current_might),
              static_cast<int64_t>(safeCardId(u.card_def_id)),
              u.damage_marked,
@@ -188,13 +199,7 @@ void extractSideFeatures(const GameState& state,
         if (u.hasKeyword(Keyword::Shield)) num_shield++;
         if (u.hasKeyword(Keyword::Deflect)) num_deflect++;
 
-        CardDefId gear_def;  // none: safeCardId gives 0
-        for (auto aid : u.attachments) {
-            if (state.objectExists(aid)) {
-                gear_def = state.getObject(aid).card_def_id;
-                break;
-            }
-        }
+        const CardDefId gear_def = representativeGear(state, u);   // none: safeCardId gives 0
         int cd = 0;
         if (u.combat_designation == CombatDesignation::Attacker) cd = 1;
         else if (u.combat_designation == CombatDesignation::Defender) cd = 2;

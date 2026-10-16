@@ -303,7 +303,7 @@ void GameEngine::refreshStepFromDriver() {
     current_step_.kind = StepKind::NeedDecision;
     current_step_.legal = step_driver_->legalActionsSnapshot();
     current_step_.perspective = step_driver_->currentPlayerSnapshot();
-    current_step_.prompt = parked_prompt_;
+    current_step_.prompt = *parked_prompt_;
 }
 
 const StepResult& GameEngine::beginGame(
@@ -957,27 +957,33 @@ void GameEngine::awakenPhase() {
     // Monument). 1 on their first turn.
     state_.player(state_.turn.turn_player).turns_taken++;
 
-    // Ready all game objects the turn player controls (CR 315.1.b)
+    // Ready all game objects the turn player controls (CR 315.1.b), at once:
+    // what that triggers ("When I become ready") is one batch, ordered by
+    // what the players see and by its controller (CR 383.3.d), not by the
+    // object table's order (batch 7 Q1).
     auto player = state_.turn.turn_player;
-    for (auto& [id, obj] : state_.objects.onBoard()) {
-        if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
-            const Card* card = obj.card_def_id != kInvalidId
-                ? card_registry_.get(obj.card_def_id) : nullptr;
-            if (card && !card->canBeReadied()) continue;   // "I can't be readied."
-            obj.is_exhausted = false;
-            events_.emit(ObjectStateChangedEvent{id, "readied"});
-            events_.emit(ObjectStateChangedEvent{id, "became_ready"});
+    {
+        const SimultaneousTriggers together(state_.chain);
+        for (auto& [id, obj] : state_.objects.onBoard()) {
+            if (obj.controller == player && obj.is_exhausted && obj.location.has_value()) {
+                const Card* card = obj.card_def_id != kInvalidId
+                    ? card_registry_.get(obj.card_def_id) : nullptr;
+                if (card && !card->canBeReadied()) continue;   // "I can't be readied."
+                obj.is_exhausted = false;
+                events_.emit(ObjectStateChangedEvent{id, "readied"});
+                events_.emit(ObjectStateChangedEvent{id, "became_ready"});
+            }
         }
-    }
-    // Also ready the legend
-    auto legend_id = state_.player(player).legend_zone;
-    if (legend_id != kInvalidId && state_.objectExists(legend_id)) {
-        auto& legend = state_.getObject(legend_id);
-        if (legend.is_exhausted) {
-            legend.is_exhausted = false;
-            events_.emit(ObjectStateChangedEvent{legend_id, "readied"});
+        // Also ready the legend
+        auto legend_id = state_.player(player).legend_zone;
+        if (legend_id != kInvalidId && state_.objectExists(legend_id)) {
+            auto& legend = state_.getObject(legend_id);
+            if (legend.is_exhausted) {
+                legend.is_exhausted = false;
+                events_.emit(ObjectStateChangedEvent{legend_id, "readied"});
+            }
         }
-    }
+    }   // (the readying's batch ends here)
     // CR 335: a phase is left only with no outstanding task and nothing
     // pending — "When I become ready" abilities resolve in this phase.
     settleStagedAndChain();
@@ -2039,6 +2045,18 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
                 std::sort(gear.begin(), gear.end());
                 where.push_back(static_cast<int64_t>(gear.size()));
                 where.insert(where.end(), gear.begin(), gear.end());
+                // What was "banished with" it (two Zero Drives triggering for
+                // one death: told apart by what each already holds; batch 7 Q1).
+                std::vector<int64_t> held;
+                for (auto t : o.tracked_objects)
+                    if (state_.objectExists(t))
+                        held.push_back(knowledge::identityVisible(state_, t, PlayerId::Player1) &&
+                                               knowledge::identityVisible(state_, t, PlayerId::Player2)
+                                           ? static_cast<int64_t>(state_.getObject(t).card_def_id.raw())
+                                           : -1);
+                std::sort(held.begin(), held.end());
+                where.push_back(static_cast<int64_t>(held.size()));
+                where.insert(where.end(), held.begin(), held.end());
             };
             if (seen_by_both && state_.objectExists(ci->source)) standing(ci->source);
             if (ci->triggering_subject != ci->source) standing(ci->triggering_subject);
@@ -2940,16 +2958,17 @@ std::vector<Intent> GameEngine::addReactionsFor(PlayerId player) const {
 
 // Whether `check` holds once `player` has activated every [Add] Reaction they
 // can (each re-listed after the last) — tried on a copy of the game, quietly,
-// and thrown away: the game is moved aside (its objects stay where references
-// up the call stack point) and moved back after (as prePlayProbe does).
+// and thrown away: the game is swapped aside (its objects stay where
+// references up the call stack point) and back after (parkGame, as
+// prePlayProbe does).
 bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameState&)>& check,
                            const std::function<void()>* first) {
     if (adds_probing_) return check(state_);
     struct Parked {
-        GameState& live;
-        GameState game;
-        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-        ~Parked() { live = std::move(game); }
+        GameEngine& engine;
+        GameState& game;
+        explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+        ~Parked() { engine.unparkGame(game); }
     };
     struct ForgetFacts {
         GameEngine& engine;
@@ -2964,7 +2983,7 @@ bool GameEngine::probeAdds(PlayerId player, const std::function<bool(const GameS
     if (effect_executor_->hasPendingChoice()) prompt = effect_executor_->consumePendingChoice();
     bool ok = false;
     {
-        Parked parked(state_);
+        Parked parked(*this);
         state_ = parked.game;
         forgetCleanupFacts();
         struct QuietRun {
@@ -3434,27 +3453,40 @@ ChainItem GameEngine::choosePrePlayViable(const ChainItem& pre, const PrePlayPay
     return final_run.done;
 }
 
+GameState& GameEngine::parkGame() {
+    if (park_slots_.size() <= park_depth_) park_slots_.push_back(std::make_unique<GameState>());
+    GameState& slot = *park_slots_[park_depth_++];
+    std::swap(state_, slot);
+    return slot;
+}
+
+void GameEngine::unparkGame(GameState& slot) {
+    std::swap(state_, slot);
+    --park_depth_;
+}
+
 bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
                               const PlayerState::TrashReplayGrant* grant) {
     if (state_.chain.resuming.has_value() || !state_.objectExists(card_id)) return false;
-    // The game is set aside whole — moved, not copied: its objects stay where
-    // every reference held up the call stack points — and the probe plays on
-    // a copy, which is thrown away when the game is moved back. One copy of
+    // The game is set aside whole — swapped into a parking slot, not copied:
+    // its objects stay where every reference held up the call stack points —
+    // and the probe plays on a copy, kept in the slot for the next probe's
+    // copy to reuse when the game is swapped back (parkGame). One copy of
     // the GameState per probe that finds its answer in one run (it was five:
     // a saved state, a pass-start state, one per run, and two restores), one
     // more for each further run (plans/09 item 9.HH4).
     struct Parked {
-        GameState& live;
-        GameState game;
-        explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-        ~Parked() { live = std::move(game); }
+        GameEngine& engine;
+        GameState& game;
+        explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+        ~Parked() { engine.unparkGame(game); }
     };
     // (Declared first, so it runs after `parked` has put the game back.)
     struct ForgetFacts {
         GameEngine& engine;
         ~ForgetFacts() { engine.forgetCleanupFacts(); }
     } forget_facts{*this};
-    Parked parked(state_);
+    Parked parked(*this);
     ++pre_play_probes_;
     // As the play would begin: the card leaves its zone.
     ChainItem pre;
@@ -4534,12 +4566,15 @@ Intent GameEngine::queryAgentForChain(PlayerId player,
     // state; a card's prompt asked through this path cannot.
     const bool is_priority = std::any_of(actions.begin(), actions.end(),
         [](const Intent& i) { return i.type == IntentType::PassPriority; });
-    // Read before asking: the name lives only while the prompt does.
-    const std::string asked = effect_executor_ ? effect_executor_->asking() : std::string();
-    auto chosen = askAgent(player, actions,
-        is_priority ? enginePrompt(player, PromptKind::ChainPriority)
-                    : (effect_executor_ ? effect_executor_->askingPrompt() : Prompt{}),
-        is_priority ? PendingQuery::ChainPriority : PendingQuery::None);
+    // The name of what is asked: the executor's prompt, which lives (in the
+    // Asking guard of whoever asked) until this returns.
+    static const std::string kNoName;
+    const std::string& asked = effect_executor_ ? effect_executor_->asking() : kNoName;
+    Intent chosen =
+        is_priority ? askAgent(player, actions, enginePrompt(player, PromptKind::ChainPriority),
+                               PendingQuery::ChainPriority)
+        : effect_executor_ ? askAgentAbout(player, actions, effect_executor_->askingPrompt())
+                           : askAgent(player, actions, Prompt{});
     // Surface the chain-priority decision in the trace so V&V can
     // confirm priority is being passed correctly between players in
     // Closed State (CR 337). Without this, trivial-pass decisions are
@@ -5149,6 +5184,7 @@ bool GameEngine::unitPlayableAt(const Card* card_obj, PlayerId player,
 
 std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const {
     std::vector<Intent> actions;
+    actions.reserve(kOptionsReserved);   // one buffer, not one per doubling
 
     // Always can end turn
     actions.push_back(Intent::endTurn(player));
@@ -5380,6 +5416,7 @@ std::vector<Intent> GameEngine::generateMulliganActions(PlayerId player) const {
 
 std::vector<Intent> GameEngine::generateShowdownActions(PlayerId player) const {
     std::vector<Intent> actions;
+    actions.reserve(kOptionsReserved);
 
     // Can always pass focus
     actions.push_back(Intent::passFocus(player));
@@ -8766,18 +8803,18 @@ void GameEngine::maybePayOptionalAdditionalCost(PlayerId player, GameObjectId ca
     // ... and only if the card itself can still be paid for afterwards: the
     // choice is made before any payment (CR 355.1.a), so it is judged on the
     // whole. Tried on a copy of the game, which is thrown away (as
-    // prePlayProbe does: the game is moved aside, not copied over).
+    // prePlayProbe does: the game is swapped aside, parkGame).
     {
         struct ForgetFacts {
             GameEngine& engine;
             ~ForgetFacts() { engine.forgetCleanupFacts(); }
         } forget_facts{*this};
         struct Parked {
-            GameState& live;
-            GameState game;
-            explicit Parked(GameState& s) : live(s), game(std::move(s)) {}
-            ~Parked() { live = std::move(game); }
-        } parked(state_);
+            GameEngine& engine;
+            GameState& game;
+            explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+            ~Parked() { engine.unparkGame(game); }
+        } parked(*this);
         struct Quiet {
             EventBus& bus;
             EventBus::Quiet q;
@@ -9738,11 +9775,24 @@ Prompt GameEngine::enginePrompt(PlayerId decider, PromptKind kind, GameObjectId 
     return p;
 }
 
+const Prompt GameEngine::kNoPrompt{};
+
 Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                             PendingQuery kind) {
-    pending_query_ = kind;
     prompt.decider = player;
-    parked_prompt_ = std::move(prompt);
+    return askAgentAbout(player, legal, prompt, kind);   // (`prompt` lives for the call)
+}
+
+Intent GameEngine::askAgentAbout(PlayerId player, const std::vector<Intent>& legal,
+                                 const Prompt& prompt, PendingQuery kind) {
+    pending_query_ = kind;
+    if (prompt.decider == player) {
+        parked_prompt_ = &prompt;
+    } else {
+        parked_prompt_copy_ = prompt;
+        parked_prompt_copy_.decider = player;
+        parked_prompt_ = &parked_prompt_copy_;
+    }
     pending_query_player_ = player;
     parked_legal_ = &legal;
     edited_while_parked_ = false;
@@ -9751,7 +9801,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, P
         ~Unpark() {
             e.parked_legal_ = nullptr;
             e.pending_query_ = PendingQuery::None;
-            e.parked_prompt_.kind = PromptKind::Unspecified;
+            e.parked_prompt_ = &kNoPrompt;
         }
     } unpark{*this};
 
@@ -9794,7 +9844,7 @@ Intent GameEngine::askAgent(PlayerId player, const std::vector<Intent>& legal, P
         }
     }
 
-    Intent chosen = getAgent(player).decide(state_, legal, parked_prompt_);
+    Intent chosen = getAgent(player).decide(state_, legal, *parked_prompt_);
     parked_legal_ = nullptr;
     // (A card's prompt: priority and Focus decisions are the chance to break
     // a loop, not what keeps one going — TR 505.3 against 505.5.)

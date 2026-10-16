@@ -181,12 +181,23 @@ inline bool legionActive(const GameState& state, PlayerId player) {
 
 // ── Battlefields and combat ──
 /// The battlefield whose card object is `card_object` (a battlefield card's
-/// own ctx.source, or a conquer / hold trigger's subject on a legend).
+/// own ctx.source, or a conquer / hold trigger's subject on a legend). A
+/// battlefield that has since been replaced by a token, or swapped back, is
+/// still that battlefield: "The replacing token is treated as the same Game
+/// Object as the card or token it replaced for the purposes of Game Effects
+/// that target or reference that game object" (CR 439.1.a, 439.7.a;
+/// BattlefieldState::same_object_as). Every battlefield card finds "here"
+/// through this, never by comparing `card_object_id` itself (testing phase
+/// U5).
 inline std::optional<BattlefieldId> battlefieldOfCard(const GameState& state,
                                                       GameObjectId card_object) {
     if (card_object == kInvalidId) return std::nullopt;
     for (const auto& bf : state.battlefields)
         if (bf.card_object_id == card_object) return bf.id;
+    for (const auto& bf : state.battlefields)
+        if (std::find(bf.same_object_as.begin(), bf.same_object_as.end(), card_object) !=
+            bf.same_object_as.end())
+            return bf.id;
     return std::nullopt;
 }
 /// Combat damage `player` assigned beyond lethal in their combat at `bf` this

@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -21,8 +22,9 @@ public:
         {   // the engine never hands a trigger targets: the card picks
             auto unitsHere = [&]() {
                 std::vector<GameObjectId> out;
+                const auto here = battlefieldOfCard(ctx.state, ctx.source);
                 for (const auto& bf : ctx.state.battlefields) {
-                    if (bf.card_object_id != ctx.source) continue;
+                    if (bf.id != here) continue;
                     for (auto& [id, obj] : ctx.state.objects.onBoard()) {
                         if (!obj.isUnit() || obj.controller != ctx.controller) continue;
                         auto ubf = obj.battlefieldId();

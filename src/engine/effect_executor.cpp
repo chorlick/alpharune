@@ -2551,6 +2551,8 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     // replaced stays the one to swap back to (CR 439.7.b.1).
     const bool token_replaced = slot->was_replaced && slot->replaced_card.has_value();
     if (!token_replaced) slot->replaced_card = slot->card_object_id;
+    if (slot->card_object_id != kInvalidId)
+        slot->same_object_as.push_back(slot->card_object_id);   // CR 439.1.a
     slot->was_replaced = true;
     slot->is_token = true;
     slot->card_object_id = token_id;
@@ -2603,6 +2605,9 @@ bool EffectExecutor::restoreReplacedBattlefield(BattlefieldId target_bf) {
         bz.erase(std::remove(bz.begin(), bz.end(), original), bz.end());
     }
     orig.zone = ZoneType::BattlefieldZone;
+    // Swapping back is an extension of Replace (CR 439.7.a): the card is the
+    // same object as the token for what references the token (439.1.a).
+    if (token != kInvalidId) slot->same_object_as.push_back(token);
     slot->card_object_id = original;
     slot->replaced_card.reset();
     slot->was_replaced = false;

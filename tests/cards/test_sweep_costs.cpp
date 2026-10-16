@@ -3283,4 +3283,164 @@ TEST_F(SweepCostsTest, Removal_NoRegisteredTriggerLosesAnEffectExceptTheListedOn
               << " card(s) whose outcome it changes ]\n";
 }
 
+// ─── Finding U1 / U2 (regressions of D4): an ability with nothing to decide ──
+//
+// Round 2 found two cards whose triggered ability, with nothing to choose,
+// still went on the chain, gave both players priority and resolved doing
+// nothing: every [Weaponmaster] unit with no Equipment (WeaponmasterUnit set
+// its "may" to "no" without asking confirmOptional, so ChainItem::may_answer
+// stayed -1) and Azir, Sovereign with no token to move (a "may" asked as an
+// "any number" pick, with no leading confirmOptional). D4's removal (CR
+// 403.1.a, 403.4, 405.2) relies on the helpers storing "nothing to decide".
+// This sweep queues every opted-in card's triggers on a near-empty board and
+// lists each ability that was asked nothing, was finalized (priority given)
+// and changed nothing — the shape of both regressions. The cards on the list
+// below do so by their printed text: an ability with no "may" and no choice
+// on this board (its instruction simply has nothing to act on), which CR 403
+// does not remove.
+TEST_F(SweepCostsTest, Removal_NoRegisteredTriggerWithNothingToDecideIsFinalizedForNothing) {
+    const GameState blank = state;
+    std::vector<CardDefId> ids;
+    for (const auto& [id, def] : card_db.all()) {
+        const Card* card = card_registry.get(id);
+        if (card && id < 1000 && (card->choicesAtFinalization() & Card::kFinalizeTrigger))
+            ids.push_back(id);
+    }
+    std::sort(ids.begin(), ids.end());
+    ASSERT_GE(ids.size(), 150u);
+    auto digest = [&](const GameState& st) {
+        uint64_t h = Card::costStateFingerprint(st);
+        auto mix = [&](uint64_t x) { h = (h ^ x) * 0x100000001B3ULL; };
+        for (PlayerId p : {P1, P2}) {
+            mix(static_cast<uint64_t>(st.player(p).score));
+            mix(st.player(p).hand.size());
+            mix(st.player(p).main_deck.size());
+            mix(st.player(p).trash.size());
+            mix(st.player(p).banishment.size());
+            for (auto c : st.player(p).main_deck) mix(static_cast<uint64_t>(c.raw()));
+            for (auto c : st.player(p).hand) mix(static_cast<uint64_t>(c.raw()));
+            mix(static_cast<uint64_t>(st.player(p).xp));
+        }
+        std::vector<GameObjectId> all;
+        for (const auto& [oid, obj] : st.objects) all.push_back(oid);
+        std::sort(all.begin(), all.end());
+        for (auto oid : all) {
+            const auto& obj = st.getObject(oid);
+            mix(static_cast<uint64_t>(oid.raw()) * 31 + (obj.is_stunned ? 1 : 0) +
+                (obj.location.has_value() ? 2 : 0) + (obj.isAtBattlefield() ? 4 : 0) +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.current_might)) * 8 +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.empowered)) * 4096 +
+                static_cast<uint64_t>(obj.controller) * 65536 +
+                static_cast<uint64_t>(static_cast<uint32_t>(obj.temp_might_bonus)) * 1048576);
+            mix(obj.attached_to.has_value() ? static_cast<uint64_t>(obj.attached_to->raw()) + 1 : 0);
+            mix(obj.keywords.bits);
+        }
+        mix(st.delayed_abilities.size());
+        return h;
+    };
+
+    /// Counts the card prompts (not the engine's order prompts) both players are asked.
+    class CountingEnd : public EndAgent {
+    public:
+        int prompts = 0;
+        Intent selectAction(const GameState& st, const std::vector<Intent>& legal) override {
+            const bool is_choice = !legal.empty() && std::all_of(legal.begin(), legal.end(),
+                [](const Intent& i) { return i.type == IntentType::MakeChoice; });
+            if (is_choice) ++prompts;
+            return EndAgent::selectAction(st, legal);
+        }
+    };
+    std::set<std::string> idle;
+    int runs = 0;
+    for (CardDefId id : ids) {
+        const Card* card = card_registry.get(id);
+        const CardDef& def = card_db.get(id);
+        GameObjectId friendly = kInvalidId, enemy = kInvalidId;
+        auto setUp = [&](int board) -> GameObjectId {
+            state = blank;
+            state.battlefields[0].controller = P1;
+            GameObjectId source = kInvalidId;
+            switch (def.card_type) {
+                case CardType::Spell: source = addToTrash(P1, id); break;
+                case CardType::Gear: source = addGear(P1, id); break;
+                case CardType::Legend: source = addLegend(P1, id); break;
+                case CardType::Battlefield: {
+                    source = state.createObject();
+                    auto& b = state.getObject(source);
+                    b.owner = b.controller = P1;
+                    b.card_def_id = id;
+                    b.name = def.name;
+                    b.card_type = CardType::Battlefield;
+                    state.battlefields[0].card_object_id = source;
+                    break;
+                }
+                default: source = addUnit(P1, id, std::max(def.might, 1), 0); break;
+            }
+            friendly = enemy = kInvalidId;
+            if (board == 1) {
+                state.battlefields[1].controller = P1;
+                friendly = addUnit(P1, kInvalidId, 3, 0);
+                o(friendly).damage_marked = 1;
+                addUnit(P1, kInvalidId, 6, 1);
+                addUnit(P1, kInvalidId, 2);
+                addGear(P1, kLongSword);
+                enemy = addUnit(P2, kInvalidId, 2, 0);
+                addUnit(P2, kInvalidId, 5, 1);
+                addUnit(P2, kInvalidId, 3);
+                addGear(P2);
+                addToHand(P1, kPoutyPoro);
+                addToTrash(P1, kPoutyPoro);
+                for (int i = 0; i < 4; ++i) addRune(P1, Domain::Fury);
+                setXp(P1, 10);
+            }
+            // Both boards: a deck to draw or reveal from, a hurt unit to heal.
+            for (int i = 0; i < 10; ++i) addToDeck(P1, kPoutyPoro);
+            o(addUnit(P1, kInvalidId, 4, 0)).damage_marked = 1;
+            setPool(P1, 30, 10);
+            return source;
+        };
+
+        for (TriggerType t : card->triggerTypes()) {
+            if (t == TriggerType::None) continue;
+            uint64_t ended[2] = {0, 0};
+            int finalized = 0, prompts = 0;
+            bool threw = false;
+            for (int queued = 0; queued < 2 && !threw; ++queued) {
+                const GameObjectId source = setUp(0);
+                CountingEnd a1, a2;
+                auto conn = events.on_chain_item_finalized.connect(
+                    [&](const ChainItemFinalizedEvent&) { ++finalized; });
+                try {
+                    withEngine([&](GameEngine& e) {
+                        if (queued == 1)
+                            e.testHook_executor().queueTriggeredAbility(source, P1, t, kInvalidId);
+                        settleLikeTheEngine(e);
+                    }, &a1, &a2, P1);
+                } catch (const std::exception&) {
+                    threw = true;   // the contract sweep reports card errors
+                }
+                conn.disconnect();
+                if (queued == 1) prompts = a1.prompts + a2.prompts;
+                ended[queued] = digest(state);
+            }
+            if (threw) continue;
+            ++runs;
+            if (finalized > 0 && prompts == 0 && ended[0] == ended[1])
+                idle.insert(def.name + " (" + toString(id) + ") trigger " +
+                            std::to_string(static_cast<int>(t)));
+        }
+    }
+    state = blank;
+    const std::set<std::string> listed = {
+    };
+    std::string extra, gone;
+    for (const auto& d : idle) if (!listed.count(d)) extra += "\n  " + d;
+    for (const auto& l : listed) if (!idle.count(l)) gone += "\n  " + l;
+    EXPECT_TRUE(extra.empty()) << "finalized with nothing decided and nothing done:" << extra;
+    EXPECT_TRUE(gone.empty()) << "listed, but no longer finalized for nothing:" << gone;
+    EXPECT_GE(runs, 150);
+    std::cout << "[ " << ids.size() << " cards, " << runs << " runs, " << idle.size()
+              << " finalized for nothing by their text ]\n";
+}
+
 }  // namespace riftbound::test::sweep_costs

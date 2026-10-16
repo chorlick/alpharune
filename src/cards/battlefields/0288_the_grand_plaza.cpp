@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -22,10 +23,7 @@ public:
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
         // Locate this BF (its card object is `source`).
-        BattlefieldId my_bf = kInvalidId;
-        for (const auto& bf : state.battlefields) {
-            if (bf.card_object_id == source) { my_bf = bf.id; break; }
-        }
+        const BattlefieldId my_bf = battlefieldOfCard(state, source).value_or(kInvalidId);
         if (my_bf == kInvalidId) return false;
         int units_here = 0;
         for (const auto& [id, obj] : state.objects.onBoard()) {

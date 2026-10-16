@@ -42,10 +42,12 @@ public:
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // Locate the BF slot this Brush card occupies.
+        // "this" is the slot even if this Brush has been replaced since (by
+        // another Brush: CR 439.1.a, 439.6; testing phase U5).
         BattlefieldState* slot = nullptr;
-        for (auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { slot = &bf; break; }
-        }
+        if (const auto here = battlefieldOfCard(ctx.state, ctx.source))
+            for (auto& bf : ctx.state.battlefields)
+                if (bf.id == *here) { slot = &bf; break; }
         // No return ahead of the "may" when there is nothing to put back:
         // confirmOptional then stores the "no" on the item.
         auto replaced = [&]() {

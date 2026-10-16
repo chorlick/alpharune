@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -77,9 +78,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.registry) return;
         // Which battlefield does this BF-card object represent?
-        std::optional<BattlefieldId> my_bf;
-        for (const auto& b : ctx.state.battlefields)
-            if (b.card_object_id == ctx.source) { my_bf = b.id; break; }
+        const std::optional<BattlefieldId> my_bf = battlefieldOfCard(ctx.state, ctx.source);
         if (!my_bf) return;
         // Snapshot the holder's units here first: queuing and gear effects can
         // touch the object map.

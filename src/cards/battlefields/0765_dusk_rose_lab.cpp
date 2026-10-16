@@ -22,12 +22,8 @@ public:
     std::vector<GameObjectId> unitsHere(CardContext& ctx) const {
         std::vector<GameObjectId> out;
         // Find this BF's id.
-        BattlefieldId my_bf = kInvalidId;
-        bool found = false;
-        for (auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { my_bf = bf.id; found = true; break; }
-        }
-        if (!found) return out;
+        const BattlefieldId my_bf = battlefieldOfCard(ctx.state, ctx.source).value_or(kInvalidId);
+        if (my_bf == kInvalidId) return out;
         for (auto& [id, obj] : ctx.state.objects.onBoard()) {
             if (!obj.isUnit() || obj.controller != ctx.controller) continue;
             auto ubf = obj.battlefieldId();
@@ -43,10 +39,10 @@ public:
     // nothing goes on the chain (finding G10; judge question 9 (b)).
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType /*trigger*/, GameObjectId /*subject*/) const override {
-        for (const auto& bf : state.battlefields)
-            if (bf.card_object_id == source)
-                return bf.controller.has_value() && *bf.controller == state.turn.turn_player;
-        return false;
+        const auto here = battlefieldOfCard(state, source);
+        if (!here.has_value()) return false;
+        const auto& bf = state.battlefields[*here];
+        return bf.controller.has_value() && *bf.controller == state.turn.turn_player;
     }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         // "kill a unit you control here" is the cost: it is paid as the

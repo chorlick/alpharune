@@ -28,9 +28,10 @@ public:
         auto find_target = [&]() -> BattlefieldId {
             if (!ctx.state.chain.resuming.has_value()) return kInvalidId;
             const GameObjectId bf_card = ctx.state.chain.resuming->triggering_subject;
-            // The card object changes when a battlefield is replaced, so a
-            // subject that is no longer a battlefield's card means "that
-            // battlefield" has already been replaced.
+            // "that battlefield" is still that battlefield after it was
+            // replaced or swapped back in response (CR 439.1.a, 439.7.a:
+            // the replacing object is the same object for effects that
+            // reference it; testing phase U5): battlefieldOfCard follows it.
             const auto bf = battlefieldOfCard(ctx.state, bf_card);
             if (!bf.has_value()) return kInvalidId;
             return *bf;

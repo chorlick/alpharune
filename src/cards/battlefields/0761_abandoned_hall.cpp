@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -20,10 +21,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         // Resolve this BF's BattlefieldId from its card object.
-        BattlefieldId my_bf = kInvalidId;
-        for (const auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { my_bf = bf.id; break; }
-        }
+        const BattlefieldId my_bf = battlefieldOfCard(ctx.state, ctx.source).value_or(kInvalidId);
         if (my_bf == kInvalidId) return;
 
         auto findTargets = [&]() {

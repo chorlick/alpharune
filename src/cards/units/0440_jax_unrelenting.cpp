@@ -41,8 +41,8 @@ public:
         auto still_legal = [&ctx]() {
             return costAlreadyPaid(ctx) || canPayEnergy(ctx, ctx.controller, 1);
         };
-        const int conf = ctx.state.objectExists(ctx.source)
-            ? confirmOptional(ctx, "Jax, Unrelenting: pay [1] to draw 1?", still_legal) : 0;
+        const int conf =
+            confirmOptional(ctx, "Jax, Unrelenting: pay [1] to draw 1?", still_legal);
         if (conf == 1 && costDueNow(ctx) && !payEnergy(ctx, ctx.controller, 1)) return;
         if (finalizingChoices(ctx)) return;   // choices and costs end here (CR 383.3)
         if (conf != 1) return;                // declined, or can't pay

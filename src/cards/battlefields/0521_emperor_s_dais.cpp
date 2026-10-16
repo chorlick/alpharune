@@ -20,10 +20,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.state.objectExists(ctx.source)) return;
         // Find "here" — the battlefield whose card object is this card.
-        BattlefieldId here = kInvalidId;
-        for (auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id == ctx.source) { here = bf.id; break; }
-        }
+        const BattlefieldId here = battlefieldOfCard(ctx.state, ctx.source).value_or(kInvalidId);
         if (here == kInvalidId) return;
 
         auto unitsHere = [&]() {

@@ -82,6 +82,31 @@ All closed by batch 6 (R1-R14), with M5: `plans/completed/10-testing-phase.md` (
 
 - [ ] **S1** Thermo Beam ("Kill all gear") kills the gear one after another, with no `DeathBatch`: they do not die together (CR 370.1.a.2), so a gear's "when a gear dies" ability can see another die in the same kill (CR 383.2.c.2), and their death abilities are not one simultaneous batch (383.3.d). Batch 6's R4 put Acceptable Losses' two gear in one batch; Thermo Beam is the other card that kills several gear in one effect — CODE-ONLY
 
+## Found by round 2 (2026-10-15, `plans/reports/round2.md`, detail in `docs/testing-findings-round2-2026-10.md` section 4) — batch 8
+
+- [ ] **U1** REGRESSION of D4: a [Weaponmaster] unit with no Equipment puts its ability on the chain, gives priority and resolves with nothing (`weaponmaster_base.h` never calls `confirmOptional`) — CERTAIN
+- [ ] **U2** REGRESSION of D4: Azir, Sovereign's attack trigger with no token to move stays on the chain (no leading `confirmOptional`) — LIKELY
+- [ ] **U3** Curtain Call / Rocket Barrage offered, a mode chosen, the pre-cost choice filter refuses every unit and `executePlaySpell` throws (the only fuzz failure, 1 game per million) — CERTAIN
+- [ ] **U4** Two abilities triggered by one play (`CardPlayedEvent` and "played_not_from_hand") are separate batches: their controller is never asked the order (CR 383.3.d) — CERTAIN
+- [ ] **U5** A battlefield replaced by Green Father's Brush loses its "here" (CR 439.1.a): Brush's swap-back does nothing, Seat of Power draws for its own slot, Green Father after a swap-back pays and does nothing — CERTAIN / LIKELY
+- [ ] **U6** Jhin, Meticulous Killer's "[B]" play offered only from the Champion Zone and only to base — CERTAIN
+- [ ] **U7** Optional additional costs never offered for a play from facedown (Pyke, Dockside Butcher) — CERTAIN
+- [ ] **U8** Piercing Light's [Repeat] execution goes through the generic `makeNewChoicesFor` (base units offered, "up to one" not declinable) — CERTAIN
+- [ ] **U9** Piercing Light played by an effect is offered "No target" for its required first unit — CERTAIN
+- [ ] **U10** [Repeat] not offered on an effect play that pays (Fizz, Trickster) — LIKELY
+- [ ] **U11** [Repeat] decided, and its choices made, after the base cost is paid (CR 355.1.a, 820.2) — LIKELY
+- [ ] **U12** Rek'Sai, Breacher's granted [Accelerate] not offered to unit tokens played by an effect — LIKELY
+- [ ] **U13** Kennen's [Flow] grant ignored on a spell that prints [Flow] (CR 829.1.c.3) — LIKELY
+- [ ] **U14** Sacrifice's additional cost asked and recorded as a target (CR 355.10.c) — LIKELY
+- [ ] **U15** Nami, Headstrong's "if you paid the additional cost" judged in the effect, not `triggerCondition` — LIKELY
+- [ ] **U16** `describePrompt`: an effect-played spell is "its triggered ability"; an activated ability with a target or a reflexive trigger is "its play"; a battlefield is named by its owner — LIKELY
+- [ ] **U17** Options a player cannot tell apart: order prompts for copies of one ability; a token copy and the card in the same words — QUESTION
+- [ ] **U18** Trash-play payments skip forced rune picks and their rune prompts name no card — LIKELY
+- [ ] **U19** Log lines that misstate: Fizz's "then recycled it"; Moonfall's "-> 1M"; `TGT_NOT_OFFERED ... at resolve time` at finalization — LIKELY
+- [ ] **U20** Two decks-stream rules questions never carried into the judge questions (5+ [M] entering "becomes Mighty"; Prodigal Explorer's "chosen twice") — QUESTION
+- [ ] **U21** Every Gold token is card 326; the Unleashed Gold 564 never enters play — QUESTION
+- [ ] **C1** (batch 8, coverage for the stopping rule) Six cards below 200 resolutions per optimised million (Yasuo, Windrider 205 / 546; Eclipse Dragon; Swain, Visionary; Rell, Magnetic; Renekton, Rage Fueled): lists or a guided mechanism so each is exercised at the minimum in the pass, without lowering it
+
 ## Owner decisions, 2026-10-15
 
 - [ ] **V1-G4** (batch 8) Battlefield setup mode. Owner on G4: "Duel for right now (the trainer will not choose random however)". A game-mode setting: **Duel (default)** — each player's battlefield drawn at random from their three (CR 487.5), from the engine's RNG, no setup decision; **Match** — each player chooses (CR 488.5, today's behaviour), selectable from the CLI, `GameRunner` / `RiftboundGame` parameters and the OpenSpiel game parameters, so the trainer's agent can choose. The pin `Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield` becomes a Match-mode test; add a Duel-mode test (random, seeded, no decision, the draw hidden from no one since battlefields are revealed). Smoke and fixed-seed games will move (two decisions fewer per game): explain. CLAUDE.md and `docs/trainer-notes-2026-10.md` updated.

@@ -468,6 +468,14 @@ struct BattlefieldState {
     bool is_token = false;
     std::optional<GameObjectId> replaced_card;  // original in banishment
     bool was_replaced = false;
+    // The objects this slot held before a Replace or a swap back (CR 438,
+    // 439.7.a). "The replacing token is treated as the same Game Object as
+    // the card or token it replaced for the purposes of Game Effects that
+    // target or reference that game object" (CR 439.1.a): an ability of the
+    // card that was replaced still finds "here" through them
+    // (battlefieldOfCard in card_helpers.h). Object ids are never reused,
+    // so the list is never trimmed.
+    std::vector<GameObjectId> same_object_as;
 
     // Movement-rule relaxer. Baron Pit's "Units can move here from
     // anywhere" sets this to true, allowing any unit at any other

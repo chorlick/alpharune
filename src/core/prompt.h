@@ -102,6 +102,9 @@ struct Prompt {
     TriggerType trigger = TriggerType::None;
     bool keyword_ability = false;
     bool is_spell = false;
+    /// A triggered ability with no trigger of its own to name: a reflexive
+    /// one (CR 388) or a delayed one.
+    bool is_triggered = false;
     /// Asked as the chain item is finalized (CR 355, 383.3) rather than as it
     /// resolves.
     bool at_finalization = false;

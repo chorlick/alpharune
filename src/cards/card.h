@@ -529,6 +529,15 @@ public:
     /// but the prompt is a PromptKind::ChooseObject that says "pick:", no
     /// Deflect is filtered for or paid, and the card is not recorded as
     /// chosen (commitChoice). Asked as the item resolves (testing phase R13).
+    /// pickTarget for an object chosen to pay a COST ("As an additional cost
+    /// to play this, kill a friendly unit", "Exhaust a unit you control:"),
+    /// which is not a target (CR 355.10.c): the same prompt, slots, resume
+    /// points and return values as pickTarget (one or the other in a
+    /// callback), a PromptKind::ChooseObject, no Deflect, not recorded as
+    /// chosen (testing phase U14).
+    GameObjectId pickCostObject(CardContext& ctx, const std::string& label,
+                                const std::vector<GameObjectId>& options,
+                                std::source_location where = std::source_location::current());
     GameObjectId pickUnseenCard(CardContext& ctx, const std::string& label,
                                 const std::vector<GameObjectId>& options,
                                 std::source_location where = std::source_location::current());

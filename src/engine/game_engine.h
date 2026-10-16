@@ -653,6 +653,20 @@ private:
     /// covered by pool energy + zero power); else NeedDecision with
     /// the first rune-pick options. Side effects: writes
     /// state_.cost_cursor; consumes one-shot CostModifier entries.
+    /// The payment cursor for `energy` and `power` (of `domains`) owed for
+    /// `card_obj`: floating resources first, then a rune per decision.
+    CostPaymentAdvance beginPaymentOf(PlayerId player, GameObjectId card_obj, int energy,
+                                      int power, const std::vector<Domain>& domains);
+    /// Pays `energy` and `power` (of `domains`) for playing `card_obj` the way
+    /// its own cost is paid (payCardCost): every rune named by the payer,
+    /// forced picks included, the prompts about the card (testing phase U18:
+    /// a play from the trash for its Flow or a granted cost). Inside a probe
+    /// (EventBus::quiet) nobody is asked: the first rune each time.
+    bool payLikeACardCost(PlayerId player, GameObjectId card_obj, int energy, int power,
+                          const std::vector<Domain>& domains);
+    /// The rune decisions of a payment cursor, each asked of the payer (one
+    /// call site for every card-cost payment: PromptCensus).
+    void askRunesFor(PlayerId player, GameObjectId card_obj, CostPaymentAdvance adv);
     CostPaymentAdvance beginCostPayment(PlayerId player, GameObjectId card_obj,
                                         const Card::PlayCostAdjust& adj = {});
     /// Inspect the cursor and produce the next NeedDecision (or Done
@@ -704,7 +718,11 @@ private:
         std::vector<ChainItem::ExecutionChoices> repeat_choices;
     };
     std::optional<EffectPlayedSpell> effect_played_spell_;
-    std::vector<RepeatTranche> effect_repeats_;   // accepted on an effect play, paid after its cost
+    std::vector<RepeatTranche> effect_repeats_;
+    /// The play being made from the trash uses the card's alternative grant
+    /// (PlayerState::TrashReplayGrant::alternative): set from the intent's
+    /// use_alt_play_cost for that play (testing phase U13).
+    bool trash_grant_alternative_ = false;   // accepted on an effect play, paid after its cost
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);

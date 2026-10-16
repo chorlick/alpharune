@@ -626,6 +626,9 @@ void ChainManager::stepResolve(
             rit->second = 0;
             spell_obj.location = std::nullopt;
             events_.emit(SpellResolvedEvent{resolved.source, resolved.controller});
+            RIFT_TRACE(events_, "RECYCLE: " + spell_obj.name +
+                                " leaves the chain to the bottom of its owner's deck (\"Then "
+                                "recycle it\")");
             executor_->recycleCards(home, {resolved.source});
         } else {
             // The spell goes to its owner's trash after resolving (CR 359.3).

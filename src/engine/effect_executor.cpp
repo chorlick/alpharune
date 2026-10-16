@@ -1254,8 +1254,11 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
         }
     }
 
+    // (Its Might is not stated: continuous effects are applied by the next
+    // Cleanup, so a value here could still count an aura of a place the unit
+    // has left — testing phase U19, Moonfall "-> 1M" on a 0 [M] unit.)
     RIFT_TRACE(events_, "EFFECT: give " + obj.name + " " + std::to_string(amount) +
-                     " [M] this turn -> " + std::to_string(obj.current_might) + "M" +
+                     " [M] this turn" +
                      (minimum > 0 ? " (min " + std::to_string(minimum) + ")" : ""));
     // Not "buffed": +/-[M] this turn places no Buff counter (CR 427.1), so it
     // must not fire "When you buff" abilities.
@@ -2096,6 +2099,7 @@ Prompt EffectExecutor::promptHere(PlayerId decider, PromptKind kind, std::string
         p.is_spell = item->is_spell;
         p.ability_index = item->is_activated_ability ? item->ability_index : -1;
         p.trigger = item->fired_trigger;
+        p.is_triggered = item->is_ability && !item->is_activated_ability;
         p.keyword_ability = item->keyword_ability.has_value();
         p.at_finalization = item->finalizing;
     }
@@ -2413,6 +2417,15 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
     } else {
         obj.zone = ZoneType::BattlefieldZone;
     }
+
+    // A unit token is played (CR 185.2.a: "following all the applicable steps
+    // for playing a card"): [Accelerate], its own or given (Rek'Sai, Breacher:
+    // "Friendly units played from anywhere other than a player's hand have
+    // [Accelerate]"), is offered as it is played, for [1] and [A] (CR
+    // 805.1.b.2; testing phase U12). Not for one that enters ready anyway.
+    if (type == CardType::Unit && obj.is_exhausted && offer_accelerate_ &&
+        offer_accelerate_(controller, id, /*from_hand=*/false))
+        state_.getObject(id).is_exhausted = false;
 
     obj.recomputeMight();
 

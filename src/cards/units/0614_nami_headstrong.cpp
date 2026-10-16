@@ -28,10 +28,20 @@ public:
     }
     // "the next time you play a unit this turn": only while a hold this turn
     // has armed it.
+    // "When you play me, if you paid the additional cost, ...": the condition
+    // after the trigger condition is judged as the event happens (CR
+    // 383.2.a.1): unpaid, the ability does not trigger at all (testing phase
+    // U15; it triggered and was removed for "no legal target").
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId /*controller*/,
                           TriggerType trigger, GameObjectId /*subject*/) const override {
+        if (!state.objectExists(source)) return false;
+        if (trigger == TriggerType::WhenYouPlayMe) {
+            const auto& c = state.getObject(source).card_counters;
+            const auto it = c.find("__nami_paid");
+            return it != c.end() && it->second == 1;
+        }
         if (trigger != TriggerType::WhenYouPlayAUnit) return true;
-        return state.objectExists(source) && armedThisTurn(state, state.getObject(source));
+        return armedThisTurn(state, state.getObject(source));
     }
     static bool armedThisTurn(const GameState& state, const GameObject& self) {
         auto it = self.card_counters.find("__nami_hold_arm_turn");

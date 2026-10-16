@@ -7,6 +7,7 @@
 #include "batch_m1_agents.h"
 #include "card_test_fixture.h"
 #include "cards/card_helpers.h"
+#include "engine/prompt_description.h"
 
 #include <algorithm>
 #include <random>
@@ -30,6 +31,17 @@ constexpr CardDefId kPykeDockside = 590;       // [Hidden]; "You may pay [R] as 
 constexpr CardDefId kPiercingLight = 346;      // "[Repeat] [2][R] Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
 constexpr CardDefId kViktorLeader = 246;       // "When another non-Recruit unit you control dies, play a 1 [M] Recruit unit token into your base."
 constexpr CardDefId kTheRuination = 742;       // "Kill all units."
+constexpr CardDefId kRekSaiBreacher = 352;     // "Friendly units played from anywhere other than a player's hand have [Accelerate]."
+constexpr CardDefId kDeathMark = 931;          // [2][P]... prints "[Flow] [1][A][A]"
+constexpr CardDefId kSacrifice = 735;          // "As an additional cost to play this, kill a friendly [Mighty] unit. Draw 2 ..."
+constexpr CardDefId kNamiHeadstrong = 614;     // "You may pay [G] as an additional cost ... When you play me, if you paid ..., [Stun] an enemy unit."
+constexpr CardDefId kFizzTrickster = 461;      // "When you play me, you may play a spell from your trash ..."
+constexpr CardDefId kWagesOfPain = 393;        // "Deal 3 to a unit at a battlefield. Play a Gold gear token exhausted."
+constexpr CardDefId kVoidreaver = 787;         // legend: "Spend 1 XP, [E]: [Buff] a unit." ...
+constexpr CardDefId kStarSpring = 771;         // battlefield: "... they may move another unit they control here to its base."
+constexpr CardDefId kArise = 513;              // "... Then do this: Ready up to two of them." (a reflexive trigger)
+constexpr CardDefId kSerratedDirk = 332;       // gear, Equipment
+constexpr CardDefId kDredgeUp = 836;           // "Draw 1." [2]; [Flow] [2]
 constexpr CardDefId kKennenStorm = 900;        // "When you play me, [Burn 2]."
 constexpr CardDefId kHeartOfTheTempest = 942;  // legend: "When you play a card from anywhere other than your hand, empower me."
 
@@ -766,6 +778,420 @@ TEST_F(Batch8Test, X1_AUnitOutsideTheBatchStillTriggers) {
     for (const auto& [id, obj] : state.objects)
         if (obj.name == "Recruit" && obj.location.has_value()) ++recruits;
     EXPECT_EQ(recruits, 1);
+}
+
+
+// ═══ U12: a unit token played by an effect and a granted [Accelerate] ══════
+//
+// Rek'Sai, Breacher: "Friendly units played from anywhere other than a
+// player's hand have [Accelerate]." A token is played (CR 185.2.a), not from
+// a hand, so it has [Accelerate] and may pay [1] and [A] (it has no Domain,
+// CR 805.1.b.2) to enter ready (round 2 g10: Up from the Deep's Tentacles).
+
+TEST_F(Batch8Test, U12_AUnitTokenPlayedWithRekSaiOnTheBoardIsOfferedAccelerate) {
+    addUnit(P1, kRekSaiBreacher, 0);
+    state.player(P1).rune_pool.energy = 1;
+    state.player(P1).rune_pool.universal_power = 1;
+    GameObjectId token = kInvalidId;
+    EnginePathAgent p1(EnginePathAgent::script({1}));   // pay [Accelerate]
+    withEngine([&](GameEngine& e) {
+        token = e.testHook_executor().createToken(P1, CardType::Unit, "Tentacle", 1, {},
+                                                  KeywordSet{}, LocationId{BaseLocation{P1}},
+                                                  /*enter_ready=*/false);
+        settleLikeTheEngine(e);
+    }, &p1);
+    EXPECT_EQ(p1.prompts.size(), 1u) << "asked once";
+    EXPECT_FALSE(o(token).is_exhausted) << "entered ready";
+    EXPECT_EQ(state.player(P1).rune_pool.energy, 0);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 0);
+}
+
+TEST_F(Batch8Test, U12_WithoutTheGrantOrTheResourcesNothingIsAsked) {
+    for (int rek_sai = 0; rek_sai < 2; ++rek_sai) {
+        state = GameState{};
+        state.players[0].id = P1;
+        state.players[1].id = P2;
+        addBattlefield();
+        addBattlefield();
+        if (rek_sai) addUnit(P1, kRekSaiBreacher, 0);   // but nothing to pay with
+        else {
+            state.player(P1).rune_pool.energy = 1;
+            state.player(P1).rune_pool.universal_power = 1;
+        }
+        GameObjectId token = kInvalidId;
+        EnginePathAgent p1(EnginePathAgent::script({}));
+        withEngine([&](GameEngine& e) {
+            token = e.testHook_executor().createToken(P1, CardType::Unit, "Tentacle", 1, {},
+                                                      KeywordSet{}, LocationId{BaseLocation{P1}},
+                                                      false);
+            settleLikeTheEngine(e);
+        }, &p1);
+        EXPECT_TRUE(p1.prompts.empty());
+        EXPECT_TRUE(o(token).is_exhausted);
+    }
+}
+
+// ═══ U13: a spell that prints [Flow] and is given [Flow] ═══════════════════
+//
+// CR 829.1.c.3: "If a card has multiple instances of the Flow keyword with
+// different costs, its controller may choose". Kennen, Storm of Shuriken
+// gives a spell in the trash [Flow] equal to its cost; a spell that prints
+// its own [Flow] ignored the grant (round 2, Flow focus: Lightning Rush).
+
+TEST_F(Batch8Test, U13_BothFlowCostsAreOfferedAndEachIsPaidAsItSays) {
+    const auto mark = addToHand(P1, kDeathMark);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), mark), h.end());
+        o(mark).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(mark);
+        o(mark).card_counters["__flow_granted_turn"] = state.turn.turn_number;
+    }
+    for (int i = 0; i < 5; ++i) addToDeck(P1, kPoutyPoro);
+    // [2] and a Chaos Power: the granted Flow ([2][P], its cost) is payable,
+    // the printed one ([1][A][A]) is not.
+    state.player(P1).rune_pool.energy = 2;
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)] = 1;
+    std::vector<Intent> plays;
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == mark) plays.push_back(i);
+    });
+    ASSERT_EQ(plays.size(), 1u);
+    EXPECT_TRUE(plays[0].use_alt_play_cost) << "the granted Flow, the card's alternative";
+    // With [1] and two Power of any Domain as well, both are offered.
+    state.player(P1).rune_pool.energy = 3;
+    state.player(P1).rune_pool.universal_power = 2;
+    plays.clear();
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == mark) plays.push_back(i);
+    });
+    ASSERT_EQ(plays.size(), 2u);
+    EXPECT_NE(plays[0].use_alt_play_cost, plays[1].use_alt_play_cost);
+    // Play it for the granted cost: [2] and the Chaos Power are spent, the
+    // [A] are not.
+    const Intent granted = plays[0].use_alt_play_cost ? plays[0] : plays[1];
+    playThroughEngineIntent(granted);
+    EXPECT_EQ(state.player(P1).rune_pool.universal_power, 2);
+    EXPECT_EQ(state.player(P1).rune_pool.power[static_cast<int>(Domain::Chaos)], 0);
+    EXPECT_EQ(o(mark).zone.get(), ZoneType::Banishment) << "a Flow play banishes it";
+}
+
+
+// ═══ U14: an additional cost's object is not a target ══════════════════════
+//
+// CR 355.10.c: "As an additional cost to play me, kill a friendly unit"
+// doesn't target anything. Sacrifice asked its unit as a Target (pickTarget):
+// the prompt kind, a Deflect gate and "chosen" counts (round 2 g01, g08).
+TEST_F(Batch8Test, U14_SacrificesUnitIsAskedAsACostNotATarget) {
+    const auto a = addUnit(P1, kInvalidId, 5, 0);
+    const auto b = addUnit(P1, kInvalidId, 6, 0);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kPoutyPoro);
+    const auto spell = addToHand(P1, kSacrifice);
+    std::vector<PromptKind> kinds;
+    class Kinds : public EnginePathAgent {
+    public:
+        std::vector<PromptKind>* out = nullptr;
+        GameObjectId want = kInvalidId;
+        Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                      const Prompt& prompt) override {
+            if (!legal.empty() && legal.front().type == IntentType::MakeChoice) {
+                out->push_back(prompt.kind);
+                for (const auto& i : legal)
+                    if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+            }
+            return selectAction(st, legal);
+        }
+    } agent;
+    agent.out = &kinds;
+    agent.want = b;
+    playThroughEngine(spell, &agent);
+    ASSERT_FALSE(kinds.empty());
+    EXPECT_EQ(kinds.front(), PromptKind::ChooseObject) << "a cost, not a Target";
+    EXPECT_TRUE(o(a).location.has_value());
+    EXPECT_FALSE(o(b).location.has_value()) << "the unit named paid the cost";
+    EXPECT_EQ(state.player(P1).hand.size(), 2u) << "draw 2";
+}
+
+// ═══ U15: Nami, Headstrong's condition is the trigger's ════════════════════
+//
+// "When you play me, if you paid the additional cost, [Stun] an enemy unit."
+// CR 383.2.a.1: judged as the event happens. Unpaid, the ability does not
+// trigger (it triggered and was removed with "no legal targets", round 2 g18).
+TEST_F(Batch8Test, U15_NamiPlayedWithoutPayingDoesNotTrigger) {
+    addUnit(P2, kInvalidId, 3, 0);
+    for (int paid = 0; paid < 2; ++paid) {
+        const auto nami = addToHand(P1, kNamiHeadstrong);
+        if (paid) state.player(P1).rune_pool.power[static_cast<int>(Domain::Calm)] = 1;
+        std::vector<std::string> lines;
+        auto conn = events.on_log.connect([&](const LogEvent& e) {
+            if (e.message.find("TRIGGER: Nami") != std::string::npos) lines.push_back(e.message);
+        });
+        EnginePathAgent p1(EnginePathAgent::script({paid, EnginePathAgent::kRest}));
+        playThroughEngine(nami, &p1);
+        conn.disconnect();
+        EXPECT_EQ(lines.size(), paid ? 1u : 0u) << (paid ? "paid: it triggers" : "unpaid: no trigger");
+    }
+}
+
+
+// ═══ U16: what describePrompt says a prompt is about ══════════════════════
+//
+// What a player (or the trainer) is shown of a prompt (testing phase T1):
+// round 2 found a spell played by an effect described as "its triggered
+// ability", an activated ability with a target and a reflexive trigger as
+// "its play", and a battlefield named by the player who brought it rather
+// than its controller (CR 190.6).
+
+namespace {
+/// Records describePrompt's sentence for every card prompt, as the decider
+/// is shown it; answers with the EnginePathAgent picker.
+class Describing : public EnginePathAgent {
+public:
+    using EnginePathAgent::EnginePathAgent;
+    const CardDB* db = nullptr;
+    std::vector<std::string> texts;
+    Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                  const Prompt& prompt) override {
+        if (!legal.empty() && legal.front().type == IntentType::MakeChoice)
+            texts.push_back(describePrompt(st, prompt, legal, prompt.decider, *db).text);
+        return selectAction(st, legal);
+    }
+};
+bool anyContains(const std::vector<std::string>& texts, const std::string& what) {
+    return std::any_of(texts.begin(), texts.end(),
+                       [&](const std::string& t) { return t.find(what) != std::string::npos; });
+}
+std::string joined(const std::vector<std::string>& texts) {
+    std::string out;
+    for (const auto& t : texts) out += "\n  " + t;
+    return out;
+}
+}  // namespace
+
+TEST_F(Batch8Test, U16_ASpellPlayedByAnEffectIsDescribedAsTheSpell) {
+    addUnit(P2, kInvalidId, 5, 0);
+    const auto wages = addToHand(P1, kWagesOfPain);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), wages), h.end());
+        o(wages).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(wages);
+    }
+    const auto fizz = addUnit(P1, kFizzTrickster, 0);
+    state.player(P1).rune_pool.universal_power = 3;
+    Describing p1(EnginePathAgent::accepting());
+    p1.db = &card_db;
+    fireTriggerThroughEngine(fizz, TriggerType::WhenYouPlayMe, &p1);
+    EXPECT_TRUE(anyContains(p1.texts, "Wages of Pain in the trash, its spell") ||
+                anyContains(p1.texts, "Wages of Pain on the chain, its spell"))
+        << joined(p1.texts);
+    EXPECT_FALSE(anyContains(p1.texts, "Wages of Pain in the trash, its triggered ability"))
+        << joined(p1.texts);
+}
+
+TEST_F(Batch8Test, U16_AnActivatedAbilitysTargetIsDescribedAsTheActivatedAbility) {
+    const auto legend = addLegend(P1, kVoidreaver);
+    addUnit(P1, kInvalidId, 3, 0);
+    addUnit(P1, kInvalidId, 2, 0);
+    setXp(P1, 3);
+    Intent act;
+    withEngine([&](GameEngine& e) {
+        for (const auto& i : e.generateLegalActions())
+            if (i.type == IntentType::ActivateAbility && i.ability_source == legend &&
+                i.ability_index == 0) { act = i; break; }
+    });
+    ASSERT_EQ(act.ability_source, legend);
+    Describing p1;
+    p1.db = &card_db;
+    playThroughEngineIntent(act, &p1);
+    ASSERT_FALSE(p1.texts.empty());
+    EXPECT_TRUE(anyContains(p1.texts, "its activated ability 1")) << joined(p1.texts);
+    EXPECT_FALSE(anyContains(p1.texts, "its play")) << joined(p1.texts);
+}
+
+TEST_F(Batch8Test, U16_ABattlefieldIsNamedByItsController) {
+    const auto spring = placeBattlefield(0, kStarSpring, P2);   // P2 brought it
+    state.battlefields[0].controller = P1;                       // P1 holds it
+    addUnit(P1, kInvalidId, 2, 0);
+    Prompt pr;
+    pr.kind = PromptKind::May;
+    pr.decider = P1;
+    pr.source = spring;
+    Intent no, yes;
+    no.type = yes.type = IntentType::MakeChoice;
+    no.player = yes.player = P1;
+    no.chosen_value = 0;
+    yes.chosen_value = 1;
+    no.declines = true;
+    const auto d = describePrompt(state, pr, {no, yes}, P1, card_db);
+    EXPECT_NE(d.text.find("your Star Spring"), std::string::npos) << d.text;
+    EXPECT_EQ(d.asker, 1) << "the asker is P1, its controller";
+    const auto seen_by_p2 = describePrompt(state, pr, {no, yes}, P2, card_db);
+    EXPECT_NE(seen_by_p2.text.find("the opponent's Star Spring"), std::string::npos) << seen_by_p2.text;
+}
+
+
+TEST_F(Batch8Test, U16_AReflexiveTriggerIsDescribedAsATriggeredAbility) {
+    addGear(P1, kSerratedDirk);
+    addGear(P1, kSerratedDirk);
+    const auto spell = addToHand(P1, kArise);
+    Describing p1(EnginePathAgent::first());
+    p1.db = &card_db;
+    playThroughEngine(spell, &p1);
+    EXPECT_TRUE(anyContains(p1.texts, "Arise! on the chain, its triggered ability") ||
+                anyContains(p1.texts, "Arise! in the trash, its triggered ability") ||
+                anyContains(p1.texts, "Arise!, its triggered ability"))
+        << joined(p1.texts);
+    EXPECT_FALSE(anyContains(p1.texts, "its play")) << joined(p1.texts);
+}
+
+
+// ═══ U18: a play from the trash pays its cost like a card's cost ═══════════
+//
+// CR 829.1.c.1: a Flow cost is the spell's cost. A hand play asks the payer
+// for every rune, forced picks included, in prompts about the card; a Flow
+// play asked nothing with one kind of rune left and its prompts named no card
+// (round 2, Flow focus: 26 of 26 Up from the Deep plays).
+TEST_F(Batch8Test, U18_AFlowPlayAsksEveryRuneLikeAHandPlayAndNamesTheCard) {
+    const auto dredge = addToHand(P1, kDredgeUp);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), dredge), h.end());
+        o(dredge).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(dredge);
+    }
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kPoutyPoro);
+    addRune(P1, Domain::Mind);
+    addRune(P1, Domain::Mind);   // one kind of rune: every pick is forced
+    Intent play;
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();
+        for (const auto& i : e.generateLegalActions())
+            if (i.card == dredge && i.play_source == Intent::PlaySource::Trash) { play = i; break; }
+    });
+    ASSERT_EQ(play.card, dredge) << "the Flow play is offered";
+    class Runes : public EnginePathAgent {
+    public:
+        GameObjectId card = kInvalidId;
+        int asked = 0, about_card = 0;
+        Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                      const Prompt& prompt) override {
+            if (prompt.kind == PromptKind::RuneForEnergy || prompt.kind == PromptKind::RuneForPower) {
+                ++asked;
+                if (prompt.source == card) ++about_card;
+            }
+            return selectAction(st, legal);
+        }
+    } p1;
+    p1.card = dredge;
+    playThroughEngineIntent(play, &p1);
+    EXPECT_EQ(p1.asked, 2) << "two runes exhausted for [2], each asked";
+    EXPECT_EQ(p1.about_card, 2) << "the prompts are about Dredge Up";
+    EXPECT_EQ(o(dredge).zone.get(), ZoneType::Banishment);
+}
+
+
+// ═══ U19: log lines that said what had not happened ═══════════════════════
+TEST_F(Batch8Test, U19_FizzSaysTheRecycleWhenItHappens) {
+    addUnit(P2, kInvalidId, 5, 0);
+    const auto wages = addToHand(P1, kWagesOfPain);
+    {
+        auto& h = state.player(P1).hand;
+        h.erase(std::remove(h.begin(), h.end(), wages), h.end());
+        o(wages).zone = ZoneType::Trash;
+        state.player(P1).trash.push_back(wages);
+    }
+    const auto fizz = addUnit(P1, kFizzTrickster, 0);
+    state.player(P1).rune_pool.universal_power = 3;
+    std::vector<std::string> lines;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { lines.push_back(e.message); });
+    EnginePathAgent p1(EnginePathAgent::accepting());
+    fireTriggerThroughEngine(fizz, TriggerType::WhenYouPlayMe, &p1);
+    conn.disconnect();
+    int resolved_at = -1, recycled_at = -1;
+    for (int k = 0; k < static_cast<int>(lines.size()); ++k) {
+        EXPECT_EQ(lines[k].find("then recycled it"), std::string::npos) << lines[k];
+        if (lines[k].find("RESOLVE: Wages of Pain") != std::string::npos) resolved_at = k;
+        if (lines[k].find("RECYCLE: Wages of Pain") != std::string::npos) recycled_at = k;
+    }
+    ASSERT_GE(resolved_at, 0);
+    EXPECT_GT(recycled_at, resolved_at) << "the recycle is written as it happens";
+    EXPECT_TRUE(inDeck(P1, wages));
+}
+
+TEST_F(Batch8Test, U19_AMightChangeStatesNoMightThatTheCleanupHasNotSettled) {
+    const auto unit = addUnit(P1, kInvalidId, 3, 0);
+    std::vector<std::string> lines;
+    auto conn = events.on_log.connect([&](const LogEvent& e) { lines.push_back(e.message); });
+    withEngine([&](GameEngine& e) { e.testHook_executor().giveTemporaryMight(unit, -2); });
+    conn.disconnect();
+    bool seen = false;
+    for (const auto& l : lines)
+        if (l.find("EFFECT: give") != std::string::npos) {
+            seen = true;
+            EXPECT_EQ(l.find("->"), std::string::npos) << l;
+        }
+    EXPECT_TRUE(seen);
+}
+
+TEST_F(Batch8Test, U19_NoLegalTargetAtFinalizationSaysSo) {
+    // Nami paid, no enemy unit: her required target is missing as the
+    // ability is finalized.
+    const auto nami = addToHand(P1, kNamiHeadstrong);
+    state.player(P1).rune_pool.power[static_cast<int>(Domain::Calm)] = 1;
+    std::vector<std::string> lines;
+    auto conn = events.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("TGT_NOT_OFFERED") != std::string::npos) lines.push_back(e.message);
+    });
+    EnginePathAgent p1(EnginePathAgent::script({1, EnginePathAgent::kRest}));
+    playThroughEngine(nami, &p1);
+    conn.disconnect();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("as it is finalized"), std::string::npos) << lines[0];
+}
+
+// X3 (found by batch 8): a countered spell Fizz played keeps no "recycle me"
+// mark in the trash, where a later play of it would have been recycled.
+TEST_F(Batch8Test, X3_ACounteredSpellLeavesItsRecycleMarkBehind) {
+    const auto wages = addToHand(P1, kWagesOfPain);
+    o(wages).card_counters["__recycle_on_leave_chain"] = 1;
+    withEngine([&](GameEngine& e) {
+        CardContext ctx{e.mutableState(), events, e.testHook_executor(), P2, kInvalidId};
+        disposeCounteredCard(ctx, wages);
+    });
+    EXPECT_TRUE(inTrash(P1, wages));
+    EXPECT_EQ(o(wages).card_counters.count("__recycle_on_leave_chain"), 0u);
+}
+
+// The same class as U14 / R13: an object picked for a cost, or a card picked
+// from a hand, is not a target (CR 355.10.a, 355.10.c).
+TEST_F(Batch8Test, U14_TheOtherCostAndHandPicksAreNotTargets) {
+    // Heedless Resurrection: "As an additional cost to play this, kill a
+    // friendly unit."
+    {
+        const CardDefId kHeedless = 704;
+        const auto a = addUnit(P1, kInvalidId, 2, 0);
+        const auto b = addUnit(P1, kInvalidId, 3, 0);
+        const auto spell = addToHand(P1, kHeedless);
+        class Kinds : public EnginePathAgent {
+        public:
+            std::vector<PromptKind> kinds;
+            Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                          const Prompt& prompt) override {
+                if (!legal.empty() && legal.front().type == IntentType::MakeChoice)
+                    kinds.push_back(prompt.kind);
+                return selectAction(st, legal);
+            }
+        } p1;
+        playThroughEngine(spell, &p1);
+        ASSERT_FALSE(p1.kinds.empty());
+        EXPECT_EQ(p1.kinds.front(), PromptKind::ChooseObject);
+        EXPECT_NE(o(a).location.has_value(), o(b).location.has_value()) << "one paid the cost";
+    }
 }
 
 }  // namespace riftbound::test::batch_8

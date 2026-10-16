@@ -322,6 +322,11 @@ inline void disposeCounteredCard(CardContext& ctx, GameObjectId id,
     if (!ctx.state.objectExists(id)) return;
     auto& obj = ctx.state.getObject(id);
     obj.location = std::nullopt;
+    // "Then recycle it" (Fizz, Trickster) is for the spell as it leaves the
+    // chain resolved; countered, it goes where the counter puts it and the
+    // mark is not left on the card in the trash, where a later play of it
+    // would be recycled (found by batch 8: X3).
+    obj.card_counters.erase("__recycle_on_leave_chain");
     if (obj.banish_on_leave_chain) {
         obj.banish_on_leave_chain = false;
         obj.zone = ZoneType::Banishment;

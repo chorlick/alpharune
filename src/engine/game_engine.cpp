@@ -1842,8 +1842,14 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
     Prompt asked = enginePrompt(chooser, PromptKind::Target, item.source);
+    // The item being finalized, whatever is resolving: its kind of ability
+    // too (testing phase U16: an activated ability's target was "its play").
     asked.chain_item = item.id;
     asked.is_spell = item.is_spell;
+    asked.ability_index = item.is_activated_ability ? item.ability_index : -1;
+    asked.trigger = item.fired_trigger;
+    asked.keyword_ability = item.keyword_ability.has_value();
+    asked.is_triggered = item.is_ability && !item.is_activated_ability;
     asked.at_finalization = true;
     auto chosen = askAgent(chooser, options, std::move(asked));
     if (on_decision) on_decision(state_, options, chosen);
@@ -2291,7 +2297,10 @@ bool GameEngine::accelerateAvailable(PlayerId player, GameObjectId card_id,
                                      bool from_hand) const {
     if (!state_.objectExists(card_id)) return false;
     const auto& card = state_.getObject(card_id);
-    if (!card.isUnit() || card.card_def_id == kInvalidId) return false;
+    // A unit token is played too (CR 185.2.a, 350.2): it may have the keyword
+    // or be given it (testing phase U12), and pays its [C] with [A] (it has
+    // no Domain, CR 805.1.b.2).
+    if (!card.isUnit()) return false;
     if (card.keywords.has(Keyword::Accelerate)) return true;
     // A card on the player's board may give the unit being played
     // [Accelerate] for this play (Rek'Sai, Breacher: "played from anywhere
@@ -3585,6 +3594,14 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
     // The grant, if any, is looked up again in each run: the pointer handed in
     // points into the game that is set aside.
     const bool via_grant = grant != nullptr;
+    // Which of the card's grants the probe plays with (U13): looked up again
+    // by trashGrantFor in each run.
+    struct GrantChoice {
+        bool& flag;
+        bool saved;
+        ~GrantChoice() { flag = saved; }
+    } grant_choice{trash_grant_alternative_, trash_grant_alternative_};
+    trash_grant_alternative_ = grant && grant->alternative;
     struct FilterSet {
         EffectExecutor& ex;
         ~FilterSet() { ex.setChoiceFilter(nullptr); }
@@ -4063,6 +4080,14 @@ void GameEngine::payDeferredSpellCost(GameObjectId card_id) {
 }
 
 void GameEngine::executePlaySpell(const Intent& intent) {
+    // From the trash, the intent names which of the card's grants it uses
+    // (U13); for the length of this play.
+    struct GrantChoice {
+        bool& flag;
+        ~GrantChoice() { flag = false; }
+    } grant_choice{trash_grant_alternative_};
+    trash_grant_alternative_ =
+        intent.play_source == Intent::PlaySource::Trash && intent.use_alt_play_cost;
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
@@ -6395,15 +6420,19 @@ GameEngine::TrashGrantCost GameEngine::trashGrantCost(
     const auto net = netCardCost(player, card_id, adj, grant.energy, grant.power);
     out.energy = net.first;
     out.power = net.second;
-    out.domains = resource::maskOf(grant.any_domain ? Domain::Count : grant.power_domain);
+    out.domains = grant.power_mask != 0
+        ? grant.power_mask
+        : resource::maskOf(grant.any_domain ? Domain::Count : grant.power_domain);
     out.extra_any = extraAnyPowerCost(state_, player, state_.getObject(card_id));
     return out;
 }
 
 const PlayerState::TrashReplayGrant* GameEngine::trashGrantFor(PlayerId player,
                                                                GameObjectId card_id) const {
+    // The grant the play being made uses: the card's alternative one when the
+    // play intent says so (trash_grant_alternative_, set for that play).
     for (const auto& g : state_.player(player).trash_replay_grants)
-        if (g.card == card_id) return &g;
+        if (g.card == card_id && g.alternative == trash_grant_alternative_) return &g;
     return nullptr;
 }
 
@@ -6495,7 +6524,9 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
     for (const auto& grant : ps.trash_replay_grants) {
         if (grant.card == kInvalidId || !state_.objectExists(grant.card)) continue;
         bool seen = false;
-        for (const auto& e : playable) if (e.first == grant.card) seen = true;
+        for (const auto& e : playable)
+            if (e.first == grant.card && e.second && e.second->alternative == grant.alternative)
+                seen = true;
         if (!seen) playable.emplace_back(grant.card, &grant);
     }
     if (ps.may_play_from_trash)
@@ -6528,6 +6559,7 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
             play.player = player;
             play.card = card_id;
             play.play_source = Intent::PlaySource::Trash;
+            play.use_alt_play_cost = grant && grant->alternative;   // the card's other Flow (U13)
             play.targets = std::move(tgts);
             play.play_location = where;
             actions.push_back(play);
@@ -8337,35 +8369,58 @@ void GameEngine::refreshFlowGrants() {
                 continue;
             }
             if (!obj.isSpell()) continue;
-            PlayerState::TrashReplayGrant g;
-            g.card = cid;
-            g.banish_after = true;
-            g.standing = true;
+            // Stargazer: Flow plays cost [N] less, to a minimum of [1].
+            auto reduced = [&ps](PlayerState::TrashReplayGrant g) {
+                if (ps.flow_cost_reduction > 0 && g.energy > 1)
+                    g.energy = std::max(1, g.energy - ps.flow_cost_reduction);
+                return g;
+            };
+            bool printed = false;
             auto flow = c->flowCost();
             if (flow.valid) {
+                PlayerState::TrashReplayGrant g;
+                g.card = cid;
+                g.banish_after = true;
+                g.standing = true;
                 g.energy = flow.energy;
                 g.power = flow.power;
                 g.power_domain = flow.power_domain;
                 g.any_domain = flow.any_domain;
-            } else {
-                // Flow granted for the turn equal to the card's own cost
-                // (Kennen, Storm of Shuriken). This runs for every spell in a
-                // trash on every aura pass: a card with no counters is not
-                // looked up at all, and the key is built once, not per lookup
-                // (plans/06 item 6.11).
-                if (obj.card_counters.empty()) continue;
-                static const std::string kFlowGrantedTurn = "__flow_granted_turn";
-                auto it = obj.card_counters.find(kFlowGrantedTurn);
-                if (it == obj.card_counters.end() || it->second != state_.turn.turn_number)
-                    continue;
-                const auto& def = card_db_.get(obj.card_def_id);
-                g.energy = def.energy_cost;
-                g.power = def.power_cost;
-                g.power_domain = def.domains.empty() ? Domain::Fury : def.domains[0];
+                ps.trash_replay_grants.push_back(reduced(g));
+                printed = true;
             }
-            // Stargazer: Flow plays cost [N] less, to a minimum of [1].
-            if (ps.flow_cost_reduction > 0 && g.energy > 1)
-                g.energy = std::max(1, g.energy - ps.flow_cost_reduction);
+            // Flow granted for the turn equal to the card's own cost (Kennen,
+            // Storm of Shuriken). "If a card has multiple instances of the
+            // Flow keyword with different costs, its controller may choose"
+            // (CR 829.1.c.3): a spell that prints [Flow] keeps both, the
+            // granted one as its alternative (testing phase U13). This runs
+            // for every spell in a trash on every aura pass: a card with no
+            // counters is not looked up at all, and the key is built once,
+            // not per lookup (plans/06 item 6.11).
+            if (obj.card_counters.empty()) continue;
+            static const std::string kFlowGrantedTurn = "__flow_granted_turn";
+            auto it = obj.card_counters.find(kFlowGrantedTurn);
+            if (it == obj.card_counters.end() || it->second != state_.turn.turn_number)
+                continue;
+            const auto& def = card_db_.get(obj.card_def_id);
+            PlayerState::TrashReplayGrant g;
+            g.card = cid;
+            g.banish_after = true;
+            g.standing = true;
+            g.energy = def.energy_cost;
+            g.power = def.power_cost;
+            g.power_domain = def.domains.empty() ? Domain::Fury : def.domains[0];
+            g.power_mask = resource::maskOf(def.domains);   // its cost's Domains
+            g.alternative = printed;
+            g = reduced(g);
+            // The same cost as the printed one is no second choice.
+            if (printed) {
+                const auto& first = ps.trash_replay_grants.back();
+                if (first.energy == g.energy && first.power == g.power &&
+                    resource::maskOf(first.any_domain ? Domain::Count : first.power_domain) ==
+                        g.power_mask)
+                    continue;
+            }
             ps.trash_replay_grants.push_back(g);
         }
     }
@@ -9619,7 +9674,14 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
 
     RIFT_TRACE(events_, "PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));
+    return beginPaymentOf(player, card_obj, energy_needed, power_needed, def.domains);
+}
 
+GameEngine::CostPaymentAdvance GameEngine::beginPaymentOf(PlayerId player, GameObjectId card_obj,
+                                                          int energy_needed, int power_needed,
+                                                          const std::vector<Domain>& domains) {
+    auto& ps = state_.player(player);
+    const auto& card = state_.getObject(card_obj);
     // Spend pool energy first (no agent decision needed): Energy restricted to
     // this kind of card before unrestricted Energy.
     const SpendFor spend_for = spendForObject(card);
@@ -9635,7 +9697,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     const int power_before_pool = power_needed;
     if (power_needed > 0) {
         ps.rune_pool.takeRestrictedPower(spend_for, power_needed);
-        for (auto d : def.domains) {
+        for (auto d : domains) {
             int di = static_cast<int>(d);
             if (di < 0 || di >= static_cast<int>(Domain::Count)) continue;
             int from_pool = std::min(ps.rune_pool.power[di], power_needed);
@@ -9656,7 +9718,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     cur.player = player;
     cur.energy_remaining = energy_needed;
     cur.power_remaining = power_needed;
-    cur.power_domains = def.domains;
+    cur.power_domains = domains;
     cur.phase = (energy_needed > 0)
         ? GameState::CostPaymentCursor::Phase::PayingEnergy
         : ((power_needed > 0)
@@ -9836,7 +9898,7 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
     auto it = std::find_if(ps.trash_replay_grants.begin(),
                            ps.trash_replay_grants.end(),
                            [&](const PlayerState::TrashReplayGrant& g) {
-                               return g.card == card_id;
+                               return g.card == card_id && g.alternative == trash_grant_alternative_;
                            });
     if (it == ps.trash_replay_grants.end()) return false;
     const auto grant = *it;   // copy before erase
@@ -9851,9 +9913,17 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         auto cost = trashGrantCost(player, card_id, grant, targets, false);
         if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
             cost = trashGrantCost(player, card_id, grant, targets, true);
-        ok = effect_executor_->payResources(player, cost.energy, cost.power, cost.domains, f);
-        if (ok && cost.extra_any > 0)
+        // The grant's cost IS the play's cost (CR 829.1.c.1: Flow; a "play me
+        // from your trash for ..." permission): paid as a card's cost is, the
+        // payer naming every rune, about this card (testing phase U18).
+        std::vector<Domain> domains;
+        for (int d = 0; d < static_cast<int>(Domain::Count); ++d)
+            if (cost.domains & (1u << d)) domains.push_back(static_cast<Domain>(d));
+        ok = payLikeACardCost(player, card_id, cost.energy, cost.power, domains);
+        if (ok && cost.extra_any > 0) {
+            const EffectExecutor::ActingFor acting(*effect_executor_, card_id);
             ok = effect_executor_->payResources(player, 0, cost.extra_any, resource::kAnyDomain, f);
+        }
     }
     if (ok && grant.banish_after && state_.objectExists(card_id))
         state_.getObject(card_id).banish_on_leave_chain = true;
@@ -9885,43 +9955,52 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
     // (commit 9) will use begin/advance/resolve directly.
     const int extra_any = state_.objectExists(card_obj)
         ? extraAnyPowerCost(state_, player, state_.getObject(card_obj)) : 0;
-    auto adv = beginCostPayment(player, card_obj, adj);
-    while (adv.kind == CostPaymentAdvance::Kind::NeedDecision) {
-        // Always emit the decision snapshot (forced-choice visibility
-        // — see prior commit). Trace label depends on phase.
-        const char* label = state_.cost_cursor->phase ==
-            GameState::CostPaymentCursor::Phase::PayingEnergy
-            ? "pick rune to exhaust for energy"
-            : "pick rune to recycle for power";
-        state_.decision_index++;
-        RIFT_TRACE_DECISION(events_, "DECISION #" +
-                          std::to_string(state_.decision_index) +
-                          " (" + toString(player) + "): " + label +
-                          " [" + std::to_string(adv.legal.size()) +
-                          " options]");
-
-        // Always query the agent — even when only one legal option
-        // exists. Previously this short-circuited and auto-picked
-        // adv.legal[0], which caused the agent's policy/training
-        // signal to MISS the "forced last-rune" cost-payment step
-        // (the last rune in a 3E/3-runes payment). The agent still
-        // returns the only option for trivial cases; HumanAgent
-        // auto-passes without surfacing UI, so the player UX is
-        // unchanged. The win is training fidelity.
-        auto chosen = askAgent(player, adv.legal,
-            enginePrompt(player,
-                         state_.cost_cursor->phase ==
-                                 GameState::CostPaymentCursor::Phase::PayingEnergy
-                             ? PromptKind::RuneForEnergy
-                             : PromptKind::RuneForPower,
-                         card_obj));
-        if (on_decision) on_decision(state_, adv.legal, chosen);
-        adv = resolveCostPaymentDecision(chosen);
-    }
+    askRunesFor(player, card_obj, beginCostPayment(player, card_obj, adj));
     if (extra_any > 0)
         effect_executor_->payAnyPower(player, extra_any,
             state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
                                           : SpendFor::Other);
+    return true;
+}
+
+void GameEngine::askRunesFor(PlayerId player, GameObjectId card_obj, CostPaymentAdvance adv) {
+    while (adv.kind == CostPaymentAdvance::Kind::NeedDecision) {
+        if (events_.quiet()) {   // a probe: the engine's order, nobody asked
+            adv = resolveCostPaymentDecision(adv.legal.front());
+            continue;
+        }
+        const bool for_energy = state_.cost_cursor->phase ==
+                                GameState::CostPaymentCursor::Phase::PayingEnergy;
+        // Always emit the decision snapshot (forced-choice visibility).
+        state_.decision_index++;
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                          " (" + toString(player) + "): " +
+                          (for_energy ? "pick rune to exhaust for energy"
+                                      : "pick rune to recycle for power") +
+                          " [" + std::to_string(adv.legal.size()) + " options]");
+        // Always query the agent — even when only one legal option exists:
+        // the agent's policy/training signal must not MISS the "forced
+        // last-rune" step. The agent still returns the only option for
+        // trivial cases; HumanAgent auto-passes without surfacing UI.
+        auto chosen = askAgent(player, adv.legal,
+            enginePrompt(player, for_energy ? PromptKind::RuneForEnergy : PromptKind::RuneForPower,
+                         card_obj));
+        if (on_decision) on_decision(state_, adv.legal, chosen);
+        adv = resolveCostPaymentDecision(chosen);
+    }
+}
+
+bool GameEngine::payLikeACardCost(PlayerId player, GameObjectId card_obj, int energy, int power,
+                                  const std::vector<Domain>& domains) {
+    if (!resource::canPayIn(state_, player, energy, power, resource::maskOf(domains),
+                            state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
+                                                          : SpendFor::Other))
+        return false;
+    RIFT_TRACE(events_, "PAY_COST: " +
+                         (state_.objectExists(card_obj) ? state_.getObject(card_obj).name
+                                                        : std::string("?")) +
+                         " E=" + std::to_string(energy) + " P=" + std::to_string(power));
+    askRunesFor(player, card_obj, beginPaymentOf(player, card_obj, energy, power, domains));
     return true;
 }
 
@@ -10146,7 +10225,21 @@ Prompt GameEngine::enginePrompt(PlayerId decider, PromptKind kind, GameObjectId 
         : Prompt{};
     p.kind = kind;
     p.decider = decider;
-    if (source != kInvalidId) p.source = source;
+    if (source != kInvalidId && source != p.source) {
+        // About another object than the item resolving now (an effect playing
+        // a spell asks that spell's choices while its own ability resolves):
+        // the item's ability is not this question's (testing phase U16: a
+        // spell played by Fizz was "its triggered ability"). A spell asked
+        // about before it is on the chain is described as the spell.
+        p.source = source;
+        p.chain_item = kInvalidId;
+        p.ability_index = -1;
+        p.trigger = TriggerType::None;
+        p.keyword_ability = false;
+        p.is_triggered = false;
+        p.at_finalization = false;
+        p.is_spell = state_.objectExists(source) && state_.getObject(source).isSpell();
+    }
     p.where = where;
     return p;
 }

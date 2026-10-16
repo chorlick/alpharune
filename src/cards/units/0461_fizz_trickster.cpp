@@ -61,8 +61,11 @@ public:
             ctx.state.getObject(chosen).card_counters["__recycle_on_leave_chain"] = 0;
             ctx.executor.recycleCards(ctx.controller, {chosen});
         }
+        // (The recycle is written when it happens: ChainManager, as the
+        // spell leaves the chain — testing phase U19.)
         RIFT_TRACE(ctx.events, "FIZZ: played " + sname +
-                             " from trash (energy<=3, ignoring energy), then recycled it");
+                             " from trash (energy<=3, ignoring energy); it is recycled as it "
+                             "leaves the chain");
     }
 private:
     const CardDef def_ = [] {

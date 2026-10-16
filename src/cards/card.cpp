@@ -808,6 +808,12 @@ GameObjectId Card::pickTarget(CardContext& ctx, const std::string& label,
     return pickOneObject(ctx, label, legal_targets_in, /*as_target=*/true, where);
 }
 
+GameObjectId Card::pickCostObject(CardContext& ctx, const std::string& label,
+                                  const std::vector<GameObjectId>& options,
+                                  std::source_location where) {
+    return pickOneObject(ctx, label, options, /*as_target=*/false, where);
+}
+
 GameObjectId Card::pickUnseenCard(CardContext& ctx, const std::string& label,
                                   const std::vector<GameObjectId>& options,
                                   std::source_location where) {
@@ -884,7 +890,8 @@ GameObjectId Card::pickOneObject(CardContext& ctx, const std::string& label,
         }
         if (legal_targets.empty()) {
             RIFT_TRACE(ctx.events, "TGT_NOT_OFFERED: " + label +
-                                 " (no legal targets at resolve time)");
+                                 (ri.finalizing ? " (no legal targets as it is finalized)"
+                                                : " (no legal targets as it resolves)"));
             store(kInvalidId);
             nothingToDecide(ri);
             requiredChoiceMissing(ri);   // CR 403.4
@@ -1069,7 +1076,8 @@ std::pair<GameObjectId, GameObjectId> Card::pickTargetPair(
     if (!(st & (kPairAwaitA | kPairAwaitB))) {
         if (legal_a.empty()) {
             RIFT_TRACE(ctx.events, "TGT_PAIR_NOT_OFFERED: " + label +
-                                 " (no legal first targets at resolve time)");
+                                 (ri.finalizing ? " (no legal first targets as it is finalized)"
+                                                : " (no legal first targets as it resolves)"));
             requiredChoiceMissing(ri);   // CR 403.4
             return finish(kInvalidId, kInvalidId);
         }

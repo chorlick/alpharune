@@ -17,7 +17,7 @@
 | criterion | pass 1 |
 |---|---|
 | no failure group (empty known file) | **not met**: 1 group, U3, 1 game in each optimised million (3 / 3,000,000); 0 in checked 3 x 100,000; 0 in the lists x 3 agents x 2 builds (1,825,200) |
-| no flagged game unless explained | met: 5 chains of 200 = the Faefolk / Challenger loop ended by TR 505 (F8, as batch M1 found); longest games end with a winner (Endless Riches stall, 7-7 endings under CR 466.1.b, burn-outs, few-unit control lists); no turn cap, no-winner, no-reason or hung game |
+| no flagged game unless explained | met: 5 chains of 200 = the Faefolk / Challenger loop ended by TR 505 (F8, as batch M1 found); longest games (up to 2,106 decisions) end with a winner (Endless Riches stall, 7-7 endings under CR 466.1.b, burn-outs, few-unit control lists); all replayed; no turn cap, no-winner, no-reason or hung game |
 | every card >= 200 per million in every way (50 at pass=0) | **not met** for 6 cards: Daisy! (2-4; covered by `decks/daisy.txt` at 3,200 per list run), Yasuo, Windrider 205 / 546 (143-169), Eclipse Dragon (86-87), Swain, Visionary (61-63; 33 at pass=0), Rell, Magnetic (195 random), Renekton, Rage Fueled (193 random-player). All have rare printed trigger conditions. Round 1's high counts for them came from counting triggers whose condition was false (fixed by D51/D77/G9) |
 
 Pass 1 runs:
@@ -155,7 +155,6 @@ The per-card table (Appendix A of the document) is built from the `_v2` runs.
 - **Interleaved agent and build runs.** Pass 1's checked runs ran alongside the optimised ones (two drivers) rather
   than one after the other. No game depends on that.
 - **19 games instead of 19.5.** The pool has 39 lists, so one list (`kaisa`) plays no read game.
-- **Checked longest replays.** The replay of the checked list run's longest game (2,106 decisions, pass=0) may not
-  have completed by the time of writing. Its seed-deck and optimised-list counterparts were all explained.
-- **The pre-existing test suite was not run.** No engine code changed; the two tool changes do not reach any test
-  except `test_deck_fuzz` (its counter), which was not run.
+- **The test suite was not run.** No engine code changed. The counter fix is in `tools/fuzz/fuzz_game.h`, which
+  `tests/test_deck_fuzz.cpp` also includes. It compiled in `deck_fuzz` on both builds, but `riftbound_tests` was not
+  rebuilt.

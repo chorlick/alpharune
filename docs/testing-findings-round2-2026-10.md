@@ -164,9 +164,10 @@ a cap.
   - Time Warp gave P1 two turns in a row (turns 61-62). The game ended on a hold at 7-8.
   - The other list games end by a hold or a burn-out after a long 7-7.
   - Explained by the lists' text and the agents. No loop.
-- Checked runs: their longest games were 779-847 decisions (seed decks) and up to 2,106 (lists, pass=0), all with a
-  winner. The checked list run's 2,106-decision game is in the same Jayce/Ezreal/Lux family. Its replay was queued
-  behind the run lane at the time of writing; see the report.
+- Checked runs: the longest seed-deck games had 779-847 decisions, all ending with a winner. The longest list games
+  had 1,211-2,106 decisions and are all Jayce or Ezreal mirrors and pairings with Lux, the same family.
+  - The 2,106-decision game (Ezreal mirror, pass=0, 72 turns, seed in `p1_lists_chk_rp0_h2.json`) ended on a hold
+    at 7-8 after a long 7-7.
 
 ## 4. New findings (U1-U21)
 

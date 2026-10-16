@@ -415,6 +415,9 @@ inline bool counterChosenItem(CardContext& ctx, ChainItemId id, ZoneType dest = 
 
 
 // ── Gold tokens ──
+// Every Gold token is the Spiritforged Gold (326), also when an Unleashed
+// card makes it (the Unleashed Gold, 564, differs only in how its [Reaction]
+// is printed): judge question 21, pinned by Batch8Test.Q21_Pin_*.
 inline void createGoldToken(CardContext& ctx) {
     auto loc = BaseLocation{ctx.controller};
     auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",

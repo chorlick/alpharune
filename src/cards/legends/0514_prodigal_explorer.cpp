@@ -27,6 +27,9 @@ public:
     // spells or unit abilities." Counted by the engine as each choice is
     // locked in (GameState::noteChosen).
     bool canActivateAbility(const GameState& state, PlayerId controller) const override {
+        // Each enemy unit or gear chosen counts (GameState::noteChosen): one
+        // spell choosing two meets it — judge question 19, the engine's
+        // reading (Batch8Test.Q19_Pin_*).
         return state.player(controller).enemy_choices_this_turn >= 2;
     }
 private:

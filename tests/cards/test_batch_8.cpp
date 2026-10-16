@@ -48,6 +48,8 @@ constexpr CardDefId kSpriteFountain = 640;     // gear: "[Deathknell][>] Repeat 
 constexpr CardDefId kReckonersArena = 281;     // "When you hold here, activate the conquer effects of units here."
 constexpr CardDefId kSettBrawler = 164;        // "When I'm played and when I conquer, buff me."
 constexpr CardDefId kLucianMerciless = 435;    // "The first time I conquer each turn, ready me."
+constexpr CardDefId kGrandDuelist = 519;       // legend: "When one of your units becomes [Mighty], you may exhaust me to channel 1 rune exhausted."
+constexpr CardDefId kProdigalExplorer = 514;   // legend: "[E]: [Reaction] — Draw 1. Use only if you've chosen enemy units and/or gear twice this turn ..."
 constexpr CardDefId kKennenStorm = 900;        // "When you play me, [Burn 2]."
 constexpr CardDefId kHeartOfTheTempest = 942;  // legend: "When you play a card from anywhere other than your hand, empower me."
 
@@ -1266,6 +1268,80 @@ TEST_F(Batch8Test, X2_AltarOfMemoriesPicksTheHandCardAsACardNotATarget) {
     fireTriggerThroughEngine(altar, TriggerType::WhenAFriendlyUnitDies, &p1, dead);
     EXPECT_NE(std::find(p1.kinds.begin(), p1.kinds.end(), PromptKind::ChooseObject), p1.kinds.end());
     EXPECT_EQ(std::find(p1.kinds.begin(), p1.kinds.end(), PromptKind::Target), p1.kinds.end());
+}
+
+
+// ═══ Questions (U17, U20, U21): the engine's reading, pinned ══════════════
+
+// U20 (a), judge question 18: a unit that enters the board with 5+ [M]
+// "becomes Mighty" (the engine says yes: CR 709's "at the moment its Might
+// changes from being less than 5", read with 711: off the board its printed
+// Might is what it has). Its play trigger and the "becomes Mighty" abilities
+// are then two batches (U4's second shape) — they follow that reading.
+TEST_F(Batch8Test, Q18_Pin_AUnitEnteringWithFiveMightBecomesMighty) {
+    const auto duelist = addLegend(P1, kGrandDuelist);
+    {   // a rune to channel
+        auto r = addRune(P1, Domain::Order);
+        o(r).location = std::nullopt;
+        o(r).zone = ZoneType::RuneDeck;
+        state.player(P1).rune_deck.push_back(r);
+    }
+    EnginePathAgent p1(EnginePathAgent::accepting());
+    withEngine([&](GameEngine& e) {
+        e.testHook_cleanup();   // a first check: nothing of P1's is Mighty
+        // A 5 [M] unit enters (a token, played by an effect).
+        e.testHook_executor().createToken(P1, CardType::Unit, "Big", 5, {}, KeywordSet{},
+                                          LocationId{BaseLocation{P1}}, false);
+        settleLikeTheEngine(e);
+    }, &p1);
+    EXPECT_TRUE(o(duelist).is_exhausted) << "it became Mighty as it entered (the engine's reading)";
+}
+
+// U20 (b), judge question 19: Prodigal Explorer's "chosen enemy units and/or
+// gear twice this turn" counts each object chosen (the engine's reading), so
+// one spell choosing two enemy units meets it.
+TEST_F(Batch8Test, Q19_Pin_OneSpellChoosingTwoEnemyUnitsCountsTwice) {
+    const auto a = addUnit(P2, kInvalidId, 2, 0);
+    const auto b = addUnit(P2, kInvalidId, 2, 0);
+    ChainItem spell_item;
+    spell_item.is_spell = true;
+    state.noteChosen(P1, a, &spell_item);
+    state.noteChosen(P1, b, &spell_item);
+    EXPECT_EQ(state.player(P1).enemy_choices_this_turn, 2);
+    const Card* explorer = card_registry.get(kProdigalExplorer);
+    ASSERT_NE(explorer, nullptr);
+    EXPECT_TRUE(explorer->canActivateAbility(state, P1));
+}
+
+// U17, judge question 20: copies of one ability that trigger together are
+// ordered by their controller like different abilities (two Scrapheaps die
+// together: one order prompt, two options described alike).
+TEST_F(Batch8Test, Q20_Pin_CopiesOfOneAbilityAreOrderedLikeDifferentOnes) {
+    addGear(P1, kScrapheap);
+    addGear(P1, kScrapheap);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kPoutyPoro);
+    const auto spell = addToHand(P1, kThermoBeam);
+    EnginePathAgent p1, p2;
+    playThroughEngine(spell, &p1, std::nullopt, &p2);
+    ASSERT_EQ(p1.order_prompts.size(), 1u);
+    EXPECT_EQ(p1.order_prompts.front().size(), 2u);
+}
+
+// U21, judge question 21: every Gold token is the Spiritforged Gold (326),
+// also when an Unleashed card makes it; the Unleashed Gold (564) is never
+// the token's card.
+TEST_F(Batch8Test, Q21_Pin_EveryGoldTokenIsCard326) {
+    GameObjectId gold = kInvalidId;
+    withEngine([&](GameEngine& e) {
+        CardContext ctx{e.mutableState(), events, e.testHook_executor(), P1, kInvalidId};
+        ctx.registry = &card_registry;
+        createGoldToken(ctx);
+        const auto& made = e.testHook_executor().lastTokensCreated();
+        gold = made.empty() ? kInvalidId : made.back();
+    });
+    ASSERT_NE(gold, kInvalidId);
+    EXPECT_EQ(o(gold).card_def_id, CardDefId{326});
+    ASSERT_NE(card_registry.get(564), nullptr) << "the Unleashed Gold is a registered card";
 }
 
 }  // namespace riftbound::test::batch_8

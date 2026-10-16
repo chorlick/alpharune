@@ -2150,6 +2150,10 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
     return canonical;
 }
 
+// Copies of one ability (two Scrapheaps, three Sprites' [Temporary]) are
+// abilities of different objects and are ordered like different abilities
+// (CR 383.3.d does not except them): judge question 20, the engine's reading,
+// pinned by Batch8Test.Q20_Pin_*.
 void GameEngine::orderPendingTriggers() {
     auto isPending = [](const ChainItem& ci) { return ci.status == ChainItemStatus::Pending; };
     // Every batch still waiting is in an order of what the players see before
@@ -8740,6 +8744,9 @@ void GameEngine::cleanup() {
         for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.current_might < 5) continue;   // its stamp stays behind: the edge is armed
+            // A unit that has just entered with 5+ [M] has no earlier stamp:
+            // it "becomes Mighty" here (judge question 18, the engine's
+            // reading; Batch8Test.Q18_Pin_*).
             const bool was = previous != 0 && obj.mighty_seen == previous;
             obj.mighty_seen = now;
             if (!was) became.push_back(id);

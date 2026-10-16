@@ -42,6 +42,12 @@ constexpr CardDefId kStarSpring = 771;         // battlefield: "... they may mov
 constexpr CardDefId kArise = 513;              // "... Then do this: Ready up to two of them." (a reflexive trigger)
 constexpr CardDefId kSerratedDirk = 332;       // gear, Equipment
 constexpr CardDefId kDredgeUp = 836;           // "Draw 1." [2]; [Flow] [2]
+constexpr CardDefId kThermoBeam = 22;          // "Kill all gear."
+constexpr CardDefId kScrapheap = 182;          // gear: "When this is played, discarded, or killed, draw 1."
+constexpr CardDefId kSpriteFountain = 640;     // gear: "[Deathknell][>] Repeat this gear's play effect."
+constexpr CardDefId kReckonersArena = 281;     // "When you hold here, activate the conquer effects of units here."
+constexpr CardDefId kSettBrawler = 164;        // "When I'm played and when I conquer, buff me."
+constexpr CardDefId kLucianMerciless = 435;    // "The first time I conquer each turn, ready me."
 constexpr CardDefId kKennenStorm = 900;        // "When you play me, [Burn 2]."
 constexpr CardDefId kHeartOfTheTempest = 942;  // legend: "When you play a card from anywhere other than your hand, empower me."
 
@@ -1192,6 +1198,74 @@ TEST_F(Batch8Test, U14_TheOtherCostAndHandPicksAreNotTargets) {
         EXPECT_EQ(p1.kinds.front(), PromptKind::ChooseObject);
         EXPECT_NE(o(a).location.has_value(), o(b).location.has_value()) << "one paid the cost";
     }
+}
+
+
+// ═══ S1: Thermo Beam's gear die together ═══════════════════════════════════
+//
+// "Kill all gear." They die at the same time (CR 370.1.a.2): one death batch,
+// their death abilities one simultaneous batch, ordered by their controller
+// (CR 383.3.d). They were killed one after another, each its own batch.
+TEST_F(Batch8Test, S1_ThermoBeamsGearDieTogetherAndTheirAbilitiesAreOrderedTogether) {
+    addGear(P1, kScrapheap);
+    addGear(P1, kSpriteFountain);
+    for (int i = 0; i < 4; ++i) addToDeck(P1, kPoutyPoro);
+    const auto spell = addToHand(P1, kThermoBeam);
+    EnginePathAgent p1, p2;
+    playThroughEngine(spell, &p1, std::nullopt, &p2);
+    EXPECT_EQ(p1.order_prompts.size(), 1u)
+        << "Scrapheap's and Sprite Fountain's death abilities: one batch, P1 orders them";
+}
+
+
+// ═══ Q3: Reckoner's Arena's activated conquer abilities are simultaneous ════
+//
+// CR 383.4.g.1: each conquer ability "is placed on the chain as if it had just
+// triggered" — all of them by the one instruction, so they are simultaneous
+// triggered abilities their controller orders (CR 383.3.d). They were queued
+// one by one with no trigger batch and no order prompt.
+TEST_F(Batch8Test, Q3_ReckonersArenaAsksTheOrderOfTheConquerAbilitiesItActivates) {
+    const auto arena = placeBattlefield(0, kReckonersArena);
+    state.battlefields[0].controller = P1;
+    const auto sett = addUnit(P1, kSettBrawler, 0, 0);
+    const auto lucian = addUnit(P1, kLucianMerciless, 0, 0);
+    o(lucian).is_exhausted = true;
+    EnginePathAgent p1, p2;
+    withEngine([&](GameEngine& e) {
+        e.testHook_executor().queueTriggeredAbility(arena, P1, TriggerType::WhenYouHoldHere,
+                                                    kInvalidId);
+        settleLikeTheEngine(e);
+    }, &p1, &p2);
+    EXPECT_EQ(p1.order_prompts.size(), 1u) << "P1 orders Sett's and Lucian's conquer abilities";
+    EXPECT_EQ(o(sett).buff_count, 1);
+    EXPECT_FALSE(o(lucian).is_exhausted);
+}
+
+
+// X2 (found by batch 8): Altar of Memories' "put a card from your hand ..."
+// was asked as a Target; a card picked from a hand is not one (CR 355.10.a),
+// the class batch 6 (R13) fixed in ten other cards.
+TEST_F(Batch8Test, X2_AltarOfMemoriesPicksTheHandCardAsACardNotATarget) {
+    const CardDefId kAltarOfMemories = 490;
+    const auto altar = addGear(P1, kAltarOfMemories);
+    const auto dead = addUnit(P1, kInvalidId, 2, 0);
+    addToHand(P1, kPoutyPoro);
+    addToHand(P1, kPoutyPoro);
+    for (int i = 0; i < 3; ++i) addToDeck(P1, kPoutyPoro);
+    class Kinds : public EnginePathAgent {
+    public:
+        using EnginePathAgent::EnginePathAgent;
+        std::vector<PromptKind> kinds;
+        Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                      const Prompt& prompt) override {
+            if (!legal.empty() && legal.front().type == IntentType::MakeChoice)
+                kinds.push_back(prompt.kind);
+            return selectAction(st, legal);
+        }
+    } p1(EnginePathAgent::accepting());
+    fireTriggerThroughEngine(altar, TriggerType::WhenAFriendlyUnitDies, &p1, dead);
+    EXPECT_NE(std::find(p1.kinds.begin(), p1.kinds.end(), PromptKind::ChooseObject), p1.kinds.end());
+    EXPECT_EQ(std::find(p1.kinds.begin(), p1.kinds.end(), PromptKind::Target), p1.kinds.end());
 }
 
 }  // namespace riftbound::test::batch_8

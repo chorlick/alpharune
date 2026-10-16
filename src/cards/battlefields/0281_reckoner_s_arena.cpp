@@ -92,6 +92,11 @@ public:
         // Their abilities go on the chain in an order of what the players see
         // of the units, not of their ids (Q1).
         inSeenOrder(ctx.state, units);
+        // They are all "placed on the chain as if [they] had just triggered"
+        // by this one instruction (CR 383.4.g.1): simultaneous triggered
+        // abilities, which their controller orders (CR 383.3.d; testing phase
+        // Q3, batch 7-perf). One trigger batch for all of them.
+        const SimultaneousTriggers together(ctx.state.chain);
         int activated = 0;
         for (auto uid : units) {
             if (!ctx.state.objectExists(uid)) continue;

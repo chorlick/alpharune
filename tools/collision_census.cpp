@@ -85,6 +85,7 @@ int main(int argc, char* argv[]) {
     std::string deck1_path, deck2_path, json_path;
     int games = 100;
     uint64_t seed = 1;
+    MatchFormat format = MatchFormat::BestOf1;
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string flag = argv[i];
         if (flag == "--deck1") deck1_path = argv[i + 1];
@@ -92,6 +93,7 @@ int main(int argc, char* argv[]) {
         else if (flag == "--games") games = std::stoi(argv[i + 1]);
         else if (flag == "--seed") seed = std::stoull(argv[i + 1]);
         else if (flag == "--json") json_path = argv[i + 1];
+        else if (flag == "--game-mode") format = matchFormatFromString(argv[i + 1]);
         else { std::cerr << "Unknown argument " << flag << "\n"; return 2; }
     }
     if (deck1_path.empty()) {
@@ -114,6 +116,7 @@ int main(int argc, char* argv[]) {
         std::mt19937_64 rng(game_seed * 7919);
         EventBus events;
         GameEngine engine(db, events, registry);
+        engine.setMatchFormat(format);
         StepResult step = engine.beginGame(deck1, deck2, game_seed);
         while (step.kind == StepKind::NeedDecision) {
             const auto& state = engine.state();

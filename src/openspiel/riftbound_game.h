@@ -14,6 +14,9 @@
 ///                 compiled into the engine; the parameter is accepted only so
 ///                 older game strings still parse
 ///   - seed      : RNG seed for the engine; 0 = nondeterministic (default: 0)
+///   - game_mode : "duel" (default: each player's setup battlefield drawn at
+///                 random, CR 487.5) or "match" (each player chooses it, CR
+///                 488.5 — what the trainer plays); testing phase V1-G4
 
 #include "open_spiel/spiel.h"
 
@@ -64,6 +67,7 @@ public:
     const ::riftbound::DeckSubmission& deck1()       const { return deck1_; }
     const ::riftbound::DeckSubmission& deck2()       const { return deck2_; }
     uint64_t seed() const { return seed_; }
+    ::riftbound::MatchFormat matchFormat() const { return match_format_; }
 
 private:
     const ::riftbound::CardDB& card_db_;
@@ -71,6 +75,7 @@ private:
     ::riftbound::DeckSubmission deck1_;
     ::riftbound::DeckSubmission deck2_;
     uint64_t seed_;
+    ::riftbound::MatchFormat match_format_;
 };
 
 } // namespace riftbound::openspiel

@@ -400,10 +400,21 @@ struct DamageAssignment {
 
 // ─── Mode of Play ────────────────────────────────────────────────────────────
 
+/// The 1v1 Mode of Play (testing phase V1-G4, owner decision 2026-10-15).
+/// What it changes in an engine game is the setup battlefield (CR 487.5 /
+/// 488.5): in a Duel each player's battlefield is drawn at random from the
+/// three they bring, with no decision; in a Match each player chooses it
+/// (PromptKind::BattlefieldSetup). Duel is the default; the trainer plays
+/// Match so its agent makes that choice. A Match's later games (488.5,
+/// 488.6: battlefields already used are out) are not modelled (item K2).
 enum class MatchFormat : uint8_t {
-    BestOf1,  // Duel
-    BestOf3,  // Match
+    BestOf1,  // Duel (CR 487)
+    BestOf3,  // Match (CR 488)
 };
+/// "duel" / "match", as the CLIs and the OpenSpiel game parameter spell them.
+const char* toString(MatchFormat f);
+/// Parses "duel" / "match"; throws std::invalid_argument for anything else.
+MatchFormat matchFormatFromString(const std::string& text);
 
 struct ModeOfPlay {
     int num_players = 2;
@@ -411,7 +422,7 @@ struct ModeOfPlay {
     int battlefield_count = 2;
     int battlefields_per_player = 1;
     bool second_player_extra_channel = true;
-    MatchFormat format = MatchFormat::BestOf3;
+    MatchFormat format = MatchFormat::BestOf1;
 };
 
 // ─── String conversions (for logging/rendering) ─────────────────────────────

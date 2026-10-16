@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <gtest/gtest.h>
 
+#include <set>
+
 #include "cards/card_registry.h"
 #include "core/card_db.h"
 #include "core/events.h"
@@ -55,8 +57,10 @@ protected:
         Game() : engine(*db_, bus, *registry_) {}
     };
 
-    static std::unique_ptr<Game> begin(uint64_t seed) {
+    static std::unique_ptr<Game> begin(uint64_t seed,
+                                       MatchFormat format = MatchFormat::BestOf1) {
         auto g = std::make_unique<Game>();
+        g->engine.setMatchFormat(format);
         g->engine.beginGame(*deck1_, *deck2_, seed);
         return g;
     }
@@ -480,11 +484,12 @@ TEST_F(StepApiTest, ApplyChoiceRejectsAnIndexOutsideTheLegalList) {
 
 // plans/09 item 9.RR2 — the setup choice of a battlefield has a field of its
 // own type (a position in the player's battlefield list); `chosen_battlefield`
-// means one thing, the slot a card is hidden at.
+// means one thing, the slot a card is hidden at. The choice is asked in a
+// Match (CR 488.5); a Duel draws it (V1-G4).
 TEST_F(StepApiTest, TheSetupBattlefieldChoiceIsNotABattlefieldSlot) {
     int setup_choices = 0, hides = 0;
     for (uint64_t seed = 1; seed <= 12; ++seed) {
-        auto g = begin(seed);
+        auto g = begin(seed, MatchFormat::BestOf3);
         std::mt19937_64 rng(seed * 13);
         CardDefId picked[2];
         for (int n = 0; n < kMaxDecisions && !g->engine.isStepDone(); ++n) {
@@ -528,6 +533,73 @@ TEST_F(StepApiTest, TheSetupBattlefieldChoiceIsNotABattlefieldSlot) {
     }
     EXPECT_EQ(setup_choices, 24);
     EXPECT_GT(hides, 0) << "no HideCard intent was offered in 12 games";
+}
+
+// V1-G4 (owner decision 2026-10-15): a Duel — the default Mode of Play —
+// draws each player's battlefield at random from the three they bring (CR
+// 487.5): no decision, from the engine's RNG (the same seed, the same draw),
+// every one of the three drawn for some seed, and the draw announced to both
+// players (the battlefields are revealed as they enter play).
+TEST_F(StepApiTest, V1G4_ADuelDrawsEachSetupBattlefieldWithNoDecision) {
+    std::set<CardDefId> drawn[2];
+    for (uint64_t seed = 1; seed <= 40; ++seed) {
+        CardDefId first[2];
+        for (int run = 0; run < 2; ++run) {
+            auto g = begin(seed);
+            // Nothing asked before the battlefields exist; the first decision
+            // is a mulligan.
+            const auto step = g->engine.currentStep();
+            ASSERT_EQ(step.kind, StepKind::NeedDecision);
+            for (const auto& i : step.legal)
+                EXPECT_NE(i.type, IntentType::ChooseBattlefield) << "seed " << seed;
+            const auto& gs = g->engine.state();
+            ASSERT_EQ(gs.battlefields.size(), 2u);
+            EXPECT_EQ(gs.mode.format, MatchFormat::BestOf1);
+            const DeckSubmission* decks[2] = {deck1_, deck2_};
+            for (int p = 0; p < 2; ++p) {
+                const CardDefId def =
+                    gs.getObject(gs.battlefields[p].card_object_id).card_def_id;
+                const auto& pool = decks[p]->battlefields;
+                EXPECT_NE(std::find(pool.begin(), pool.end(), def), pool.end());
+                if (run == 0) { first[p] = def; drawn[p].insert(def); }
+                else EXPECT_EQ(def, first[p]) << "seed " << seed << ": the same seed, the same draw";
+            }
+        }
+    }
+    for (int p = 0; p < 2; ++p)
+        EXPECT_EQ(drawn[p].size(), std::set<CardDefId>((p ? deck2_ : deck1_)->battlefields.begin(),
+                                                       (p ? deck2_ : deck1_)->battlefields.end()).size())
+            << "every battlefield of player " << p + 1 << " is drawn for some seed";
+}
+
+TEST_F(StepApiTest, V1G4_TheDuelsDrawIsReadByBothPlayers) {
+    EventBus bus;
+    GameEngine engine(*db_, bus, *registry_);
+    std::vector<LogEvent> lines;
+    auto conn = bus.on_log.connect([&](const LogEvent& e) {
+        if (e.message.find("SETUP:") != std::string::npos) lines.push_back(e);
+    });
+    engine.beginGame(*deck1_, *deck2_, 7);
+    conn.disconnect();
+    ASSERT_EQ(lines.size(), 2u);
+    for (const auto& e : lines) {
+        EXPECT_TRUE(e.visibleTo(PlayerId::Player1)) << e.message;
+        EXPECT_TRUE(e.visibleTo(PlayerId::Player2)) << e.message;
+    }
+}
+
+TEST_F(StepApiTest, V1G4_AMatchAsksEachPlayer) {
+    auto g = begin(3, MatchFormat::BestOf3);
+    int asked = 0;
+    for (int n = 0; n < 2; ++n) {
+        const auto step = g->engine.currentStep();
+        ASSERT_EQ(step.kind, StepKind::NeedDecision);
+        if (step.legal.front().type != IntentType::ChooseBattlefield) break;
+        ++asked;
+        g->engine.applyChoice(0);
+    }
+    EXPECT_EQ(asked, 2);
+    EXPECT_EQ(g->engine.state().mode.format, MatchFormat::BestOf3);
 }
 
 // 1.14 — the feature vector is exactly kStateFeatureDim long on real states,

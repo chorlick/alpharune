@@ -78,14 +78,16 @@ private:
 };
 
 std::unique_ptr<AgentInterface> build(const Spec& s, const std::string& d1, const std::string& d2,
-                                      uint64_t engine_seed, uint64_t agent_seed) {
+                                      uint64_t engine_seed, uint64_t agent_seed,
+                                      MatchFormat format) {
     if (s.kind == "random") return std::make_unique<RandomAgent>(agent_seed);
     if (s.kind == "random-player") return std::make_unique<RandomPlayerAgent>(agent_seed);
     if (s.kind == "mcts")
-        return std::make_unique<MctsAgent>(d1, d2, "", engine_seed, agent_seed, s.sims);
+        return std::make_unique<MctsAgent>(d1, d2, "", engine_seed, agent_seed, s.sims, format);
     return std::make_unique<IsMctsAgent>(
         d1, d2, "", engine_seed, agent_seed, s.sims,
-        s.kind == "ismcts" ? IsMctsAgent::WorldModel::Sampled : IsMctsAgent::WorldModel::Perfect);
+        s.kind == "ismcts" ? IsMctsAgent::WorldModel::Sampled : IsMctsAgent::WorldModel::Perfect,
+        format);
 }
 
 uint64_t mix(uint64_t x) {
@@ -111,6 +113,7 @@ int main(int argc, char** argv) {
     std::string a_spec = "ismcts:50", b_spec = "random", deck_dir = "decks";
     int games = 100, threads = 3;
     uint64_t seed = 1;
+    MatchFormat format = MatchFormat::BestOf1;
     for (int i = 1; i < argc; ++i) {
         const std::string k = argv[i];
         auto next = [&]() -> std::string {
@@ -123,6 +126,7 @@ int main(int argc, char** argv) {
         else if (k == "--seed") seed = std::stoull(next());
         else if (k == "--threads") threads = std::stoi(next());
         else if (k == "--deck-dir") deck_dir = next();
+        else if (k == "--game-mode") format = matchFormatFromString(next());
         else { std::cerr << "unknown flag " << k << "\n"; return 2; }
     }
     const Spec a = parseSpec(a_spec), b = parseSpec(b_spec);
@@ -156,10 +160,13 @@ int main(int argc, char** argv) {
             const uint64_t engine_seed = gs & 0x7FFFFFFFu;
             // Seat order: deck d1 is seat 1.
             std::unique_ptr<Timed> agent_a, agent_b;
-            agent_a = std::make_unique<Timed>(build(a, paths[d1], paths[d2], engine_seed, mix(gs + 1)));
-            agent_b = std::make_unique<Timed>(build(b, paths[d1], paths[d2], engine_seed, mix(gs + 2)));
+            agent_a = std::make_unique<Timed>(
+                build(a, paths[d1], paths[d2], engine_seed, mix(gs + 1), format));
+            agent_b = std::make_unique<Timed>(
+                build(b, paths[d1], paths[d2], engine_seed, mix(gs + 2), format));
             EventBus bus;
             GameEngine engine(cards.db, bus, cards.registry);
+            engine.setMatchFormat(format);
             GameResult r;
             std::string error;
             try {

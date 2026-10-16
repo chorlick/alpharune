@@ -101,6 +101,9 @@ struct GameOptions {
     /// (RandomPlayerAgent: acts whenever it can). Seeded as GameRunner seeds
     /// them, so the game is the one `riftbound --agent1 .. --agent2 ..` plays.
     std::string agents[2] = {"random", "random"};
+    /// The Mode of Play (testing phase V1-G4): Duel draws each setup
+    /// battlefield at random, Match asks each seat.
+    MatchFormat match_format = MatchFormat::BestOf1;
     CardCoverage* coverage = nullptr;       // nullptr = no listener attached
     /// Log lines kept (the last `log_tail`, 0 = none, <0 = all). Attaching a
     /// log reader makes the engine build every line: for one game, not a batch.
@@ -220,6 +223,7 @@ inline GameOutcome playGame(const CardDB& db, const CardRegistry& registry,
 
     EventBus events;
     GameEngine engine(db, events, registry);
+    engine.setMatchFormat(opt.match_format);
 
     std::deque<std::string> log;
     if (opt.log_tail != 0 || opt.log_stream) {

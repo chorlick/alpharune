@@ -62,7 +62,8 @@ public:
               std::string registry_path,
               uint64_t    engine_seed,
               uint64_t    mcts_seed,
-              int         sims);
+              int         sims,
+              MatchFormat format = MatchFormat::BestOf1);
     ~MctsAgent() override;
 
     MctsAgent(const MctsAgent&) = delete;
@@ -120,11 +121,11 @@ struct SearchSummary {
 /// The move played is the most visited root option (ties broken by the
 /// agent's RNG); `lastSearch()` gives the whole root.
 ///
-/// Decisions not searched: the setup battlefield choice (the opponent's pick
-/// is held by the engine's suspended call, which a world cannot redraw; CR
-/// 487.5 makes the choice random in a Duel, 488.5 chosen in a Match, and
-/// which one an engine game follows is open — item G4) is answered uniformly
-/// from the agent's RNG.
+/// Decisions not searched: the setup battlefield choice of a Match (CR 488.5;
+/// the opponent's pick is held by the engine's suspended call, which a world
+/// cannot redraw — item L3) is answered uniformly from the agent's RNG. A
+/// Duel (the default, CR 487.5) has no such decision. `format` must be the
+/// live game's Mode of Play: the mirror plays the same setup.
 class IsMctsAgent : public AgentInterface {
 public:
     enum class WorldModel { Sampled, Perfect };
@@ -135,7 +136,8 @@ public:
                 uint64_t    engine_seed,
                 uint64_t    mcts_seed,
                 int         sims,
-                WorldModel  world = WorldModel::Sampled);
+                WorldModel  world = WorldModel::Sampled,
+                MatchFormat format = MatchFormat::BestOf1);
     ~IsMctsAgent() override;
 
     IsMctsAgent(const IsMctsAgent&) = delete;

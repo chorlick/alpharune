@@ -67,6 +67,7 @@ int main() {
                 uint64_t game_seed = local();
                 ::riftbound::EventBus bus;
                 ::riftbound::GameEngine engine(rb_game->cardDb(), bus, rb_game->cardRegistry());
+                engine.setMatchFormat(rb_game->matchFormat());   // the game string's game_mode
                 ::riftbound::RandomAgent a1(game_seed * 2);
                 ::riftbound::RandomAgent a2(game_seed * 2 + 1);
                 auto result = engine.runGame(rb_game->deck1(), rb_game->deck2(),

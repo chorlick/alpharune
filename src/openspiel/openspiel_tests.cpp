@@ -176,6 +176,22 @@ TEST(RiftboundGameTest, AdvertisedShapesMatchTheEngine) {
 // 1.1 — CurrentPlayer() is whoever the engine is asking. 1.11 — LegalActions()
 // is ascending and duplicate-free. 1.12 — it holds one id per distinct legal
 // Intent: nothing the engine offers is dropped.
+// V1-G4: the game_mode parameter. "duel" (the default) asks no setup
+// battlefield; "match" asks each player (CR 487.5 / 488.5).
+TEST(RiftboundStateTest, TheGameModeParameterDecidesWhetherTheSetupBattlefieldIsAsked) {
+    auto firstDecision = [](const std::string& mode) {
+        auto game = ::open_spiel::LoadGame("riftbound(deck1=" + deckFile("yi_rebuild.txt") +
+                                           ",deck2=" + deckFile("fiora.txt") + ",seed=11" +
+                                           (mode.empty() ? "" : ",game_mode=" + mode) + ")");
+        RiftboundState state(game, 11);
+        return state.decisionPrompt().kind;
+    };
+    EXPECT_NE(firstDecision(""), ::riftbound::PromptKind::BattlefieldSetup);
+    EXPECT_NE(firstDecision("duel"), ::riftbound::PromptKind::BattlefieldSetup);
+    EXPECT_EQ(firstDecision("match"), ::riftbound::PromptKind::BattlefieldSetup);
+    EXPECT_ANY_THROW(firstDecision("best-of-five"));
+}
+
 TEST(RiftboundStateTest, CurrentPlayerIsTheDeciderAndLegalActionsAreSorted) {
     int off_turn = 0, decisions = 0, stale_closed = 0;
     for (int seed = 1; seed <= 4; ++seed) {
@@ -1492,8 +1508,9 @@ TEST(IsMctsAgentTest, ThePerfectWorldVariantIsAlsoAFunctionOfItsSeeds) {
 TEST(RiftboundStateTest, AnEditedStateIsNeverRebuiltByAReplay) {
     auto game = loadGame(5);
     RiftboundState state(game, 5);
-    // The first decision (the setup battlefield choice) cannot be resumed
-    // from a snapshot: a clone of it would be rebuilt by replaying.
+    // The first decision (P1's mulligan in a Duel; the setup battlefield
+    // choice in a Match) cannot be resumed from a snapshot: a clone of it
+    // would be rebuilt by replaying.
     ASSERT_FALSE(state.IsTerminal());
     ASSERT_FALSE(GameEngine::isResumableDecision(state.engineState(), state.legalIntents()));
     state.editHiddenInformation([](GameState&) {}, 99);

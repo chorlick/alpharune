@@ -86,6 +86,7 @@ RiftboundState::RiftboundState(std::shared_ptr<const ::open_spiel::Game> game,
       engine_seed_(engine_seed) {
     // Runs the engine (in its fiber) until the first decision or
     // termination; consult the result via engine_->currentStep().
+    engine_->setMatchFormat(rb_game_.matchFormat());   // the game_mode parameter
     engine_->beginGame(rb_game_.deck1(), rb_game_.deck2(), engine_seed_);
 }
 
@@ -180,6 +181,7 @@ void RiftboundState::ensureLive() const {
                                        base->rng, base->step);
             from = base->state.action_history.size();
         } else {
+            engine->setMatchFormat(rb_game_.matchFormat());
             engine->beginGame(rb_game_.deck1(), rb_game_.deck2(), engine_seed_);
         }
         const auto& tokens = snap.state.action_history;

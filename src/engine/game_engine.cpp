@@ -239,6 +239,7 @@ GameResult GameEngine::runGame(
     state_ = GameState{};
     forgetCleanupFacts();
     state_.mode = ModeOfPlay{};
+    state_.mode.format = match_format_;
 
     initSubsystems();
 
@@ -573,12 +574,15 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
 
 void GameEngine::setupBattlefields(const DeckSubmission& deck1,
                                      const DeckSubmission& deck2) {
-    // Each player picks one of their three battlefields. CR 487.5 (1v1 Duel,
-    // best of one) selects it at random; CR 488.5 (1v1 Match) lets the player
-    // select it. An engine game asks the agent — the Match reading; a
-    // RandomAgent's uniform pick is what a Duel would do. Which mode an engine
-    // game is was left to the project (testing phase G4, pinned by
-    // Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield).
+    // Each player brings one of their three battlefields. CR 487.5 (1v1
+    // Duel): "each player's Battlefield is selected randomly from among the
+    // Battlefields they have" — drawn here from the engine's RNG, no
+    // decision, P1's then P2's; the draw is hidden from nobody (the chosen
+    // battlefields are revealed as they enter play). CR 488.5 (1v1 Match):
+    // each player selects it — the agent is asked. The mode is
+    // GameState::mode.format (GameEngine::setMatchFormat; testing phase
+    // V1-G4, owner decision 2026-10-15: Duel by default, the trainer plays
+    // Match).
     //
     // The choice is Intent::battlefield_pool_index: the position of the
     // card in the deck's battlefield list (0..N-1). It is not a
@@ -586,6 +590,15 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
     auto pickFromDeck = [&](PlayerId player,
                              const std::vector<CardDefId>& bfs) -> CardDefId {
         if (bfs.empty()) return kInvalidId;
+        if (state_.mode.format == MatchFormat::BestOf1) {
+            std::uniform_int_distribution<size_t> pick(0, bfs.size() - 1);
+            const size_t idx = pick(rng_);
+            RIFT_TRACE(events_, "SETUP: " + std::string(toString(player)) +
+                                " brings battlefield #" + std::to_string(idx) + " (" +
+                                card_db_.get(bfs[idx]).name +
+                                "), drawn at random (Duel, CR 487.5)");
+            return bfs[idx];
+        }
         // Publish the candidate pool to PlayerState so the legal-action
         // renderer can label each ChooseBattlefield by its printed name
         // ("Vilemaw's Lair", "Rockfall Path", …) instead of just "BF #N".

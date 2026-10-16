@@ -155,6 +155,13 @@ public:
     /// (`HiddenOrderLeak.*`).
     void setIdLabelSalt(uint64_t salt) { id_label_salt_ = salt; }
 
+    /// The Mode of Play of the next `runGame` / `beginGame` (testing phase
+    /// V1-G4): Duel (default) draws each player's battlefield at random from
+    /// the engine's RNG with no decision (CR 487.5); Match asks each player
+    /// (CR 488.5, PromptKind::BattlefieldSetup). Set before the game starts.
+    void setMatchFormat(MatchFormat format) { match_format_ = format; }
+    MatchFormat matchFormat() const { return match_format_; }
+
     /// Inspect what the engine is currently waiting on without advancing.
     /// Throws the engine's exception if the game failed (see applyChoice).
     ///
@@ -381,6 +388,7 @@ private:
     GameState state_;
     std::mt19937_64 rng_;
     uint64_t id_label_salt_ = 0;   // see setIdLabelSalt
+    MatchFormat match_format_ = MatchFormat::BestOf1;   // see setMatchFormat
 
     // Connection for the CardRevealedEvent subscriber installed in
     // the constructor. Stored so the destructor can disconnect — if

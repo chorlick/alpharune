@@ -21,6 +21,16 @@ const char* toString(CardType t) {
     return "Unknown";
 }
 
+const char* toString(MatchFormat f) {
+    return f == MatchFormat::BestOf3 ? "match" : "duel";
+}
+
+MatchFormat matchFormatFromString(const std::string& text) {
+    if (text == "duel") return MatchFormat::BestOf1;
+    if (text == "match") return MatchFormat::BestOf3;
+    throw std::invalid_argument("game mode must be \"duel\" or \"match\", not \"" + text + "\"");
+}
+
 const char* toString(SuperType t) {
     switch (t) {
         case SuperType::None:      return "None";

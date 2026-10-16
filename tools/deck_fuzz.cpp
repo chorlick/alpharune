@@ -185,6 +185,7 @@ struct Options {
     int examples = 10;
     int long_chain = 200;         // a chain of this many items is flagged
     std::string agents[2] = {"random", "random"};   // random | random-player[:pass=P]
+    MatchFormat match_format = MatchFormat::BestOf1;  // --game-mode duel | match
     std::string guide_path;       // a previous result: build decks toward what it covered least
     double guide_boost = 8;
     std::string known_path;       // known failure signatures: "ID|text" per line
@@ -263,6 +264,8 @@ int usage() {
         "         --hang-seconds N (300)  --examples N (10 per failure group)  --quiet\n"
         "         --long-chain N (200): flag a game with N chain items in one chain\n"
         "         --agent1 / --agent2 / --agents random | random-player[:pass=P]\n"
+        "         --game-mode duel | match (duel: setup battlefields drawn at random, CR 487.5;\n"
+        "             match: each seat chooses, CR 488.5)\n"
         "         --guide prev.json [--guide-boost B (8)]: weight deck building toward the cards\n"
         "             the previous result exercised least (a seed then means a deck only with\n"
         "             the same guide file: the replay command names it)\n"
@@ -357,6 +360,7 @@ int runReplay(const Options& o, const CardDB& db, const CardRegistry& registry,
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
     // --trace --tail N: the last N lines once the game has ended. --trace
     // alone: every line as it comes, so a game that never ends shows too.
     opt.log_tail = o.trace && o.tail > 0 ? o.tail : 0;
@@ -401,6 +405,10 @@ int main(int argc, char* argv[]) {
         else if (flag == "--agent1") o.agents[0] = value();
         else if (flag == "--agent2") o.agents[1] = value();
         else if (flag == "--agents") o.agents[0] = o.agents[1] = value();
+        else if (flag == "--game-mode") {
+            try { o.match_format = matchFormatFromString(value()); }
+            catch (const std::exception& e) { std::cerr << e.what() << "\n"; return usage(); }
+        }
         else if (flag == "--guide") o.guide_path = value();
         else if (flag == "--guide-boost") o.guide_boost = std::stod(value());
         else if (flag == "--known") o.known_path = value();
@@ -445,6 +453,8 @@ int main(int argc, char* argv[]) {
             g_replay_extra += " --agent" + std::to_string(seat + 1) + " " + o.agents[seat];
     }
     if (o.max_chain != 500) g_replay_extra += " --max-chain " + std::to_string(o.max_chain);
+    if (o.match_format != MatchFormat::BestOf1)
+        g_replay_extra += std::string(" --game-mode ") + toString(o.match_format);
     const auto known = loadKnown(o.known_path);
 
     if (!o.replay.empty()) return runReplay(o, db, registry, builder);
@@ -593,6 +603,7 @@ int main(int argc, char* argv[]) {
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
             if (o.coverage_every > 0 && game % o.coverage_every == 0) opt.coverage = &coverage[w];
             const fuzz::GameOutcome r = fuzz::playGame(db, registry, a.deck, b.deck, seed, opt);
             slots[w].game.store(-1);
@@ -672,6 +683,7 @@ int main(int argc, char* argv[]) {
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
             const fuzz::GameOutcome r =
                 fuzz::playGame(db, registry, decks[ia].deck, decks[ib].deck, f.game_seed, opt);
             --reasons["engine_error"];

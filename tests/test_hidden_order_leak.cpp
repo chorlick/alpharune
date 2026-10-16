@@ -636,6 +636,10 @@ HiddenOrderLeak::Relabelled HiddenOrderLeak::relabelled(const std::vector<int>& 
                 std::sort(lb.begin(), lb.end());
                 log_lines += static_cast<long>(la.size());
                 if (la != lb) {
+                    if (std::getenv("RIFTBOUND_LEAK_VERBOSE")) {
+                        for (const auto& l : tap_a.lines[p]) std::cout << "      A| " << l << "\n";
+                        for (const auto& l : tap_b.lines[p]) std::cout << "      B| " << l << "\n";
+                    }
                     size_t k = 0;
                     while (k < std::min(la.size(), lb.size()) && la[k] == lb[k]) ++k;
                     problem(where + " decision " + std::to_string(n) + ": the log Player" +

@@ -387,6 +387,19 @@ bool TriggerManager::fireTrigger(GameObjectId source, PlayerId controller,
     }
     if (fired == TriggerType::None) return false;
 
+    // CR 383.2.c.2: a unit that dies in the same death batch as the unit it
+    // watches leaves "at the same time that its Trigger is satisfied" and its
+    // "when another unit dies" ability does not trigger. Every member's
+    // replacements were settled before the first kill (beginDeathBatch), so
+    // a member still pending will die in this batch: its ability is not
+    // queued at all, whichever member the batch killed first (it used to be
+    // queued and taken back by endDeathBatch, with a log line that followed
+    // the kill order — the relabelled-games test, batch 8).
+    if ((fired == TriggerType::WhenAFriendlyUnitDies || fired == TriggerType::WhenAnEnemyUnitDies ||
+         fired == TriggerType::WhenAnEnemyUnitDiesHere) &&
+        subject != source && obj.last_known.batch_pending && obj.location.has_value() &&
+        state_.objectExists(subject) && state_.getObject(subject).last_known.batch_pending)
+        return false;
     const Card* card = card_registry_.get(obj.card_def_id);
     // The card's intervening condition ("When a BUFFED friendly unit dies"):
     // if it isn't met the ability does not trigger.

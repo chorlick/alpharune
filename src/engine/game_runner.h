@@ -34,6 +34,11 @@ struct GameConfig {
     int total_games = 1;          // for progress display
     std::string agent1_spec = "random";
     std::string agent2_spec = "random";
+    /// The Mode of Play (GameEngine::setMatchFormat; testing phase V1-G4):
+    /// Duel draws each setup battlefield at random, Match asks each player.
+    /// An MCTS-style agent built by `agent_factory` must be given the same
+    /// mode, or its mirror of the game diverges at the setup.
+    MatchFormat match_format = MatchFormat::BestOf1;
 
     /// Optional agent factory — when set, replaces GameRunner's built-in
     /// "random-only" factory. The seat index is 0 for P1 and 1 for P2.

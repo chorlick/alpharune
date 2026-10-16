@@ -25,9 +25,10 @@ public:
     bool triggerCondition(const GameState& state, GameObjectId source, PlayerId controller,
                           TriggerType /*trigger*/, GameObjectId subject) const override {
         bool mine = false;
-        for (const auto& bf : state.battlefields)
-            if (bf.card_object_id == source)
-                mine = bf.controller.has_value() && *bf.controller == controller;
+        if (const auto here = battlefieldOfCard(state, source)) {
+            const auto& bf = state.battlefields[*here];
+            mine = bf.controller.has_value() && *bf.controller == controller;
+        }
         if (!mine) return false;
         int spent = state.player(controller).last_spell_energy_spent;
         if (subject != kInvalidId && state.objectExists(subject)) {

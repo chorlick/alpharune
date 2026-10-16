@@ -1254,8 +1254,11 @@ void EffectExecutor::giveTemporaryMight(GameObjectId target, int amount, int min
         }
     }
 
+    // (Its Might is not stated: continuous effects are applied by the next
+    // Cleanup, so a value here could still count an aura of a place the unit
+    // has left — testing phase U19, Moonfall "-> 1M" on a 0 [M] unit.)
     RIFT_TRACE(events_, "EFFECT: give " + obj.name + " " + std::to_string(amount) +
-                     " [M] this turn -> " + std::to_string(obj.current_might) + "M" +
+                     " [M] this turn" +
                      (minimum > 0 ? " (min " + std::to_string(minimum) + ")" : ""));
     // Not "buffed": +/-[M] this turn places no Buff counter (CR 427.1), so it
     // must not fire "When you buff" abilities.
@@ -2096,6 +2099,7 @@ Prompt EffectExecutor::promptHere(PlayerId decider, PromptKind kind, std::string
         p.is_spell = item->is_spell;
         p.ability_index = item->is_activated_ability ? item->ability_index : -1;
         p.trigger = item->fired_trigger;
+        p.is_triggered = item->is_ability && !item->is_activated_ability;
         p.keyword_ability = item->keyword_ability.has_value();
         p.at_finalization = item->finalizing;
     }
@@ -2414,6 +2418,15 @@ GameObjectId EffectExecutor::createToken(PlayerId controller, CardType type,
         obj.zone = ZoneType::BattlefieldZone;
     }
 
+    // A unit token is played (CR 185.2.a: "following all the applicable steps
+    // for playing a card"): [Accelerate], its own or given (Rek'Sai, Breacher:
+    // "Friendly units played from anywhere other than a player's hand have
+    // [Accelerate]"), is offered as it is played, for [1] and [A] (CR
+    // 805.1.b.2; testing phase U12). Not for one that enters ready anyway.
+    if (type == CardType::Unit && obj.is_exhausted && offer_accelerate_ &&
+        offer_accelerate_(controller, id, /*from_hand=*/false))
+        state_.getObject(id).is_exhausted = false;
+
     obj.recomputeMight();
 
     RIFT_TRACE(events_, "TOKEN: created " + name + " (" + std::to_string(might) +
@@ -2551,6 +2564,8 @@ void EffectExecutor::replaceBattlefieldWithToken(BattlefieldId target_bf,
     // replaced stays the one to swap back to (CR 439.7.b.1).
     const bool token_replaced = slot->was_replaced && slot->replaced_card.has_value();
     if (!token_replaced) slot->replaced_card = slot->card_object_id;
+    if (slot->card_object_id != kInvalidId)
+        slot->same_object_as.push_back(slot->card_object_id);   // CR 439.1.a
     slot->was_replaced = true;
     slot->is_token = true;
     slot->card_object_id = token_id;
@@ -2603,6 +2618,9 @@ bool EffectExecutor::restoreReplacedBattlefield(BattlefieldId target_bf) {
         bz.erase(std::remove(bz.begin(), bz.end(), original), bz.end());
     }
     orig.zone = ZoneType::BattlefieldZone;
+    // Swapping back is an extension of Replace (CR 439.7.a): the card is the
+    // same object as the token for what references the token (439.1.a).
+    if (token != kInvalidId) slot->same_object_as.push_back(token);
     slot->card_object_id = original;
     slot->replaced_card.reset();
     slot->was_replaced = false;
@@ -3139,6 +3157,9 @@ bool EffectExecutor::playIgnoringCost(PlayerId player, GameObjectId card,
     // card paid is forgotten (Card::forgetPlayPayments).
     Card::forgetPlayPayments(state_, cardFor(state_.getObject(card).card_def_id), player, card);
     makeAsYouPlayChoices(player, card);   // CR 355.1
+    // Ignoring its cost, the play may still pay the card's optional
+    // additional cost (CR 356.1.b; testing phase U7).
+    if (offer_optional_cost_) offer_optional_cost_(player, card);
     return playIgnoringCostDecided(player, card, location, -1);
 }
 
@@ -3262,6 +3283,8 @@ bool EffectExecutor::playIgnoringCostDecided(PlayerId player, GameObjectId card,
     // will then observe the final post-onPlay state.
     LocationId final_loc = obj.location.value_or(BaseLocation{player});
 
+    // One play: its play triggers are one batch (CR 383.3.d; testing phase U4).
+    const SimultaneousTriggers together(state_.chain);
     events_.emit(CardPlayedEvent{card, player, obj.card_type,
         ps.cards_played_this_turn});
     if (!from_hand && state_.objectExists(card))

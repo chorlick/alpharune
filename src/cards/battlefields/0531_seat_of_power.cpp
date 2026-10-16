@@ -17,10 +17,12 @@ public:
     const CardDef& def() const override { return def_; }
     TriggerType triggerType() const override { return TriggerType::WhenYouConquerHere; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        // "here" even after this battlefield was replaced (CR 439.1.a; U5).
+        const auto here = battlefieldOfCard(ctx.state, ctx.source);
         int count = 0;
         for (const auto& bf : ctx.state.battlefields) {
             if (!bf.controller.has_value() || *bf.controller != ctx.controller) continue;
-            if (bf.card_object_id == ctx.source) continue;  // skip "here"
+            if (bf.id == here) continue;  // skip "here"
             count++;
         }
         if (count > 0) {

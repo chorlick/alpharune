@@ -303,6 +303,16 @@ struct PlayerState {
         // "You may play me from your trash for ..."): rebuilt on every aura
         // pass (GameEngine::refreshFlowGrants) instead of being pushed once.
         bool standing = false;
+        // The Power may be of any of these Domains (bit per Domain; 0 = use
+        // power_domain / any_domain): a granted Flow "equal to its cost" is
+        // paid in the spell's own Domains, as its cost is.
+        unsigned power_mask = 0;
+        // The card's other permission to be played from the trash: a spell
+        // that prints [Flow] and is given [Flow] too (Kennen, Storm of
+        // Shuriken) has both, and its controller chooses which to use (CR
+        // 829.1.c.3; testing phase U13). Played through the intent's
+        // use_alt_play_cost.
+        bool alternative = false;
     };
     std::vector<TrashReplayGrant> trash_replay_grants;
 
@@ -468,6 +478,14 @@ struct BattlefieldState {
     bool is_token = false;
     std::optional<GameObjectId> replaced_card;  // original in banishment
     bool was_replaced = false;
+    // The objects this slot held before a Replace or a swap back (CR 438,
+    // 439.7.a). "The replacing token is treated as the same Game Object as
+    // the card or token it replaced for the purposes of Game Effects that
+    // target or reference that game object" (CR 439.1.a): an ability of the
+    // card that was replaced still finds "here" through them
+    // (battlefieldOfCard in card_helpers.h). Object ids are never reused,
+    // so the list is never trimmed.
+    std::vector<GameObjectId> same_object_as;
 
     // Movement-rule relaxer. Baron Pit's "Units can move here from
     // anywhere" sets this to true, allowing any unit at any other

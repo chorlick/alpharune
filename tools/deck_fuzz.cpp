@@ -185,8 +185,11 @@ struct Options {
     int examples = 10;
     int long_chain = 200;         // a chain of this many items is flagged
     std::string agents[2] = {"random", "random"};   // random | random-player[:pass=P]
+    MatchFormat match_format = MatchFormat::BestOf1;  // --game-mode duel | match
     std::string guide_path;       // a previous result: build decks toward what it covered least
     double guide_boost = 8;
+    std::vector<uint32_t> focus;  // --focus: card ids put in many more decks
+    double focus_boost = 40;
     std::string known_path;       // known failure signatures: "ID|text" per line
     bool quiet = false;
     // --replay
@@ -263,6 +266,12 @@ int usage() {
         "         --hang-seconds N (300)  --examples N (10 per failure group)  --quiet\n"
         "         --long-chain N (200): flag a game with N chain items in one chain\n"
         "         --agent1 / --agent2 / --agents random | random-player[:pass=P]\n"
+        "         --game-mode duel | match (duel: setup battlefields drawn at random, CR 487.5;\n"
+        "             match: each seat chooses, CR 488.5)\n"
+        "         --focus ID,ID,... [--focus-boost B (40)]: put these cards in B times as many\n"
+        "             decks (where their legend's pool allows them): coverage of cards whose\n"
+        "             printed conditions random decks rarely meet (a seed then means a deck only\n"
+        "             with the same focus: the replay command names it)\n"
         "         --guide prev.json [--guide-boost B (8)]: weight deck building toward the cards\n"
         "             the previous result exercised least (a seed then means a deck only with\n"
         "             the same guide file: the replay command names it)\n"
@@ -357,6 +366,7 @@ int runReplay(const Options& o, const CardDB& db, const CardRegistry& registry,
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
     // --trace --tail N: the last N lines once the game has ended. --trace
     // alone: every line as it comes, so a game that never ends shows too.
     opt.log_tail = o.trace && o.tail > 0 ? o.tail : 0;
@@ -401,8 +411,18 @@ int main(int argc, char* argv[]) {
         else if (flag == "--agent1") o.agents[0] = value();
         else if (flag == "--agent2") o.agents[1] = value();
         else if (flag == "--agents") o.agents[0] = o.agents[1] = value();
+        else if (flag == "--game-mode") {
+            try { o.match_format = matchFormatFromString(value()); }
+            catch (const std::exception& e) { std::cerr << e.what() << "\n"; return usage(); }
+        }
         else if (flag == "--guide") o.guide_path = value();
         else if (flag == "--guide-boost") o.guide_boost = std::stod(value());
+        else if (flag == "--focus") {
+            std::stringstream ids(value());
+            for (std::string id; std::getline(ids, id, ',');)
+                if (!id.empty()) o.focus.push_back(static_cast<uint32_t>(std::stoul(id)));
+        }
+        else if (flag == "--focus-boost") o.focus_boost = std::stod(value());
         else if (flag == "--known") o.known_path = value();
         else if (flag == "--quiet") o.quiet = true;
         else if (flag == "--trace") o.trace = true;
@@ -432,10 +452,24 @@ int main(int argc, char* argv[]) {
     db.buildFromClasses(registry);
     RandomDeckBuilder builder(db);
     const DeckValidator validator(db);
-    if (!o.guide_path.empty()) {
-        builder.setWeights(guideWeights(o.guide_path, o.guide_boost));
-        g_replay_extra += " --guide " + o.guide_path;
-        if (o.guide_boost != 8) g_replay_extra += " --guide-boost " + std::to_string(o.guide_boost);
+    if (!o.guide_path.empty() || !o.focus.empty()) {
+        std::vector<double> weights = o.guide_path.empty()
+            ? std::vector<double>(fuzz::kCardSlots, 1.0)
+            : guideWeights(o.guide_path, o.guide_boost);
+        if (!o.guide_path.empty()) {
+            g_replay_extra += " --guide " + o.guide_path;
+            if (o.guide_boost != 8) g_replay_extra += " --guide-boost " + std::to_string(o.guide_boost);
+        }
+        if (!o.focus.empty()) {
+            std::string ids;
+            for (auto id : o.focus) {
+                if (id < weights.size()) weights[id] *= o.focus_boost;
+                ids += (ids.empty() ? "" : ",") + std::to_string(id);
+            }
+            g_replay_extra += " --focus " + ids;
+            if (o.focus_boost != 40) g_replay_extra += " --focus-boost " + std::to_string(o.focus_boost);
+        }
+        builder.setWeights(weights);
     }
     for (int seat = 0; seat < 2; ++seat) {
         // Refuse a bad spec now, not in the first game.
@@ -445,6 +479,8 @@ int main(int argc, char* argv[]) {
             g_replay_extra += " --agent" + std::to_string(seat + 1) + " " + o.agents[seat];
     }
     if (o.max_chain != 500) g_replay_extra += " --max-chain " + std::to_string(o.max_chain);
+    if (o.match_format != MatchFormat::BestOf1)
+        g_replay_extra += std::string(" --game-mode ") + toString(o.match_format);
     const auto known = loadKnown(o.known_path);
 
     if (!o.replay.empty()) return runReplay(o, db, registry, builder);
@@ -593,6 +629,7 @@ int main(int argc, char* argv[]) {
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
             if (o.coverage_every > 0 && game % o.coverage_every == 0) opt.coverage = &coverage[w];
             const fuzz::GameOutcome r = fuzz::playGame(db, registry, a.deck, b.deck, seed, opt);
             slots[w].game.store(-1);
@@ -672,6 +709,7 @@ int main(int argc, char* argv[]) {
             opt.max_chain = o.max_chain;
             opt.agents[0] = o.agents[0];
             opt.agents[1] = o.agents[1];
+            opt.match_format = o.match_format;
             const fuzz::GameOutcome r =
                 fuzz::playGame(db, registry, decks[ia].deck, decks[ib].deck, f.game_seed, opt);
             --reasons["engine_error"];

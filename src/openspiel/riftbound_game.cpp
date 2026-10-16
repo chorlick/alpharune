@@ -38,7 +38,10 @@ const ::open_spiel::GameType kRiftboundGameType{
       // Ignored. Accepted only so game strings written before card data
       // moved into the C++ classes still parse.
       {"registry", ::open_spiel::GameParameter(std::string(""))},
-      {"seed",     ::open_spiel::GameParameter(0)} }
+      {"seed",     ::open_spiel::GameParameter(0)},
+      // The Mode of Play: "duel" (default; each setup battlefield drawn at
+      // random, CR 487.5) or "match" (each player chooses it, CR 488.5).
+      {"game_mode", ::open_spiel::GameParameter(std::string("duel"))} }
 };
 
 std::shared_ptr<const ::open_spiel::Game> MakeRiftboundGame(
@@ -63,7 +66,9 @@ RiftboundGame::RiftboundGame(const ::open_spiel::GameParameters& params)
     : Game(kRiftboundGameType, params),
       card_db_(sharedCards().db),
       registry_(sharedCards().registry),
-      seed_(static_cast<uint64_t>(ParameterValue<int>("seed"))) {
+      seed_(static_cast<uint64_t>(ParameterValue<int>("seed"))),
+      match_format_(::riftbound::matchFormatFromString(
+          ParameterValue<std::string>("game_mode"))) {
     // The "registry" GameParameter is accepted but never read. The decks are
     // read per game: a deck file may change between two LoadGame calls.
     deck1_ = ::riftbound::DeckValidator::loadFromDeckList(

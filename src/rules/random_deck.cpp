@@ -243,7 +243,12 @@ std::string RandomDeckBuilder::toDeckList(const DeckSubmission& deck) const {
         out << title << ":\n";
         std::vector<std::pair<std::string, int>> lines;   // in first-seen order
         for (CardDefId id : ids) {
-            const std::string& name = db_.get(id).name;
+            // A printing other than the first of its name is named by its id
+            // too (DeckValidator::loadFromDeckList reads "<name> #<id>"), so
+            // the list loads back as the same deck.
+            std::string name = db_.get(id).name;
+            if (const CardDef* first = db_.findByName(name); first && first->id != id)
+                name += " #" + std::to_string(id.raw());
             auto it = std::find_if(lines.begin(), lines.end(),
                                    [&](const auto& l) { return l.first == name; });
             if (it == lines.end()) lines.emplace_back(name, 1);

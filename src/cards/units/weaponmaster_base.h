@@ -93,9 +93,13 @@ public:
             self_on_board() ? weaponmasterChoices(ctx, ctx.source) : std::vector<GameObjectId>{};
         auto still_legal = [&]() { return self_on_board() && !equipment.empty(); };
 
-        // "you may" — optional; then which Equipment.
-        const int conf = still_legal()
-            ? confirmOptional(ctx, "Weaponmaster: equip an Equipment to me?", still_legal) : 0;
+        // "you may" — optional; then which Equipment. Asked through
+        // confirmOptional even when there is nothing to equip: its
+        // still_legal then stores the "not offered" on the item, and the
+        // ability leaves the chain as it would be finalized (CR 403.1.a,
+        // 405.2; testing phase U1, a regression of D4).
+        const int conf =
+            confirmOptional(ctx, "Weaponmaster: equip an Equipment to me?", still_legal);
         GameObjectId best_gear = kInvalidId;
         if (conf == 1)
             best_gear = pickTarget(ctx, "Weaponmaster: choose an Equipment", equipment);

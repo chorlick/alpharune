@@ -79,12 +79,16 @@ All closed by batch 7-perf (Q1, Q2): `plans/completed/10-testing-phase.md` (repo
 
 ## Found by batch 6 (2026-10-15, `plans/reports/batch-6.md` section 9)
 
-- [ ] **S1** Thermo Beam ("Kill all gear") kills the gear one after another, with no `DeathBatch`: they do not die together (CR 370.1.a.2), so a gear's "when a gear dies" ability can see another die in the same kill (CR 383.2.c.2), and their death abilities are not one simultaneous batch (383.3.d). Batch 6's R4 put Acceptable Losses' two gear in one batch; Thermo Beam is the other card that kills several gear in one effect — CODE-ONLY
+S1 closed by batch 8: `plans/completed/10-testing-phase.md`.
 
 ## Found by batch 7-perf (2026-10-15, `plans/reports/batch-7-perf.md` section 8)
 
-- [ ] **Q3** (QUESTION if the owner wants one) Reckoner's Arena "activates the conquer effects of units here": each ability is put on the chain "as if it had just triggered" (CR 383.4.g.1), so two or more of them may be simultaneous triggers whose controller orders them (CR 383.3.d). The engine queues them one by one (`queueTriggeredAbility`, no trigger batch, no order prompt), now in an order of what the players see (batch 7 Q1) instead of id order — RULES
+Q3 closed by batch 8.
+
+## Found by round 2 (2026-10-15, `plans/reports/round2.md`, detail in `docs/testing-findings-round2-2026-10.md` section 4)
+
+All closed by batch 8 (U1-U21, C1): `plans/completed/10-testing-phase.md` (report: `plans/reports/batch-8.md`).
 
 ## Owner decisions, 2026-10-15
 
-- [ ] **V1-G4** (batch 8) Battlefield setup mode. Owner on G4: "Duel for right now (the trainer will not choose random however)". A game-mode setting: **Duel (default)** — each player's battlefield drawn at random from their three (CR 487.5), from the engine's RNG, no setup decision; **Match** — each player chooses (CR 488.5, today's behaviour), selectable from the CLI, `GameRunner` / `RiftboundGame` parameters and the OpenSpiel game parameters, so the trainer's agent can choose. The pin `Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield` becomes a Match-mode test; add a Duel-mode test (random, seeded, no decision, the draw hidden from no one since battlefields are revealed). Smoke and fixed-seed games will move (two decisions fewer per game): explain. CLAUDE.md and `docs/trainer-notes-2026-10.md` updated.
+V1-G4 closed by batch 8 (Duel by default, Match selectable).

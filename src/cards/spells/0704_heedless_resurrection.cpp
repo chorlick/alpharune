@@ -55,8 +55,10 @@ public:
 
         // The additional cost: kill a friendly unit.
         if (ri.resume_data[kKilledSlot] == 0) {
-            GameObjectId victim = pickTarget(ctx, "Heedless Resurrection: kill a friendly unit",
-                                             friendlyUnits(ctx.state, ctx.controller));
+            // A cost's object is not a target (CR 355.10.c; testing phase U14).
+            const GameObjectId victim = pickCostObject(ctx,
+                "Heedless Resurrection: kill a friendly unit (the additional cost)",
+                friendlyUnits(ctx.state, ctx.controller));
             if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;  // waiting / none
             if (costDueNow(ctx)) {
                 RIFT_TRACE(ctx.events, "HEEDLESS RESURRECTION: killing " +

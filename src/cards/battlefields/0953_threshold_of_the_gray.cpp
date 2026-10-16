@@ -20,8 +20,9 @@ public:
     // "... each [Add] [1]" resolves as it triggers (CR 430.2; D2).
     bool triggeredAbilityAdds(TriggerType) const override { return true; }
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>& /*targets*/) override {
+        const auto here = battlefieldOfCard(ctx.state, ctx.source);
         for (const auto& bf : ctx.state.battlefields) {
-            if (bf.card_object_id != ctx.source) continue;
+            if (bf.id != here) continue;
             if (bf.attacker) ctx.executor.addFloatingEnergy(*bf.attacker, 1);
             if (bf.defender) ctx.executor.addFloatingEnergy(*bf.defender, 1);
         }

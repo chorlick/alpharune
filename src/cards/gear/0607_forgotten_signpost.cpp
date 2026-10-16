@@ -41,10 +41,21 @@ public:
         // Once the cost has been paid the exhausted unit is no longer ready:
         // it stays the legal first choice it was.
         const bool paid = costAlreadyPaid(ctx);
-        const auto [to_exhaust, mover] = pickTargetPair(
-            ctx, "Forgotten Signpost: exhaust a unit, then move a different unit to it",
-            exhaustable(ctx.state, ctx.controller, /*must_be_ready=*/!paid),
-            [&](GameObjectId a) { return moversTo(ctx.state, ctx.controller, a); });
+        // The unit exhausted is the ability's COST, not a target (costs never
+        // target, CR 355.10.c; testing phase U14's class): no Deflect, not
+        // "chosen". Offered only with a different unit of yours that could
+        // move to it. The unit moved is the effect's target.
+        std::vector<GameObjectId> payers;
+        for (auto u : exhaustable(ctx.state, ctx.controller, /*must_be_ready=*/!paid))
+            if (!moversTo(ctx.state, ctx.controller, u).empty()) payers.push_back(u);
+        const GameObjectId to_exhaust = pickCostObject(ctx,
+            "Forgotten Signpost: exhaust a unit you control (the cost)", payers);
+        if (to_exhaust == kInvalidId) return;   // waiting, or nothing to pay with (stored)
+        const auto moving = selectTargetOrNone(*this, ctx,
+            "Forgotten Signpost: move a different unit to the exhausted unit's location",
+            moversTo(ctx.state, ctx.controller, to_exhaust), 7, /*allow_none=*/false);
+        if (!moving.has_value()) return;   // waiting for the agent
+        const GameObjectId mover = *moving;
         if (to_exhaust != kInvalidId && mover != kInvalidId && costDueNow(ctx)) {
             // "Exhaust a unit you control" — only a ready unit can pay it.
             if (ctx.state.getObject(to_exhaust).is_exhausted) return;

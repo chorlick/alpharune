@@ -212,7 +212,8 @@ namespace {
 
 std::string buildGameStr(const std::string& deck1,
                         const std::string& deck2,
-                        uint64_t seed) {
+                        uint64_t seed,
+                        MatchFormat format) {
     // RiftboundGame's `seed` GameParameter is registered as int, so
     // any uint64 that doesn't fit (e.g. nondeterministic seeds from
     // std::random_device) hits OpenSpiel's CHECK_TRUE in the param
@@ -224,6 +225,7 @@ std::string buildGameStr(const std::string& deck1,
     s << "riftbound(deck1=" << deck1
       << ",deck2=" << deck2
       << ",seed=" << seed_int
+      << ",game_mode=" << toString(format)   // the live game's (V1-G4)
       << ")";
     return s.str();
 }
@@ -313,9 +315,9 @@ struct MctsAgent::Impl {
     std::unique_ptr<LiveMirror> mirror;
 
     Impl(std::string d1, std::string d2,
-         uint64_t engine_seed, uint64_t mcts_seed, int sim_count)
+         uint64_t engine_seed, uint64_t mcts_seed, int sim_count, MatchFormat format)
         : sims(sim_count) {
-        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed));
+        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed, format));
         if (!game) {
             throw std::runtime_error(
                 "MctsAgent: LoadGame('riftbound') returned null — "
@@ -363,10 +365,11 @@ MctsAgent::MctsAgent(std::string deck1_path,
                      std::string /*registry_path*/,
                      uint64_t    engine_seed,
                      uint64_t    mcts_seed,
-                     int         sims)
+                     int         sims,
+                     MatchFormat format)
     : impl_(std::make_unique<Impl>(std::move(deck1_path),
                                    std::move(deck2_path),
-                                   engine_seed, mcts_seed, sims)) {}
+                                   engine_seed, mcts_seed, sims, format)) {}
 
 MctsAgent::~MctsAgent() = default;
 
@@ -689,9 +692,10 @@ struct IsMctsAgent::Impl {
     long worlds_checked = 0;
 
     Impl(std::string d1, std::string d2,
-         uint64_t engine_seed, uint64_t mcts_seed, int sim_count, WorldModel model)
+         uint64_t engine_seed, uint64_t mcts_seed, int sim_count, WorldModel model,
+         MatchFormat format)
         : sims(sim_count), world_model(model) {
-        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed));
+        game = ::open_spiel::LoadGame(buildGameStr(d1, d2, engine_seed, format));
         if (!game) {
             throw std::runtime_error(
                 "IsMctsAgent: LoadGame('riftbound') returned null — "
@@ -748,10 +752,11 @@ IsMctsAgent::IsMctsAgent(std::string deck1_path,
                          uint64_t    engine_seed,
                          uint64_t    mcts_seed,
                          int         sims,
-                         WorldModel  world)
+                         WorldModel  world,
+                         MatchFormat format)
     : impl_(std::make_unique<Impl>(std::move(deck1_path),
                                    std::move(deck2_path),
-                                   engine_seed, mcts_seed, sims, world)) {}
+                                   engine_seed, mcts_seed, sims, world, format)) {}
 
 IsMctsAgent::~IsMctsAgent() = default;
 

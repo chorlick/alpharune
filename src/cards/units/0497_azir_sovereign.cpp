@@ -38,11 +38,24 @@ public:
         if (my_bf.has_value())
             for (auto& [id, obj] : ctx.state.objects.onBoard())
                 if (movable(id)) tokens.push_back(id);
-        // "you may move any number": the controller names them one at a time.
-        auto picked = selectSeveralTargets(*this, ctx, "Azir, Sovereign: move a token unit here",
-                                           tokens);
+        // "you may" is the leading may of the ability (CR 383.3.e.2.b): with
+        // no token that can be chosen it is not offered, and declined the
+        // ability is not performed — either way it leaves the chain as it
+        // would be finalized (CR 403.1.a, 405.2; testing phase U2, a
+        // regression of D4). Accepted, the controller names the tokens one at
+        // a time ("any number").
+        auto still_legal = [&]() {
+            return my_bf.has_value() && !offerableChoices(ctx, tokens).empty();
+        };
+        const int conf = confirmOptional(ctx, "Azir, Sovereign: move token units here?",
+                                         still_legal);
+        std::optional<std::vector<GameObjectId>> picked = std::vector<GameObjectId>{};
+        if (conf == 1)
+            picked = selectSeveralTargets(*this, ctx, "Azir, Sovereign: move a token unit here",
+                                          tokens);
         if (!picked.has_value()) return;   // waiting for the agent
         if (finalizingChoices(ctx)) return;   // choices end here (CR 403)
+        if (conf != 1) return;
         if (!my_bf.has_value()) return;       // Azir left the battlefield
         int moved = 0;
         for (auto id : *picked) {

@@ -593,3 +593,45 @@ Before any self-play, on the fixed engine and locally (no rented compute):
 2. Train a v2-shaped transformer, the v6 candidate (pre-norm, value from a global token, no mean-pool) and the v5 MLP to predict a known target from mid-game positions: the winner, and the final score difference.
 3. Read: all fit -> the architecture was not the cause, data and engine were; the v2 shape stays constant on clean data -> the architecture problem is real, and the v6 changes are tested in the same set-up. Nothing fits -> the features do not carry "who is ahead": fix them before anything else.
 Keep `TrunkDifferentiatesDistinctInputs` as a standing test for every model.
+
+## Batch 8 (2026-10-15): the setup mode, and prompts that changed
+
+**The Mode of Play (V1-G4).** An engine game is a **Duel** by default: each player's setup battlefield is drawn at
+random from the three they bring (CR 487.5), from the engine's RNG, with **no decision** — every game has two
+decisions fewer at its start, and the first decision is P1's mulligan. A **Match** asks each player (CR 488.5,
+`PromptKind::BattlefieldSetup`, `IntentType::ChooseBattlefield`), as every game did before. **The trainer plays
+Match**: set it explicitly everywhere a game is made —
+- OpenSpiel: `LoadGame("riftbound(deck1=...,deck2=...,seed=...,game_mode=match)")` (`"duel"` is the default);
+- `GameEngine::setMatchFormat(MatchFormat::BestOf3)` before `beginGame` / `runGame`; `GameConfig::match_format`;
+- the CLIs: `--game-mode match` (`riftbound`, `deck_fuzz`, `prompt_trace`, `search_strength`, `balance`,
+  `collision_census`);
+- `MctsAgent` / `IsMctsAgent` take the mode as their last constructor argument: it must be the live game's, or their
+  mirror diverges at the setup and they play at random.
+The same seed is a different game under the other mode (the Duel's draw uses the engine RNG before the deal).
+`IsMctsAgent` still answers a Match's setup choice at random (L3: the opponent's pick is not hidden-information-safe
+to search). Nothing in the observation, the action vocabulary or `kNumActions` changed.
+
+**Prompts and options that changed** (no layout or vocabulary change; recorded games replay differently):
+- [Repeat] (U10, U11): decided before the spell is paid — the Repeat yes/no and each extra execution's choices come
+  after the first execution's choices and before any rune prompt; offered on effect plays that pay (Fizz) and on
+  trash plays; the Repeat's Energy and Power are paid in the card's own payment, so its runes are asked one prompt
+  each (forced picks included), as a card's cost is.
+- Trash plays (U18): a Flow or granted cost is paid like a card's cost — a rune prompt per rune, about the card.
+- A spell that prints [Flow] and is given [Flow] (U13) has two trash plays, the given one with
+  `use_alt_play_cost` (the existing AlternativeCost play variant of the action slot).
+- Jhin, Meticulous Killer (U6): the "[B]" play is offered from the hand too and to every location (the
+  AlternativeCost variant), not only from the Champion Zone to base.
+- Piercing Light (U8, U9): one Play intent (no per-target-set intents); the first unit (at a battlefield) and the
+  "up to one other unit" (with a None option) are prompts.
+- Azir, Sovereign (U2): a leading "may" prompt before the tokens; [Weaponmaster] with no Equipment and Azir with no
+  token ask nothing and leave the chain (no priority window) (U1, U2).
+- Sacrifice, Heedless Resurrection, Forgotten Signpost (U14): the unit a cost kills or exhausts is a
+  `PromptKind::ChooseObject` ("pick:"), not a Target; Altar of Memories' hand card too (X2).
+- Unit tokens are offered [Accelerate] when they have it or are given it (U12); a facedown play and an effect play
+  offer the card's optional additional cost (U7: Pyke, Dockside Butcher).
+- Order prompts: two abilities of one play (U4) and the conquer abilities Reckoner's Arena activates (Q3) are one
+  batch, so their controller is asked their order; Thermo Beam's gear die together (S1).
+- Curtain Call / Rocket Barrage (U3): a mode is offered only if its target can be chosen now.
+- `describePrompt` words (U16, U17): a battlefield is its controller's; a token says "token" and an exhausted
+  permanent "(exhausted)"; a spell an effect plays is "its spell"; an activated ability's target and a reflexive
+  trigger are named as such.

@@ -850,7 +850,8 @@ TEST_F(Batch3Test, D24_AzirChoosesTheTokensBeforeAnyoneResponds) {
     o(token).card_type = CardType::Unit;
     o(token).name = "Sand Soldier";
     CountsPriority them;
-    NotesWhen me(EnginePathAgent::script({static_cast<int>(token.raw()), 0, EnginePathAgent::kRest}));
+    // The leading "you may" (batch 8 U2), then the token.
+    NotesWhen me(EnginePathAgent::script({1, static_cast<int>(token.raw()), 0, EnginePathAgent::kRest}));
     me.other = &them;
     fireTriggerThroughEngine(azir, TriggerType::WhenIAttack, &me, kInvalidId, &them);
     ASSERT_FALSE(me.other_priority_at.empty());

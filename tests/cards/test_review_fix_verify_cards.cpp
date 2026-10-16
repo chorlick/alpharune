@@ -5797,12 +5797,10 @@ TEST_F(VerifyCardsTest, Pin_PiercingLight_NeedsTheFirstUnit_TheOtherIsOptional) 
     auto in_base = addUnit(P2, kInvalidId, 5);
     EXPECT_TRUE(playsOffered(spell).empty()) << "'a unit at a battlefield' is not 'up to'";
     auto at_bf = addUnit(P2, kInvalidId, 5, 0);
-    const auto plays = playsOffered(spell);
-    EXPECT_TRUE(offersTargets(plays, {at_bf})) << "no other unit chosen";
-    EXPECT_TRUE(offersTargets(plays, {at_bf, in_base}));
-    EXPECT_FALSE(offersTargets(plays, {}));
-    EnginePathAgent agent(EnginePathAgent::script({}));
-    playAt(spell, {at_bf}, &agent);
+    ASSERT_EQ(playsOffered(spell).size(), 1u) << "one play; its units are prompts (batch 8)";
+    // The first unit, then "None" for the other one.
+    EnginePathAgent agent(EnginePathAgent::script({static_cast<int>(at_bf.raw()), 0}));
+    playAt(spell, {}, &agent);
     EXPECT_EQ(o(at_bf).damage_marked, 2);
     EXPECT_EQ(o(in_base).damage_marked, 0);
 }

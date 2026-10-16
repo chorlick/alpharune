@@ -65,7 +65,7 @@ private:
 
 std::unique_ptr<AgentInterface> build(const std::string& spec, uint64_t game_seed,
                                       uint64_t derived, const std::string& d1,
-                                      const std::string& d2) {
+                                      const std::string& d2, MatchFormat format) {
     if (spec == "random") return std::make_unique<RandomAgent>(derived);
     if (spec.rfind("random-player", 0) == 0) {
         double pass = kDefaultPassProbability;
@@ -80,10 +80,11 @@ std::unique_ptr<AgentInterface> build(const std::string& spec, uint64_t game_see
         const bool perfect = spec.find("world=perfect") != std::string::npos;
         return std::make_unique<IsMctsAgent>(d1, d2, "", game_seed, derived, sims,
                                              perfect ? IsMctsAgent::WorldModel::Perfect
-                                                     : IsMctsAgent::WorldModel::Sampled);
+                                                     : IsMctsAgent::WorldModel::Sampled,
+                                             format);
     }
     if (spec.rfind("mcts", 0) == 0)
-        return std::make_unique<MctsAgent>(d1, d2, "", game_seed, derived, sims);
+        return std::make_unique<MctsAgent>(d1, d2, "", game_seed, derived, sims, format);
     throw std::runtime_error("bad agent spec " + spec);
 }
 
@@ -92,6 +93,7 @@ std::unique_ptr<AgentInterface> build(const std::string& spec, uint64_t game_see
 int main(int argc, char* argv[]) {
     std::string d1, d2, a1 = "random", a2 = "random";
     uint64_t seed = 1;
+    MatchFormat format = MatchFormat::BestOf1;
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string f = argv[i], v = argv[i + 1];
         if (f == "--deck1") d1 = v;
@@ -99,6 +101,7 @@ int main(int argc, char* argv[]) {
         else if (f == "--agent1") a1 = v;
         else if (f == "--agent2") a2 = v;
         else if (f == "--seed") seed = std::stoull(v);
+        else if (f == "--game-mode") format = matchFormatFromString(v);
         else { std::cerr << "unknown flag " << f << "\n"; return 2; }
     }
     if (d1.empty() || d2.empty()) { std::cerr << "--deck1 and --deck2 are required\n"; return 2; }
@@ -107,12 +110,13 @@ int main(int argc, char* argv[]) {
     const DeckSubmission deck1 = DeckValidator::loadFromDeckList(d1, db);
     const DeckSubmission deck2 = DeckValidator::loadFromDeckList(d2, db);
     const uint64_t game_seed = seed & 0x7FFFFFFFu;
-    auto agent1 = build(a1, game_seed, game_seed * 2, d1, d2);
-    auto agent2 = build(a2, game_seed, game_seed * 2 + 1, d1, d2);
+    auto agent1 = build(a1, game_seed, game_seed * 2, d1, d2, format);
+    auto agent2 = build(a2, game_seed, game_seed * 2 + 1, d1, d2, format);
     PromptPrinter seat1(*agent1, db), seat2(*agent2, db);
 
     EventBus events;
     GameEngine engine(db, events, shared.registry);
+    engine.setMatchFormat(format);
     events.on_log.connect([](const LogEvent& e) {
         const char* prefix = "[TRC]";
         if (e.level == LogLevel::Debug) prefix = "[DBG]";

@@ -25,6 +25,10 @@ public:
         inSeenOrder(ctx.state, gear_ids);   // killed at once (batch 5d N1)
         RIFT_TRACE(ctx.events, "THERMO BEAM: killing " +
                              std::to_string(gear_ids.size()) + " gear");
+        // They die at the same time (CR 370.1.a.2): one death batch, so their
+        // death abilities are one simultaneous batch (CR 383.3.d) and none
+        // sees another die (CR 383.2.c.2; testing phase S1).
+        DeathBatch together(ctx.executor, gear_ids);
         for (auto id : gear_ids) ctx.executor.killObject(id);
     }
 private:

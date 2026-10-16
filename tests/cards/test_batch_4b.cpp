@@ -271,12 +271,13 @@ TEST_F(Batch4bTest, G2_AdditionalTurnsMadeInOneTurnAreTakenNewestFirst) {
         << "[> A > A* > B* > B > A]";
 }
 
-// ─── G4  Setup: the battlefield is chosen (pinned; a question to the project) ─
+// ─── G4  Setup: in a Match the battlefield is chosen ─────────────────────────
 // CR 487.5 (Duel): "Each player randomly selects one (1) of their three (3)
-// Battlefields." CR 488.5 (Match): "Each player selects one ...". An engine game
-// asks each player (the Match reading); see plans/reports/batch-4b.md,
-// "Questions for the user".
-TEST_F(Batch4bTest, G4_Pin_EachPlayerChoosesTheirBattlefield) {
+// Battlefields." CR 488.5 (Match): "Each player selects one ...". The owner's
+// decision (2026-10-15, V1-G4): Duel by default, Match selectable; in a Match
+// each player is asked. The Duel's draw: Batch8Test.V1G4_*.
+TEST_F(Batch4bTest, G4_Match_EachPlayerChoosesTheirBattlefield) {
+    state.mode.format = MatchFormat::BestOf3;
     DeckSubmission d1, d2;
     d1.battlefields = {kVilemawsLair, kRockfallPath, kFortifiedPosition};
     d2.battlefields = {kRockfallPath, kFortifiedPosition, kVilemawsLair};

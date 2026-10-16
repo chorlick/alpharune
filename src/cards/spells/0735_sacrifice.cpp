@@ -47,8 +47,12 @@ public:
     void onResolve(CardContext& ctx, const std::vector<GameObjectId>&) override {
         bool paid = costAlreadyPaid(ctx);
         if (!paid) {
-            GameObjectId victim = pickTarget(ctx, "Sacrifice: kill a Mighty unit",
-                                             mightyUnits(ctx.state, ctx.controller));
+            // A cost's object is not a target (CR 355.10.c: "As an additional
+            // cost to play me, kill a friendly unit" doesn't target anything):
+            // no Deflect, not "chosen" (testing phase U14).
+            const GameObjectId victim = pickCostObject(ctx,
+                "Sacrifice: kill a Mighty unit (the additional cost)",
+                mightyUnits(ctx.state, ctx.controller));
             if (victim == kInvalidId || !ctx.state.objectExists(victim)) return;  // waiting / none
             if (costDueNow(ctx)) {
                 ctx.executor.killObject(victim);  // additional cost paid

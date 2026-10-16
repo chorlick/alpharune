@@ -1,4 +1,5 @@
 #include "cards/card.h"
+#include "cards/card_helpers.h"
 #include "cards/card_registry.h"
 #include "core/game_state.h"
 #include "core/events.h"
@@ -78,9 +79,7 @@ public:
     void onTrigger(CardContext& ctx, const std::vector<GameObjectId>&) override {
         if (!ctx.registry) return;
         // Which battlefield does this BF-card object represent?
-        std::optional<BattlefieldId> my_bf;
-        for (const auto& b : ctx.state.battlefields)
-            if (b.card_object_id == ctx.source) { my_bf = b.id; break; }
+        const std::optional<BattlefieldId> my_bf = battlefieldOfCard(ctx.state, ctx.source);
         if (!my_bf) return;
         // Snapshot the holder's units here first: queuing and gear effects can
         // touch the object map.
@@ -93,6 +92,11 @@ public:
         // Their abilities go on the chain in an order of what the players see
         // of the units, not of their ids (Q1).
         inSeenOrder(ctx.state, units);
+        // They are all "placed on the chain as if [they] had just triggered"
+        // by this one instruction (CR 383.4.g.1): simultaneous triggered
+        // abilities, which their controller orders (CR 383.3.d; testing phase
+        // Q3, batch 7-perf). One trigger batch for all of them.
+        const SimultaneousTriggers together(ctx.state.chain);
         int activated = 0;
         for (auto uid : units) {
             if (!ctx.state.objectExists(uid)) continue;

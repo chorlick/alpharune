@@ -181,12 +181,23 @@ inline bool legionActive(const GameState& state, PlayerId player) {
 
 // ── Battlefields and combat ──
 /// The battlefield whose card object is `card_object` (a battlefield card's
-/// own ctx.source, or a conquer / hold trigger's subject on a legend).
+/// own ctx.source, or a conquer / hold trigger's subject on a legend). A
+/// battlefield that has since been replaced by a token, or swapped back, is
+/// still that battlefield: "The replacing token is treated as the same Game
+/// Object as the card or token it replaced for the purposes of Game Effects
+/// that target or reference that game object" (CR 439.1.a, 439.7.a;
+/// BattlefieldState::same_object_as). Every battlefield card finds "here"
+/// through this, never by comparing `card_object_id` itself (testing phase
+/// U5).
 inline std::optional<BattlefieldId> battlefieldOfCard(const GameState& state,
                                                       GameObjectId card_object) {
     if (card_object == kInvalidId) return std::nullopt;
     for (const auto& bf : state.battlefields)
         if (bf.card_object_id == card_object) return bf.id;
+    for (const auto& bf : state.battlefields)
+        if (std::find(bf.same_object_as.begin(), bf.same_object_as.end(), card_object) !=
+            bf.same_object_as.end())
+            return bf.id;
     return std::nullopt;
 }
 /// Combat damage `player` assigned beyond lethal in their combat at `bf` this
@@ -311,6 +322,11 @@ inline void disposeCounteredCard(CardContext& ctx, GameObjectId id,
     if (!ctx.state.objectExists(id)) return;
     auto& obj = ctx.state.getObject(id);
     obj.location = std::nullopt;
+    // "Then recycle it" (Fizz, Trickster) is for the spell as it leaves the
+    // chain resolved; countered, it goes where the counter puts it and the
+    // mark is not left on the card in the trash, where a later play of it
+    // would be recycled (found by batch 8: X3).
+    obj.card_counters.erase("__recycle_on_leave_chain");
     if (obj.banish_on_leave_chain) {
         obj.banish_on_leave_chain = false;
         obj.zone = ZoneType::Banishment;
@@ -399,6 +415,9 @@ inline bool counterChosenItem(CardContext& ctx, ChainItemId id, ZoneType dest = 
 
 
 // ── Gold tokens ──
+// Every Gold token is the Spiritforged Gold (326), also when an Unleashed
+// card makes it (the Unleashed Gold, 564, differs only in how its [Reaction]
+// is printed): judge question 21, pinned by Batch8Test.Q21_Pin_*.
 inline void createGoldToken(CardContext& ctx) {
     auto loc = BaseLocation{ctx.controller};
     auto tid = ctx.executor.createToken(ctx.controller, CardType::Gear, "Gold",

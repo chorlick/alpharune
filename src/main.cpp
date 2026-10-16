@@ -273,7 +273,8 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
                                            const std::string& deck2,
                                            const std::string& registry,
                                            PlayerId seat,
-                                           HumanAgent** human_out) {
+                                           HumanAgent** human_out,
+                                           MatchFormat format) {
     if (spec.kind == "random") return std::make_unique<RandomAgent>(derived_seed);
     if (spec.kind == "random-player")
         return std::make_unique<RandomPlayerAgent>(derived_seed, spec.pass);
@@ -284,13 +285,14 @@ std::unique_ptr<AgentInterface> buildAgent(const AgentSpec& spec,
     }
     if (spec.kind == "mcts") {
         return std::make_unique<MctsAgent>(deck1, deck2, registry,
-                                            game_seed, derived_seed, spec.sims);
+                                            game_seed, derived_seed, spec.sims, format);
     }
     if (spec.kind == "ismcts") {
         return std::make_unique<IsMctsAgent>(
             deck1, deck2, registry, game_seed, derived_seed, spec.sims,
             spec.perfect_world ? IsMctsAgent::WorldModel::Perfect
-                               : IsMctsAgent::WorldModel::Sampled);
+                               : IsMctsAgent::WorldModel::Sampled,
+            format);
     }
     throw std::runtime_error("Unsupported agent spec '" + spec.raw + "'");
 }
@@ -443,6 +445,9 @@ int main(int argc, char* argv[]) {
          "web UI even with god mode off (debug aid).")
         ("wild", po::bool_switch()->default_value(false),
          "Wild format: allow banned cards in decks (skips the ban-list check).")
+        ("game-mode", po::value<std::string>()->default_value("duel"),
+         "Mode of Play: duel (each setup battlefield drawn at random, CR 487.5) "
+         "or match (each player chooses theirs, CR 488.5).")
     ;
 
     po::variables_map vm;
@@ -568,6 +573,14 @@ int main(int argc, char* argv[]) {
     const CardRegistry& card_registry = shared_cards->registry;
     std::cout << "Loaded " << card_db.size() << " cards from classes\n";
 
+    MatchFormat match_format = MatchFormat::BestOf1;
+    try {
+        match_format = matchFormatFromString(vm["game-mode"].as<std::string>());
+    } catch (const std::exception& e) {
+        std::cerr << "Error: --game-mode: " << e.what() << "\n";
+        return 1;
+    }
+
     DeckValidator validator(card_db);
     const bool wild = vm["wild"].as<bool>();
     if (wild) {
@@ -673,7 +686,7 @@ int main(int argc, char* argv[]) {
         auto factory_spec2 = spec2;
         auto factory =
             [factory_spec1, factory_spec2,
-             d1 = deck1_path, d2 = deck2_path, r = registry_path]
+             d1 = deck1_path, d2 = deck2_path, r = registry_path, match_format]
             (int seat, uint64_t game_seed) -> std::unique_ptr<AgentInterface> {
                 const AgentSpec& s = (seat == 0) ? factory_spec1 : factory_spec2;
                 if (s.kind == "human") {
@@ -681,7 +694,8 @@ int main(int argc, char* argv[]) {
                 }
                 uint64_t derived = game_seed * 2 + static_cast<uint64_t>(seat);
                 return buildAgent(s, game_seed, derived, d1, d2, r,
-                                  seat == 0 ? PlayerId::Player1 : PlayerId::Player2, nullptr);
+                                  seat == 0 ? PlayerId::Player1 : PlayerId::Player2, nullptr,
+                                  match_format);
             };
 
         GameConfig cfg;
@@ -708,6 +722,7 @@ int main(int argc, char* argv[]) {
         cfg.agent1_spec   = spec1.raw;
         cfg.agent2_spec   = spec2.raw;
         cfg.agent_factory = std::move(factory);
+        cfg.match_format  = match_format;
 
         AggregateResults results;
         BatchRunner batch(card_db, card_registry, num_threads);
@@ -733,8 +748,8 @@ int main(int argc, char* argv[]) {
     try {
         // game_seed flows through verbatim so MCTS-style agents seed their
         // internal OpenSpiel state with the same value runGame uses below.
-        agent1 = buildAgent(spec1, game_seed, game_seed * 2,     deck1_path, deck2_path, registry_path, PlayerId::Player1, &p1_human_ptr);
-        agent2 = buildAgent(spec2, game_seed, game_seed * 2 + 1, deck1_path, deck2_path, registry_path, PlayerId::Player2, &p2_human_ptr);
+        agent1 = buildAgent(spec1, game_seed, game_seed * 2,     deck1_path, deck2_path, registry_path, PlayerId::Player1, &p1_human_ptr, match_format);
+        agent2 = buildAgent(spec2, game_seed, game_seed * 2 + 1, deck1_path, deck2_path, registry_path, PlayerId::Player2, &p2_human_ptr, match_format);
     } catch (const std::exception& e) {
         std::cerr << "Failed to build agents: " << e.what() << "\n";
         return 1;
@@ -745,6 +760,7 @@ int main(int argc, char* argv[]) {
     // ── Wire engine + event bus + optional replay writer ──────────────────
     EventBus events;
     GameEngine engine(card_db, events, card_registry);
+    engine.setMatchFormat(match_format);
     StateRenderer renderer(card_db);
     // Names facedown cards in renders. On for a human seat: the web UI
     // then decides per frame whose cards that seat may see.

@@ -78,19 +78,28 @@ void GameEngine::initSubsystems() {
         // as for a play from hand (ChainManager::payDeflectForChoices).
         std::vector<GameObjectId> targets;
         bool chosen_at_play = false;
+        int repeats = 0;
+        std::vector<ChainItem::ExecutionChoices> repeat_choices;
         if (effect_played_spell_.has_value() && effect_played_spell_->card == spell) {
             targets = std::move(effect_played_spell_->targets);
             chosen_at_play = effect_played_spell_->target_chosen_at_play;
+            repeats = effect_played_spell_->repeats;
+            repeat_choices = std::move(effect_played_spell_->repeat_choices);
         }
         effect_played_spell_.reset();
         const ChainItemId id = chain_manager_->addSpell(spell, p, targets);
-        if (chosen_at_play)
-            for (auto& ci : state_.chain.items)
-                if (ci.id == id) {
+        for (auto& ci : state_.chain.items)
+            if (ci.id == id) {
+                if (chosen_at_play) {
                     // Read by Card::pickTarget: the target is already chosen.
                     while (ci.resume_data.size() < 6) ci.resume_data.push_back(0);
                     ci.resume_data[5] = 1;
                 }
+                // [Repeat] paid by the play (U10), its executions chosen
+                // before the cost.
+                ci.repeats_paid = repeats;
+                ci.repeat_choices = std::move(repeat_choices);
+            }
         // An effect that plays a spell performs the whole play: its choices
         // are made now, as it is put on the chain — before the rest of the
         // effect that played it — not at the chain's next Finalize step.
@@ -138,7 +147,45 @@ void GameEngine::initSubsystems() {
                                                  state_.player(p).transient_ignore_energy, nullptr);
             adj.energy_reduction += disc.energy_reduction;
             adj.power_reduction += disc.power_reduction;
-            const bool paid = payCardCost(p, card, adj);
+            // The card's optional additional cost (CR 356.1.b) and a spell's
+            // [Repeat] (CR 820.1.d: "as you play this" — an effect play is a
+            // play; testing phase U10) are chosen with the play's other
+            // choices, before the cost, each only while everything stays
+            // payable; the extra executions' choices too (CR 820.2).
+            maybePayOptionalAdditionalCost(p, card, 0, adj);
+            RepeatPlan plan;
+            const auto base_mask = resource::maskOf(
+                card_db_.get(state_.getObject(card).card_def_id).domains);
+            if (effect_played_spell_.has_value() && effect_played_spell_->card == card) {
+                const auto net = netCardCost(p, card, adj);
+                plan = planRepeats(p, card, base_mask,
+                    [this, p, card, adj](const TrancheCost& tc) {
+                        return payCardCostQuietly(p, card, adj, 0, tc.energy, tc.base_power);
+                    },
+                    {net.first, net.second}, effect_played_spell_->targets,
+                    effect_played_spell_->target_chosen_at_play);
+                effect_played_spell_->repeats = static_cast<int>(plan.accepted.size());
+                effect_played_spell_->repeat_energy = plan.energy;
+                effect_played_spell_->repeat_choices = std::move(plan.choices);
+                state_.player(p).grant_repeat_base_to_next_spell = false;
+            }
+            bool paid = true;
+            if (!plan.accepted.empty()) {
+                const auto net = netCardCost(p, card, adj);
+                const int e_total = net.first + plan.cost.energy;
+                const int p_total = net.second + plan.cost.base_power;
+                const std::function<bool()> rest = [this, p, e_total, p_total, base_mask]() {
+                    return resource::canPayIn(state_, p, e_total, p_total, base_mask,
+                                              SpendFor::Spell);
+                };
+                paid = payTranchePartsAhead(p, plan.cost, base_mask, &rest);
+                if (plan.cost.discards > 0) effect_executor_->discardCards(p, plan.cost.discards);
+            }
+            if (paid) {
+                cost_step_tranches_ = plan.accepted.empty() ? nullptr : &plan.cost;
+                paid = payCardCost(p, card, adj);
+                cost_step_tranches_ = nullptr;
+            }
             if (!paid) {
                 effect_played_spell_.reset();
                 prefinalized_spell_.reset();
@@ -149,6 +196,11 @@ void GameEngine::initSubsystems() {
         });
     effect_executor_->setOfferAccelerate([this](PlayerId p, GameObjectId card, bool from_hand) {
         return offerAccelerateOnItsOwn(p, card, from_hand);
+    });
+    effect_executor_->setOfferOptionalCost([this](PlayerId p, GameObjectId card) {
+        Card::PlayCostAdjust ignoring;
+        ignoring.ignore_cost = true;
+        maybePayOptionalAdditionalCost(p, card, 0, ignoring);
     });
     chain_manager_->setEffectExecutor(effect_executor_.get());
     // CR 334: the chain's loop handles outstanding tasks — the Cleanup —
@@ -239,6 +291,7 @@ GameResult GameEngine::runGame(
     state_ = GameState{};
     forgetCleanupFacts();
     state_.mode = ModeOfPlay{};
+    state_.mode.format = match_format_;
 
     initSubsystems();
 
@@ -573,12 +626,15 @@ void GameEngine::setupPlayer(PlayerId player, const DeckSubmission& deck) {
 
 void GameEngine::setupBattlefields(const DeckSubmission& deck1,
                                      const DeckSubmission& deck2) {
-    // Each player picks one of their three battlefields. CR 487.5 (1v1 Duel,
-    // best of one) selects it at random; CR 488.5 (1v1 Match) lets the player
-    // select it. An engine game asks the agent — the Match reading; a
-    // RandomAgent's uniform pick is what a Duel would do. Which mode an engine
-    // game is was left to the project (testing phase G4, pinned by
-    // Batch4bTest.G4_Pin_EachPlayerChoosesTheirBattlefield).
+    // Each player brings one of their three battlefields. CR 487.5 (1v1
+    // Duel): "each player's Battlefield is selected randomly from among the
+    // Battlefields they have" — drawn here from the engine's RNG, no
+    // decision, P1's then P2's; the draw is hidden from nobody (the chosen
+    // battlefields are revealed as they enter play). CR 488.5 (1v1 Match):
+    // each player selects it — the agent is asked. The mode is
+    // GameState::mode.format (GameEngine::setMatchFormat; testing phase
+    // V1-G4, owner decision 2026-10-15: Duel by default, the trainer plays
+    // Match).
     //
     // The choice is Intent::battlefield_pool_index: the position of the
     // card in the deck's battlefield list (0..N-1). It is not a
@@ -586,6 +642,15 @@ void GameEngine::setupBattlefields(const DeckSubmission& deck1,
     auto pickFromDeck = [&](PlayerId player,
                              const std::vector<CardDefId>& bfs) -> CardDefId {
         if (bfs.empty()) return kInvalidId;
+        if (state_.mode.format == MatchFormat::BestOf1) {
+            std::uniform_int_distribution<size_t> pick(0, bfs.size() - 1);
+            const size_t idx = pick(rng_);
+            RIFT_TRACE(events_, "SETUP: " + std::string(toString(player)) +
+                                " brings battlefield #" + std::to_string(idx) + " (" +
+                                card_db_.get(bfs[idx]).name +
+                                "), drawn at random (Duel, CR 487.5)");
+            return bfs[idx];
+        }
         // Publish the candidate pool to PlayerState so the legal-action
         // renderer can label each ChooseBattlefield by its printed name
         // ("Vilemaw's Lair", "Rockfall Path", …) instead of just "BF #N".
@@ -1564,10 +1629,16 @@ void GameEngine::chooseTargetsAtFinalize(ChainItem& item) {
     const ChainItemId this_id = item.id;
     chooseFirstExecution(item);
     // CR 820.2: the choices of each additional execution a Repeat paid for
-    // are made now too, and need not be the same (820.2.a). Each is a fresh
-    // set made the way "make new choices" makes one; the first execution's
-    // are put back afterwards.
+    // are made with the first one's (a play that paid its Repeat made them
+    // before its costs: chooseRepeatsBeforeCost, adopted already).
     if (choosing_repeat_) return;
+    chooseRepeatExecutions(this_id);
+}
+
+void GameEngine::chooseRepeatExecutions(ChainItemId this_id) {
+    // Each is a fresh set made the way "make new choices" makes one, and need
+    // not be the same (CR 820.2.a); the first execution's are put back
+    // afterwards.
     ChainItem* it = nullptr;
     for (auto& ci : state_.chain.items) if (ci.id == this_id) it = &ci;
     if (!it || !it->is_spell || it->repeats_paid <= 0 || !it->repeat_choices.empty()) return;
@@ -1773,8 +1844,14 @@ void GameEngine::chooseFirstExecution(ChainItem& item) {
     const PlayerId chooser = item.controller;
     const ChainItemId item_id = item.id;
     Prompt asked = enginePrompt(chooser, PromptKind::Target, item.source);
+    // The item being finalized, whatever is resolving: its kind of ability
+    // too (testing phase U16: an activated ability's target was "its play").
     asked.chain_item = item.id;
     asked.is_spell = item.is_spell;
+    asked.ability_index = item.is_activated_ability ? item.ability_index : -1;
+    asked.trigger = item.fired_trigger;
+    asked.keyword_ability = item.keyword_ability.has_value();
+    asked.is_triggered = item.is_ability && !item.is_activated_ability;
     asked.at_finalization = true;
     auto chosen = askAgent(chooser, options, std::move(asked));
     if (on_decision) on_decision(state_, options, chosen);
@@ -2075,6 +2152,10 @@ std::vector<ChainItemId> GameEngine::canonicalBatchOrder(const std::vector<Chain
     return canonical;
 }
 
+// Copies of one ability (two Scrapheaps, three Sprites' [Temporary]) are
+// abilities of different objects and are ordered like different abilities
+// (CR 383.3.d does not except them): judge question 20, the engine's reading,
+// pinned by Batch8Test.Q20_Pin_*.
 void GameEngine::orderPendingTriggers() {
     auto isPending = [](const ChainItem& ci) { return ci.status == ChainItemStatus::Pending; };
     // Every batch still waiting is in an order of what the players see before
@@ -2222,7 +2303,10 @@ bool GameEngine::accelerateAvailable(PlayerId player, GameObjectId card_id,
                                      bool from_hand) const {
     if (!state_.objectExists(card_id)) return false;
     const auto& card = state_.getObject(card_id);
-    if (!card.isUnit() || card.card_def_id == kInvalidId) return false;
+    // A unit token is played too (CR 185.2.a, 350.2): it may have the keyword
+    // or be given it (testing phase U12), and pays its [C] with [A] (it has
+    // no Domain, CR 805.1.b.2).
+    if (!card.isUnit()) return false;
     if (card.keywords.has(Keyword::Accelerate)) return true;
     // A card on the player's board may give the unit being played
     // [Accelerate] for this play (Rek'Sai, Breacher: "played from anywhere
@@ -2371,6 +2455,11 @@ void GameEngine::announcePermanentPlayed(GameObjectId card_id, PlayerId player) 
         not_from_hand = n->second != 0;
         card.card_counters.erase(n);
     }
+    // One play is one event for the rules: "When you play me" and "when you
+    // play a card from anywhere other than your hand" trigger together, and
+    // their controller orders them (CR 383.3.d; testing phase U4). The two
+    // announcements are one trigger batch.
+    const SimultaneousTriggers together(state_.chain);
     events_.emit(CardPlayedEvent{card_id, player, state_.getObject(card_id).card_type,
                                  ordinal, energy});
     if (not_from_hand && state_.objectExists(card_id))
@@ -3511,6 +3600,14 @@ bool GameEngine::prePlayProbe(PlayerId player, GameObjectId card_id,
     // The grant, if any, is looked up again in each run: the pointer handed in
     // points into the game that is set aside.
     const bool via_grant = grant != nullptr;
+    // Which of the card's grants the probe plays with (U13): looked up again
+    // by trashGrantFor in each run.
+    struct GrantChoice {
+        bool& flag;
+        bool saved;
+        ~GrantChoice() { flag = saved; }
+    } grant_choice{trash_grant_alternative_, trash_grant_alternative_};
+    trash_grant_alternative_ = grant && grant->alternative;
     struct FilterSet {
         EffectExecutor& ex;
         ~FilterSet() { ex.setChoiceFilter(nullptr); }
@@ -3989,6 +4086,14 @@ void GameEngine::payDeferredSpellCost(GameObjectId card_id) {
 }
 
 void GameEngine::executePlaySpell(const Intent& intent) {
+    // From the trash, the intent names which of the card's grants it uses
+    // (U13); for the length of this play.
+    struct GrantChoice {
+        bool& flag;
+        ~GrantChoice() { flag = false; }
+    } grant_choice{trash_grant_alternative_};
+    trash_grant_alternative_ =
+        intent.play_source == Intent::PlaySource::Trash && intent.use_alt_play_cost;
     auto& ps = state_.player(intent.player);
     auto& card = state_.getObject(intent.card);
     forgetPlayPayments(intent.player, intent.card);   // a new play: nothing is paid yet
@@ -4042,7 +4147,54 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
     // Pay cost. A trash-replay grant overrides the printed cost (and its own
     // additional costs); otherwise the normal play_source-aware path runs.
     bool paid_via_grant = false;
-    if (intent.play_source == Intent::PlaySource::Trash) {
+    // [Repeat] (CR 820): decided, and each extra execution's choices made,
+    // with the play's other choices — before any cost is paid (CR 355.1.a,
+    // 820.2; testing phase U11) — and offered only if everything stays
+    // payable together.
+    std::vector<RepeatTranche> accepted_repeats;
+    std::vector<ChainItem::ExecutionChoices> repeat_choices;
+    int repeat_energy_spent = 0;
+    bool repeats_decided = false;
+    if (intent.play_source == Intent::PlaySource::Trash &&
+        trashGrantFor(intent.player, intent.card) != nullptr) {
+        repeats_decided = true;
+        const PlayerId who = intent.player;
+        const GameObjectId what = intent.card;
+        const std::vector<GameObjectId> ct = cost_targets;
+        // The grant's cost is the play's own cost (CR 829.1.c.1).
+        const auto* g0 = trashGrantFor(who, what);
+        const auto grant_cost = trashGrantCost(who, what, *g0, ct, false);
+        const auto base_mask = grant_cost.domains;
+        RepeatPlan plan = planRepeats(who, what, base_mask,
+            [this, who, what, ct](const TrancheCost& tc) {
+                cost_step_tranches_ = &tc;
+                const bool ok = payTrashReplayGrant(who, what, ct);
+                cost_step_tranches_ = nullptr;
+                return ok;
+            },
+            {grant_cost.energy, grant_cost.power + grant_cost.extra_any}, play_targets,
+            target_chosen_at_play);
+        accepted_repeats = plan.accepted;
+        repeat_choices = std::move(plan.choices);
+        bool ahead = true;
+        if (!accepted_repeats.empty()) {
+            const int e_total = grant_cost.energy + plan.cost.energy;
+            const int p_total = grant_cost.power + plan.cost.base_power;
+            const std::function<bool()> rest = [this, who, e_total, p_total, base_mask]() {
+                return resource::canPayIn(state_, who, e_total, p_total, base_mask,
+                                          SpendFor::Spell);
+            };
+            ahead = payTranchePartsAhead(who, plan.cost, base_mask, &rest);
+            if (plan.cost.discards > 0) effect_executor_->discardCards(who, plan.cost.discards);
+        }
+        if (!ahead)
+            throw std::logic_error("GameEngine::finishPlaySpell: the [Repeat] costs of " +
+                                   card.name + " were offered as payable and could not be paid");
+        cost_step_tranches_ = accepted_repeats.empty() ? nullptr : &plan.cost;
+        paid_via_grant = payTrashReplayGrant(intent.player, intent.card, cost_targets);
+        cost_step_tranches_ = nullptr;
+        repeat_energy_spent = plan.energy;
+    } else if (intent.play_source == Intent::PlaySource::Trash) {
         paid_via_grant = payTrashReplayGrant(intent.player, intent.card, cost_targets);
     }
     if (!paid_via_grant) {
@@ -4113,87 +4265,49 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         // "You may pay X as an additional cost to play me" (spell variant):
         // chosen before anything is paid (CR 355.1.a), paid with the cost.
         maybePayOptionalAdditionalCost(intent.player, intent.card, deflect, total);
+        RepeatPlan plan;
+        const auto base_mask = resource::maskOf(card_db_.get(card.card_def_id).domains);
+        if (!repeats_decided) {
+            const PlayerId who = intent.player;
+            const GameObjectId what = intent.card;
+            const auto net = netCardCost(who, what, total);
+            plan = planRepeats(who, what, base_mask,
+                [this, who, what, deflect, total](const TrancheCost& tc) {
+                    return payCardCostQuietly(who, what, total, deflect, tc.energy, tc.base_power);
+                },
+                {net.first, net.second + deflect}, play_targets, target_chosen_at_play);
+            accepted_repeats = plan.accepted;
+            repeat_choices = std::move(plan.choices);
+        }
+        if (!accepted_repeats.empty()) {
+            const PlayerId who = intent.player;
+            const auto net = netCardCost(who, intent.card, total);
+            const int e_total = net.first + plan.cost.energy;
+            const int p_total = net.second + plan.cost.base_power;
+            const std::function<bool()> rest = [this, who, e_total, p_total, deflect, base_mask]() {
+                return resource::canPayIn(state_, who, e_total, p_total, base_mask,
+                                          SpendFor::Spell) &&
+                       resource::payablePowerIn(state_, who, resource::kAnyDomain,
+                                                SpendFor::Spell) >= p_total + deflect;
+            };
+            if (!payTranchePartsAhead(who, plan.cost, base_mask, &rest))
+                throw std::logic_error("GameEngine::finishPlaySpell: the [Repeat] costs of " +
+                                       card.name + " were offered as payable and could not be paid");
+            if (plan.cost.discards > 0) effect_executor_->discardCards(who, plan.cost.discards);
+        }
+        // The card's own cost, with the tranches' Energy and Power of its
+        // Domains in the same payment (beginCostPayment reads them).
+        cost_step_tranches_ = accepted_repeats.empty() ? nullptr : &plan.cost;
         payCardCost(intent.player, intent.card, total);
+        cost_step_tranches_ = nullptr;
+        repeat_energy_spent = plan.energy;
         ps.current_play_source = Intent::PlaySource::Hand;
     }
     payDeferredSpellCost(intent.card);   // CR 357.2 (testing phase F6)
-
-    // Repeat (CR 820) — an optional additional cost, asked yes/no per printed
-    // Repeat cost once the base cost is paid. Each cost can be paid a single
-    // time (CR 820.1.c.3) and each payment repeats the effect once more
-    // (CR 820.3). The costs are the card's own declaration
-    // (Card::repeatCosts); the engine reads no card text.
-    struct RepeatTranche {
-        int energy = 0;
-        int power = 0;
-        resource::DomainMask domains = resource::kAnyDomain;
-        int discard_cards = 0;
-    };
-    std::vector<RepeatTranche> repeat_costs;
-    if (card.card_def_id != kInvalidId) {
-        if (const Card* sc = card_registry_.get(card.card_def_id))
-            for (const auto& rc : sc->repeatCosts())
-                repeat_costs.push_back({rc.energy, rc.power,
-                                        resource::maskOf(rc.power_domain), rc.discard_cards});
-    }
-    // GRANTED [Repeat] (when the spell has none of its own printed):
-    //   The Academy (772) / Temporal Portal (401): "next spell gets [Repeat]
-    //   equal to its (base) cost" (one-shot).
-    //   Syndra, Transcendent (708): "your spells have [Repeat] [2][P]" (continuous
-    //   while she's in a showdown). The one-shot grant takes precedence.
-    if (card.isSpell() && repeat_costs.empty()) {
-        if (ps.grant_repeat_base_to_next_spell && card.card_def_id != kInvalidId) {
-            // "[Repeat] equal to its base cost": Energy and Power both, the
-            // Power payable in any of the spell's own Domains, as its base
-            // cost is.
-            const auto& base = card_db_.get(card.card_def_id);
-            if (base.energy_cost > 0 || base.power_cost > 0)
-                repeat_costs.push_back({base.energy_cost, base.power_cost,
-                                        resource::maskOf(base.domains), 0});
-        } else if (ps.spells_have_repeat_energy > 0 || ps.spells_have_repeat_power > 0) {
-            repeat_costs.push_back({ps.spells_have_repeat_energy, ps.spells_have_repeat_power,
-                                    resource::maskOf(ps.spells_have_repeat_domain), 0});
-        }
-    }
-    // The one-shot grant is for "your next spell this turn": this spell uses
-    // it up whether or not it applied (a spell with a printed [Repeat] keeps
-    // its own).
+    // The one-shot granted [Repeat] ("your next spell this turn") is used up
+    // by this spell whether or not it applied.
     if (card.isSpell()) ps.grant_repeat_base_to_next_spell = false;
-    int repeats = 0;
-    int repeat_energy_spent = 0;
-    for (auto& rc : repeat_costs) {
-        // Marai Spire (525): "friendly [Repeat] costs cost [1] less."
-        if (ps.repeat_cost_reduction > 0)
-            rc.energy = std::max(0, rc.energy - ps.repeat_cost_reduction);
-        if (static_cast<int>(ps.hand.size()) < rc.discard_cards) continue;
-        if (!canPayOptionalCost(intent.player, rc.energy, rc.power, rc.domains,
-                                SpendFor::Spell)) continue;
-        Intent decline;
-        decline.type = IntentType::MakeChoice;
-        decline.player = intent.player;
-        decline.chosen_value = 0;
-        Intent accept = decline;
-        accept.chosen_value = 1;
-        decline.declines = true;   // the "no" of a yes/no (Intent::declines)
-        std::vector<Intent> opts = {decline, accept};
-
-        state_.decision_index++;
-        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
-                         " (" + toString(intent.player) + "): "
-                         "pay Repeat tranche " + std::to_string(repeats + 1) +
-                         " for " + card.name + "? [decline|pay] [2 options]");
-        auto chosen = askAgent(intent.player, opts,
-                               enginePrompt(intent.player, PromptKind::Repeat, card.id));
-        if (on_decision) on_decision(state_, opts, chosen);
-        if (chosen.chosen_value.value_or(0) != 1) continue;
-        if (!payOptionalCost(intent.player, rc.energy, rc.power, rc.domains, SpendFor::Spell,
-                             intent.card, "[Repeat]"))
-            continue;
-        if (rc.discard_cards > 0)
-            effect_executor_->discardCards(intent.player, rc.discard_cards);
-        ++repeats;
-        repeat_energy_spent += rc.energy;
-    }
+    const int repeats = static_cast<int>(accepted_repeats.size());
     if (repeats > 0) {
         RIFT_TRACE(events_, "REPEAT: paid " + std::to_string(repeats) +
                           " extra tranche(s) for " + card.name);
@@ -4245,6 +4359,7 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         if (added.id != chain_id) continue;
         added.total_energy_spent = total_energy_spent;
         added.repeats_paid = repeats;
+        added.repeat_choices = std::move(repeat_choices);   // made before the cost
         if (target_chosen_at_play) {
             // Read by Card::pickTarget: the target is already chosen.
             while (added.resume_data.size() < 6) added.resume_data.push_back(0);
@@ -4255,6 +4370,294 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
 
     // Run the FEPR loop
     runChain();
+}
+
+// ── [Repeat] (CR 820) ───────────────────────────────────────────────────────
+
+std::vector<GameEngine::RepeatTranche> GameEngine::repeatTranchesFor(PlayerId player,
+                                                                     GameObjectId card_id) const {
+    std::vector<RepeatTranche> out;
+    if (!state_.objectExists(card_id)) return out;
+    const auto& card = state_.getObject(card_id);
+    const auto& ps = state_.player(player);
+    // The card's own declaration (Card::repeatCosts); the engine reads no
+    // card text.
+    if (card.card_def_id != kInvalidId)
+        if (const Card* sc = card_registry_.get(card.card_def_id))
+            for (const auto& rc : sc->repeatCosts())
+                out.push_back({rc.energy, rc.power, resource::maskOf(rc.power_domain),
+                               rc.discard_cards});
+    // GRANTED [Repeat] (when the spell has none of its own printed):
+    //   The Academy (772) / Temporal Portal (401): "next spell gets [Repeat]
+    //   equal to its (base) cost" (one-shot).
+    //   Syndra, Transcendent (708): "your spells have [Repeat] [2][P]" (continuous
+    //   while she's in a showdown). The one-shot grant takes precedence.
+    if (card.isSpell() && out.empty()) {
+        if (ps.grant_repeat_base_to_next_spell && card.card_def_id != kInvalidId) {
+            // "[Repeat] equal to its base cost": Energy and Power both, the
+            // Power payable in any of the spell's own Domains, as its base
+            // cost is.
+            const auto& base = card_db_.get(card.card_def_id);
+            if (base.energy_cost > 0 || base.power_cost > 0)
+                out.push_back({base.energy_cost, base.power_cost,
+                               resource::maskOf(base.domains), 0});
+        } else if (ps.spells_have_repeat_energy > 0 || ps.spells_have_repeat_power > 0) {
+            out.push_back({ps.spells_have_repeat_energy, ps.spells_have_repeat_power,
+                           resource::maskOf(ps.spells_have_repeat_domain), 0});
+        }
+    }
+    // Marai Spire (525): "friendly [Repeat] costs cost [1] less."
+    if (ps.repeat_cost_reduction > 0)
+        for (auto& rc : out) rc.energy = std::max(0, rc.energy - ps.repeat_cost_reduction);
+    return out;
+}
+
+GameEngine::TrancheCost GameEngine::trancheCost(const std::vector<RepeatTranche>& tranches,
+                                                const std::vector<std::pair<int, int>>& nets,
+                                                resource::DomainMask base_mask) {
+    TrancheCost tc;
+    for (size_t k = 0; k < tranches.size(); ++k) {
+        tc.energy += nets[k].first;
+        tc.discards += tranches[k].discard_cards;
+        const int pw = nets[k].second;
+        if (pw <= 0) continue;
+        const auto m = tranches[k].domains;
+        if (m == base_mask) tc.base_power += pw;
+        else if (m == resource::kAnyDomain) tc.any_power += pw;
+        else {
+            auto it = std::find_if(tc.other_power.begin(), tc.other_power.end(),
+                                   [m](const auto& p) { return p.first == m; });
+            if (it == tc.other_power.end()) tc.other_power.push_back({m, pw});
+            else it->second += pw;
+        }
+    }
+    return tc;
+}
+
+bool GameEngine::payTranchePartsAhead(PlayerId player, const TrancheCost& tc,
+                                      resource::DomainMask base_mask,
+                                      const std::function<bool()>* rest_payable) {
+    for (const auto& [mask, pw] : tc.other_power)
+        if (!resource::payIn(state_, events_, player, 0, pw, mask, SpendFor::Spell)) return false;
+    if (tc.any_power <= 0) return true;
+    const auto chooser = effect_executor_->runeChooser();
+    return resource::payAnyPowerAheadOfCost(state_, events_, player, tc.any_power, base_mask,
+                                            SpendFor::Spell, rest_payable ? &chooser : nullptr,
+                                            rest_payable);
+}
+
+GameEngine::RepeatPlan GameEngine::planRepeats(
+        PlayerId player, GameObjectId card_id, resource::DomainMask base_mask,
+        const std::function<bool(const TrancheCost&)>& pay_base_with,
+        std::pair<int, int> owed_base, const std::vector<GameObjectId>& play_targets,
+        bool target_chosen_at_play) {
+    RepeatPlan plan;
+    const auto tranches = repeatTranchesFor(player, card_id);
+    if (tranches.empty()) return plan;
+    const std::string name = state_.getObject(card_id).name;
+    const int disc = optionalCostDiscount(player);
+    auto halves = [disc](const RepeatTranche& rc, bool power_first) {
+        return afterEitherDiscount(std::max(0, rc.energy), std::max(0, rc.power), disc,
+                                   power_first);
+    };
+    // The whole cost step with these tranches at these nets, tried on a copy.
+    auto works = [&](const std::vector<RepeatTranche>& with,
+                     const std::vector<std::pair<int, int>>& nets) {
+        int discards = 0;
+        for (const auto& rc : with) discards += rc.discard_cards;
+        if (static_cast<int>(state_.player(player).hand.size()) < discards) return false;
+        const TrancheCost tc = trancheCost(with, nets, base_mask);
+        return tryOnACopy([&]() {
+            return payTranchePartsAhead(player, tc, base_mask, nullptr) && pay_base_with(tc);
+        });
+    };
+    // Nets: the Energy half of a "[1] or [A] less" discount unless only the
+    // Power half leaves everything payable.
+    auto netsFor = [&](const std::vector<RepeatTranche>& with,
+                       std::optional<std::vector<std::pair<int, int>>>& out) {
+        std::vector<std::pair<int, int>> nets;
+        for (const auto& rc : with) nets.push_back(halves(rc, false));
+        if (works(with, nets)) { out = nets; return; }
+        for (size_t k = 0; k < with.size(); ++k) {
+            auto alt = nets;
+            alt[k] = halves(with[k], true);
+            if (alt[k] != nets[k] && works(with, alt)) { out = alt; return; }
+        }
+        out.reset();
+    };
+    for (const auto& rc : tranches) {
+        // Each cost can be paid a single time (CR 820.1.c.3); offered only if
+        // it, the ones accepted before it and the play's own cost can all be
+        // paid together.
+        auto with = plan.accepted;
+        with.push_back(rc);
+        std::optional<std::vector<std::pair<int, int>>> nets;
+        netsFor(with, nets);
+        if (!nets.has_value()) continue;
+        Intent decline;
+        decline.type = IntentType::MakeChoice;
+        decline.player = player;
+        decline.chosen_value = 0;
+        Intent accept = decline;
+        accept.chosen_value = 1;
+        decline.declines = true;   // the "no" of a yes/no (Intent::declines)
+        std::vector<Intent> opts = {decline, accept};
+        state_.decision_index++;
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                         " (" + toString(player) + "): "
+                         "pay Repeat tranche " + std::to_string(plan.accepted.size() + 1) +
+                         " for " + name + "? [decline|pay] [2 options]");
+        auto chosen = askAgent(player, opts, enginePrompt(player, PromptKind::Repeat, card_id));
+        if (on_decision) on_decision(state_, opts, chosen);
+        if (chosen.chosen_value.value_or(0) == 1) plan.accepted.push_back(rc);
+    }
+    if (plan.accepted.empty()) return plan;
+    std::optional<std::vector<std::pair<int, int>>> nets_opt;
+    netsFor(plan.accepted, nets_opt);
+    if (!nets_opt.has_value())
+        throw std::logic_error("GameEngine::planRepeats: the accepted [Repeat] costs of " + name +
+                               " cannot be paid with its cost");
+    auto nets = *nets_opt;
+    // The extra executions' choices (CR 820.2), with the cost step owed.
+    {
+        const TrancheCost tc = trancheCost(plan.accepted, nets, base_mask);
+        EffectExecutor::OwedCost owed;
+        owed.energy = owed_base.first + tc.energy;
+        owed.power = owed_base.second + tc.base_power + tc.any_power;
+        owed.mask = base_mask;
+        owed.spend_for = SpendFor::Spell;
+        const std::function<bool()> cost_step = [&]() {
+            return payTranchePartsAhead(player, tc, base_mask, nullptr) && pay_base_with(tc);
+        };
+        plan.choices = chooseRepeatsBeforeCost(player, card_id, play_targets,
+            target_chosen_at_play, static_cast<int>(plan.accepted.size()), cost_step, owed);
+    }
+    // "[1] or [A] less" on a tranche: the payer picks the half when both
+    // leave everything payable (judged now that the choices are made).
+    if (disc > 0)
+        for (size_t k = 0; k < plan.accepted.size(); ++k) {
+            const auto e_half = halves(plan.accepted[k], false);
+            const auto p_half = halves(plan.accepted[k], true);
+            if (e_half == p_half) continue;
+            auto with_e = nets, with_p = nets;
+            with_e[k] = e_half;
+            with_p[k] = p_half;
+            const bool e_ok = works(plan.accepted, with_e), p_ok = works(plan.accepted, with_p);
+            if (e_ok && p_ok) {
+                Intent e; e.type = IntentType::MakeChoice; e.player = player;
+                e.chosen_value = 0; e.choice_label = "cost [1] less";
+                Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
+                nets[k] = decideNow(player, {e, pw}, PromptKind::CostSplit, card_id,
+                                    "[Repeat]: [1] or [A] less").chosen_value.value_or(0) == 1
+                              ? p_half : e_half;
+            } else if (p_ok && !e_ok) {
+                nets[k] = p_half;
+            }
+        }
+    plan.cost = trancheCost(plan.accepted, nets, base_mask);
+    plan.energy = plan.cost.energy;
+    return plan;
+}
+
+bool GameEngine::tryOnACopy(const std::function<bool()>& fn) {
+    struct ForgetFacts {
+        GameEngine& engine;
+        ~ForgetFacts() { engine.forgetCleanupFacts(); }
+    } forget_facts{*this};
+    struct Parked {
+        GameEngine& engine;
+        GameState& game;
+        explicit Parked(GameEngine& e) : engine(e), game(e.parkGame()) {}
+        ~Parked() { engine.unparkGame(game); }
+    } parked(*this);
+    struct Quiet {
+        EventBus& bus;
+        EventBus::Quiet q;
+        explicit Quiet(EventBus& b) : bus(b), q(b.beginQuiet()) {}
+        ~Quiet() { bus.endQuiet(q); }
+    } quiet(events_);
+    state_ = parked.game;
+    forgetCleanupFacts();
+    return fn();
+}
+
+std::vector<ChainItem::ExecutionChoices> GameEngine::chooseRepeatsBeforeCost(
+        PlayerId player, GameObjectId card_id, const std::vector<GameObjectId>& play_targets,
+        bool target_chosen_at_play, int repeats, const std::function<bool()>& cost_step,
+        EffectExecutor::OwedCost owed) {
+    if (repeats <= 0 || !state_.objectExists(card_id)) return {};
+    // A stand-in for the spell's chain item, with the first execution's
+    // choices: the extra executions are chosen on it the way they are on the
+    // real item ("make new choices", chooseRepeatExecutions), then it is
+    // taken off again. The first execution's prefinalized choices wait for
+    // the real item meanwhile.
+    std::optional<ChainItem> first = std::move(prefinalized_spell_);
+    prefinalized_spell_.reset();
+    ChainItem temp;
+    if (first.has_value()) temp = *first;
+    const auto& card = state_.getObject(card_id);
+    temp.id = state_.chain.allocateId();
+    temp.status = ChainItemStatus::Pending;
+    temp.source = card_id;
+    temp.card_def_id = card.card_def_id;
+    temp.controller = player;
+    temp.is_spell = true;
+    temp.pre_play_choices = false;
+    temp.repeats_paid = repeats;
+    temp.repeat_choices.clear();
+    if (!first.has_value()) {
+        temp.targets = play_targets;
+        temp.chosen_objects = play_targets;
+        if (target_chosen_at_play) {
+            while (temp.resume_data.size() < 6) temp.resume_data.push_back(0);
+            temp.resume_data[5] = 1;
+        }
+    }
+    const ChainItemId temp_id = temp.id;
+    state_.chain.items.push_back(std::move(temp));
+
+    // The cost step, as it will be paid (cost_step: the tranches' parts
+    // ahead, then the play's own cost with the rest of them).
+    const auto& costStep = cost_step;
+    owed.player = player;
+    effect_executor_->setOwedCost(owed);
+    effect_executor_->setChoiceFilter([this, player, costStep](GameObjectId t) {
+        // With `t`'s Deflect paid now, as choosing it pays it.
+        return tryOnACopy([&]() {
+            const int deflect = deflectCostFor(state_, player, t);
+            if (deflect > 0 && !effect_executor_->payAnyPower(player, deflect, SpendFor::Spell))
+                return false;
+            return costStep();
+        });
+    });
+    effect_executor_->setAheadOfCostCheck([this, costStep]() {
+        return tryOnACopy([&]() { return costStep(); });
+    });
+    struct Restore {
+        GameEngine& e;
+        ChainItemId id;
+        std::optional<ChainItem>& first;
+        ~Restore() {
+            e.effect_executor_->setChoiceFilter(nullptr);
+            e.effect_executor_->setAheadOfCostCheck(nullptr);
+            e.effect_executor_->setOwedCost(std::nullopt);
+            auto& items = e.state_.chain.items;
+            items.erase(std::remove_if(items.begin(), items.end(),
+                                       [this](const ChainItem& ci) { return ci.id == id; }),
+                        items.end());
+            e.prefinalized_spell_ = std::move(first);
+        }
+    } restore{*this, temp_id, first};
+    std::vector<ChainItem::ExecutionChoices> out;
+    {
+        const bool was = choosing_repeat_;
+        choosing_repeat_ = false;
+        chooseRepeatExecutions(temp_id);
+        choosing_repeat_ = was;
+    }
+    for (const auto& ci : state_.chain.items)
+        if (ci.id == temp_id) out = ci.repeat_choices;
+    return out;
 }
 
 void GameEngine::runChain() {
@@ -5023,9 +5426,19 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
     // "When you play a card from face down" (Katarina, Reckless).
     events_.emit(PlayedFromFacedownEvent{intent.card, intent.player});
 
+    // A play from face down ignores the card's base cost (CR 811.1.b), not
+    // its additional costs: "you may pay [R] as an additional cost to play
+    // me" is still offered (CR 356.1.b and its example; testing phase U7,
+    // Pyke, Dockside Butcher). Its "As you play me" choices come first (CR
+    // 355.1). No [Hidden] card prints a mandatory additional cost
+    // (Batch8Test.U7_NoHiddenCardPrintsAMandatoryAdditionalCost).
+    Card::PlayCostAdjust ignoring_base;
+    ignoring_base.ignore_cost = true;
+
     // Play ignoring base cost — permanents go to the BF they were hidden at
     if (card.isPermanent()) {
         effect_executor_->makeAsYouPlayChoices(intent.player, intent.card);   // CR 355.1
+        maybePayOptionalAdditionalCost(intent.player, intent.card, 0, ignoring_base);
         card.location = BattlefieldLocation{bf_id};
         // Route through chain like normal plays
         auto& ps = state_.player(intent.player);
@@ -5039,6 +5452,7 @@ void GameEngine::executePlayFromHidden(const Intent& intent) {
         chain_manager_->addPermanent(intent.card, intent.player);
         runChain();
     } else if (card.isSpell()) {
+        maybePayOptionalAdditionalCost(intent.player, intent.card, 0, ignoring_base);
         auto& ps = state_.player(intent.player);
         ps.cards_played_this_turn++;
         // Played from face down = from somewhere other than hand; announced as
@@ -5213,89 +5627,79 @@ std::vector<Intent> GameEngine::generateMainPhaseActions(PlayerId player) const 
         auto& card = state_.getObject(card_id);
         if (!card.isUnit()) continue;
         if (card.card_def_id == kInvalidId) continue;  // tokens have no CardDef
-        if (!canAfford(player, card_id)) continue;
-
         const Card* card_obj = card_registry_.get(card.card_def_id);
-
-        Intent play_intent;
-        play_intent.type = IntentType::PlayCard;
-        play_intent.player = player;
-        play_intent.card = card_id;
-
-        // NARROWING hook (Perched Grimwyrm): the card dictates its own legal
-        // play locations and suppresses the default base + BF plays entirely.
-        if (card_obj && card_obj->restrictsPlayLocations()) {
-            for (const auto& loc : card_obj->getPlayLocations(state_, player)) {
-                Intent restricted = play_intent;
-                restricted.play_location = loc;
-                actions.push_back(restricted);
-            }
-            continue;  // no default base/BF plays for this card
-        }
-
-        // Can always play to base (CR 355.2.a)
-        play_intent.play_location = BaseLocation{player};
-        actions.push_back(play_intent);
-
-        // Mageseeker Warden: while it restricts this player, units may be
-        // played ONLY to base — skip all battlefield plays.
-        if (ps.units_play_base_only) continue;
-
-        for (auto& bf : state_.battlefields) {
-            if (bf.blocks_unit_play) continue;  // Rockfall Path
-            const bool can_play_here = unitPlayableAt(card_obj, player, bf, &card);
-
-            if (can_play_here) {
-                Intent bf_play = play_intent;
-                bf_play.play_location = BattlefieldLocation{bf.id};
-                actions.push_back(bf_play);
-            } else if (bf.paid_play_power > 0 &&
-                       std::find(card.tags.begin(), card.tags.end(), bf.paid_play_tag) !=
-                           card.tags.end() &&
-                       canAfford(player, card_id, bf.paid_play_power)) {
-                // "Any player may pay ... as an additional cost to play a <tag>.
-                // If they do, they play it to this battlefield."
-                Intent paid_play = play_intent;
-                paid_play.play_location = BattlefieldLocation{bf.id};
-                paid_play.pay_location_cost = true;
-                actions.push_back(paid_play);
-            }
-        }
-    }
-
-    // Champion in the champion zone: its normal play is generated with the
-    // units in hand above. Brynhir's lockout covers this play too.
-    if (ps.champion_zone != kInvalidId && !locked_out) {
-        auto& champ = state_.getObject(ps.champion_zone);
-        if (champ.zone == ZoneType::ChampionZone) {
-            // Alternative play cost (Jhin, Meticulous Killer): offer "play me for
-            // <alt>" when the condition holds and the alt cost is affordable —
-            // independent of whether the printed cost is affordable.
-            const Card* cc = champ.card_def_id != kInvalidId
-                ? card_registry_.get(champ.card_def_id) : nullptr;
-            if (cc) {
-                auto alt = cc->alternativePlayCost(state_, player);
-                bool afford = false;
-                if (alt.valid) {
-                    if (alt.any_domain) {
-                        for (int di = 0; di < static_cast<int>(Domain::Count); ++di)
-                            if (canPayAdditionalCost(player, alt.energy, alt.power,
-                                                      static_cast<Domain>(di))) {
-                                afford = true; break;
-                            }
-                    } else {
-                        afford = canPayAdditionalCost(player, alt.energy, alt.power,
-                                                       alt.power_domain);
-                    }
+        // An alternative cost (Jhin, Meticulous Killer: "If you've spent [4]
+        // or more to play a spell this turn, you may play me for [B]") is a
+        // way to pay for THIS play wherever the card is played from and to
+        // whatever location it may be played to (CR 355.2; no zone is named:
+        // testing phase U6, it was offered only from the Champion Zone and
+        // only to base). Offered whether or not the printed cost is payable.
+        bool alt_ok = false;
+        if (card_obj) {
+            const auto alt = card_obj->alternativePlayCost(state_, player);
+            if (alt.valid) {
+                if (alt.any_domain) {
+                    for (int di = 0; di < static_cast<int>(Domain::Count) && !alt_ok; ++di)
+                        alt_ok = canPayAdditionalCost(player, alt.energy, alt.power,
+                                                      static_cast<Domain>(di));
+                } else {
+                    alt_ok = canPayAdditionalCost(player, alt.energy, alt.power,
+                                                  alt.power_domain);
                 }
-                if (afford) {
-                    Intent alt_play;
-                    alt_play.type = IntentType::PlayCard;
-                    alt_play.player = player;
-                    alt_play.card = ps.champion_zone;
-                    alt_play.play_location = BaseLocation{player};
-                    alt_play.use_alt_play_cost = true;
-                    actions.push_back(alt_play);
+            }
+        }
+        const bool printed_ok = canAfford(player, card_id);
+        if (!printed_ok && !alt_ok) continue;
+
+        for (int alt = 0; alt < 2; ++alt) {
+            if (alt == 0 && !printed_ok) continue;
+            if (alt == 1 && !alt_ok) continue;
+            Intent play_intent;
+            play_intent.type = IntentType::PlayCard;
+            play_intent.player = player;
+            play_intent.card = card_id;
+            play_intent.use_alt_play_cost = alt == 1;
+
+            // NARROWING hook (Perched Grimwyrm): the card dictates its own legal
+            // play locations and suppresses the default base + BF plays entirely.
+            if (card_obj && card_obj->restrictsPlayLocations()) {
+                for (const auto& loc : card_obj->getPlayLocations(state_, player)) {
+                    Intent restricted = play_intent;
+                    restricted.play_location = loc;
+                    actions.push_back(restricted);
+                }
+                continue;  // no default base/BF plays for this card
+            }
+
+            // Can always play to base (CR 355.2.a)
+            play_intent.play_location = BaseLocation{player};
+            actions.push_back(play_intent);
+
+            // Mageseeker Warden: while it restricts this player, units may be
+            // played ONLY to base — skip all battlefield plays.
+            if (ps.units_play_base_only) continue;
+
+            for (auto& bf : state_.battlefields) {
+                if (bf.blocks_unit_play) continue;  // Rockfall Path
+                const bool can_play_here = unitPlayableAt(card_obj, player, bf, &card);
+
+                if (can_play_here) {
+                    Intent bf_play = play_intent;
+                    bf_play.play_location = BattlefieldLocation{bf.id};
+                    actions.push_back(bf_play);
+                } else if (alt == 0 && bf.paid_play_power > 0 &&
+                           std::find(card.tags.begin(), card.tags.end(), bf.paid_play_tag) !=
+                               card.tags.end() &&
+                           canAfford(player, card_id, bf.paid_play_power)) {
+                    // "Any player may pay ... as an additional cost to play a <tag>.
+                    // If they do, they play it to this battlefield." (Dragon Roost,
+                    // judged with the printed cost; the one card with an
+                    // alternative cost is no Dragon:
+                    // Batch8Test.U6_NoCardWithAnAlternativeCostIsADragon.)
+                    Intent paid_play = play_intent;
+                    paid_play.play_location = BattlefieldLocation{bf.id};
+                    paid_play.pay_location_cost = true;
+                    actions.push_back(paid_play);
                 }
             }
         }
@@ -6019,15 +6423,19 @@ GameEngine::TrashGrantCost GameEngine::trashGrantCost(
     const auto net = netCardCost(player, card_id, adj, grant.energy, grant.power);
     out.energy = net.first;
     out.power = net.second;
-    out.domains = resource::maskOf(grant.any_domain ? Domain::Count : grant.power_domain);
+    out.domains = grant.power_mask != 0
+        ? grant.power_mask
+        : resource::maskOf(grant.any_domain ? Domain::Count : grant.power_domain);
     out.extra_any = extraAnyPowerCost(state_, player, state_.getObject(card_id));
     return out;
 }
 
 const PlayerState::TrashReplayGrant* GameEngine::trashGrantFor(PlayerId player,
                                                                GameObjectId card_id) const {
+    // The grant the play being made uses: the card's alternative one when the
+    // play intent says so (trash_grant_alternative_, set for that play).
     for (const auto& g : state_.player(player).trash_replay_grants)
-        if (g.card == card_id) return &g;
+        if (g.card == card_id && g.alternative == trash_grant_alternative_) return &g;
     return nullptr;
 }
 
@@ -6119,7 +6527,9 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
     for (const auto& grant : ps.trash_replay_grants) {
         if (grant.card == kInvalidId || !state_.objectExists(grant.card)) continue;
         bool seen = false;
-        for (const auto& e : playable) if (e.first == grant.card) seen = true;
+        for (const auto& e : playable)
+            if (e.first == grant.card && e.second && e.second->alternative == grant.alternative)
+                seen = true;
         if (!seen) playable.emplace_back(grant.card, &grant);
     }
     if (ps.may_play_from_trash)
@@ -6152,6 +6562,7 @@ void GameEngine::generateTrashReplayActions(PlayerId player, bool action_ok,
             play.player = player;
             play.card = card_id;
             play.play_source = Intent::PlaySource::Trash;
+            play.use_alt_play_cost = grant && grant->alternative;   // the card's other Flow (U13)
             play.targets = std::move(tgts);
             play.play_location = where;
             actions.push_back(play);
@@ -7961,35 +8372,58 @@ void GameEngine::refreshFlowGrants() {
                 continue;
             }
             if (!obj.isSpell()) continue;
-            PlayerState::TrashReplayGrant g;
-            g.card = cid;
-            g.banish_after = true;
-            g.standing = true;
+            // Stargazer: Flow plays cost [N] less, to a minimum of [1].
+            auto reduced = [&ps](PlayerState::TrashReplayGrant g) {
+                if (ps.flow_cost_reduction > 0 && g.energy > 1)
+                    g.energy = std::max(1, g.energy - ps.flow_cost_reduction);
+                return g;
+            };
+            bool printed = false;
             auto flow = c->flowCost();
             if (flow.valid) {
+                PlayerState::TrashReplayGrant g;
+                g.card = cid;
+                g.banish_after = true;
+                g.standing = true;
                 g.energy = flow.energy;
                 g.power = flow.power;
                 g.power_domain = flow.power_domain;
                 g.any_domain = flow.any_domain;
-            } else {
-                // Flow granted for the turn equal to the card's own cost
-                // (Kennen, Storm of Shuriken). This runs for every spell in a
-                // trash on every aura pass: a card with no counters is not
-                // looked up at all, and the key is built once, not per lookup
-                // (plans/06 item 6.11).
-                if (obj.card_counters.empty()) continue;
-                static const std::string kFlowGrantedTurn = "__flow_granted_turn";
-                auto it = obj.card_counters.find(kFlowGrantedTurn);
-                if (it == obj.card_counters.end() || it->second != state_.turn.turn_number)
-                    continue;
-                const auto& def = card_db_.get(obj.card_def_id);
-                g.energy = def.energy_cost;
-                g.power = def.power_cost;
-                g.power_domain = def.domains.empty() ? Domain::Fury : def.domains[0];
+                ps.trash_replay_grants.push_back(reduced(g));
+                printed = true;
             }
-            // Stargazer: Flow plays cost [N] less, to a minimum of [1].
-            if (ps.flow_cost_reduction > 0 && g.energy > 1)
-                g.energy = std::max(1, g.energy - ps.flow_cost_reduction);
+            // Flow granted for the turn equal to the card's own cost (Kennen,
+            // Storm of Shuriken). "If a card has multiple instances of the
+            // Flow keyword with different costs, its controller may choose"
+            // (CR 829.1.c.3): a spell that prints [Flow] keeps both, the
+            // granted one as its alternative (testing phase U13). This runs
+            // for every spell in a trash on every aura pass: a card with no
+            // counters is not looked up at all, and the key is built once,
+            // not per lookup (plans/06 item 6.11).
+            if (obj.card_counters.empty()) continue;
+            static const std::string kFlowGrantedTurn = "__flow_granted_turn";
+            auto it = obj.card_counters.find(kFlowGrantedTurn);
+            if (it == obj.card_counters.end() || it->second != state_.turn.turn_number)
+                continue;
+            const auto& def = card_db_.get(obj.card_def_id);
+            PlayerState::TrashReplayGrant g;
+            g.card = cid;
+            g.banish_after = true;
+            g.standing = true;
+            g.energy = def.energy_cost;
+            g.power = def.power_cost;
+            g.power_domain = def.domains.empty() ? Domain::Fury : def.domains[0];
+            g.power_mask = resource::maskOf(def.domains);   // its cost's Domains
+            g.alternative = printed;
+            g = reduced(g);
+            // The same cost as the printed one is no second choice.
+            if (printed) {
+                const auto& first = ps.trash_replay_grants.back();
+                if (first.energy == g.energy && first.power == g.power &&
+                    resource::maskOf(first.any_domain ? Domain::Count : first.power_domain) ==
+                        g.power_mask)
+                    continue;
+            }
             ps.trash_replay_grants.push_back(g);
         }
     }
@@ -8309,6 +8743,9 @@ void GameEngine::cleanup() {
         for (auto& [id, obj] : state_.objects.onBoard()) {
             if (!obj.isUnit()) continue;
             if (obj.current_might < 5) continue;   // its stamp stays behind: the edge is armed
+            // A unit that has just entered with 5+ [M] has no earlier stamp:
+            // it "becomes Mighty" here (judge question 18, the engine's
+            // reading; Batch8Test.Q18_Pin_*).
             const bool was = previous != 0 && obj.mighty_seen == previous;
             obj.mighty_seen = now;
             if (!was) became.push_back(id);
@@ -9241,9 +9678,23 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
         }
     }
 
+    // The [Repeat] tranches decided for this play: their Energy and the
+    // Power of the card's own Domains are paid in this one payment
+    // (GameEngine::TrancheCost).
+    if (cost_step_tranches_) {
+        energy_needed += cost_step_tranches_->energy;
+        power_needed += cost_step_tranches_->base_power;
+    }
     RIFT_TRACE(events_, "PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));
+    return beginPaymentOf(player, card_obj, energy_needed, power_needed, def.domains);
+}
 
+GameEngine::CostPaymentAdvance GameEngine::beginPaymentOf(PlayerId player, GameObjectId card_obj,
+                                                          int energy_needed, int power_needed,
+                                                          const std::vector<Domain>& domains) {
+    auto& ps = state_.player(player);
+    const auto& card = state_.getObject(card_obj);
     // Spend pool energy first (no agent decision needed): Energy restricted to
     // this kind of card before unrestricted Energy.
     const SpendFor spend_for = spendForObject(card);
@@ -9259,7 +9710,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     const int power_before_pool = power_needed;
     if (power_needed > 0) {
         ps.rune_pool.takeRestrictedPower(spend_for, power_needed);
-        for (auto d : def.domains) {
+        for (auto d : domains) {
             int di = static_cast<int>(d);
             if (di < 0 || di >= static_cast<int>(Domain::Count)) continue;
             int from_pool = std::min(ps.rune_pool.power[di], power_needed);
@@ -9280,7 +9731,7 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
     cur.player = player;
     cur.energy_remaining = energy_needed;
     cur.power_remaining = power_needed;
-    cur.power_domains = def.domains;
+    cur.power_domains = domains;
     cur.phase = (energy_needed > 0)
         ? GameState::CostPaymentCursor::Phase::PayingEnergy
         : ((power_needed > 0)
@@ -9460,7 +9911,7 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
     auto it = std::find_if(ps.trash_replay_grants.begin(),
                            ps.trash_replay_grants.end(),
                            [&](const PlayerState::TrashReplayGrant& g) {
-                               return g.card == card_id;
+                               return g.card == card_id && g.alternative == trash_grant_alternative_;
                            });
     if (it == ps.trash_replay_grants.end()) return false;
     const auto grant = *it;   // copy before erase
@@ -9473,11 +9924,25 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         // half is taken when that leaves the cost payable, else the Power half.
         const SpendFor f = spendForObject(state_.getObject(card_id));
         auto cost = trashGrantCost(player, card_id, grant, targets, false);
-        if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
+        const int t_e = cost_step_tranches_ ? cost_step_tranches_->energy : 0;
+        const int t_p = cost_step_tranches_ ? cost_step_tranches_->base_power : 0;
+        if (!resource::canPayIn(state_, player, cost.energy + t_e, cost.power + t_p,
+                                cost.domains, f))
             cost = trashGrantCost(player, card_id, grant, targets, true);
-        ok = effect_executor_->payResources(player, cost.energy, cost.power, cost.domains, f);
-        if (ok && cost.extra_any > 0)
+        // [Repeat] tranches decided for this play are paid with it.
+        cost.energy += t_e;
+        cost.power += t_p;
+        // The grant's cost IS the play's cost (CR 829.1.c.1: Flow; a "play me
+        // from your trash for ..." permission): paid as a card's cost is, the
+        // payer naming every rune, about this card (testing phase U18).
+        std::vector<Domain> domains;
+        for (int d = 0; d < static_cast<int>(Domain::Count); ++d)
+            if (cost.domains & (1u << d)) domains.push_back(static_cast<Domain>(d));
+        ok = payLikeACardCost(player, card_id, cost.energy, cost.power, domains);
+        if (ok && cost.extra_any > 0) {
+            const EffectExecutor::ActingFor acting(*effect_executor_, card_id);
             ok = effect_executor_->payResources(player, 0, cost.extra_any, resource::kAnyDomain, f);
+        }
     }
     if (ok && grant.banish_after && state_.objectExists(card_id))
         state_.getObject(card_id).banish_on_leave_chain = true;
@@ -9509,43 +9974,52 @@ bool GameEngine::payCardCost(PlayerId player, GameObjectId card_obj,
     // (commit 9) will use begin/advance/resolve directly.
     const int extra_any = state_.objectExists(card_obj)
         ? extraAnyPowerCost(state_, player, state_.getObject(card_obj)) : 0;
-    auto adv = beginCostPayment(player, card_obj, adj);
-    while (adv.kind == CostPaymentAdvance::Kind::NeedDecision) {
-        // Always emit the decision snapshot (forced-choice visibility
-        // — see prior commit). Trace label depends on phase.
-        const char* label = state_.cost_cursor->phase ==
-            GameState::CostPaymentCursor::Phase::PayingEnergy
-            ? "pick rune to exhaust for energy"
-            : "pick rune to recycle for power";
-        state_.decision_index++;
-        RIFT_TRACE_DECISION(events_, "DECISION #" +
-                          std::to_string(state_.decision_index) +
-                          " (" + toString(player) + "): " + label +
-                          " [" + std::to_string(adv.legal.size()) +
-                          " options]");
-
-        // Always query the agent — even when only one legal option
-        // exists. Previously this short-circuited and auto-picked
-        // adv.legal[0], which caused the agent's policy/training
-        // signal to MISS the "forced last-rune" cost-payment step
-        // (the last rune in a 3E/3-runes payment). The agent still
-        // returns the only option for trivial cases; HumanAgent
-        // auto-passes without surfacing UI, so the player UX is
-        // unchanged. The win is training fidelity.
-        auto chosen = askAgent(player, adv.legal,
-            enginePrompt(player,
-                         state_.cost_cursor->phase ==
-                                 GameState::CostPaymentCursor::Phase::PayingEnergy
-                             ? PromptKind::RuneForEnergy
-                             : PromptKind::RuneForPower,
-                         card_obj));
-        if (on_decision) on_decision(state_, adv.legal, chosen);
-        adv = resolveCostPaymentDecision(chosen);
-    }
+    askRunesFor(player, card_obj, beginCostPayment(player, card_obj, adj));
     if (extra_any > 0)
         effect_executor_->payAnyPower(player, extra_any,
             state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
                                           : SpendFor::Other);
+    return true;
+}
+
+void GameEngine::askRunesFor(PlayerId player, GameObjectId card_obj, CostPaymentAdvance adv) {
+    while (adv.kind == CostPaymentAdvance::Kind::NeedDecision) {
+        if (events_.quiet()) {   // a probe: the engine's order, nobody asked
+            adv = resolveCostPaymentDecision(adv.legal.front());
+            continue;
+        }
+        const bool for_energy = state_.cost_cursor->phase ==
+                                GameState::CostPaymentCursor::Phase::PayingEnergy;
+        // Always emit the decision snapshot (forced-choice visibility).
+        state_.decision_index++;
+        RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
+                          " (" + toString(player) + "): " +
+                          (for_energy ? "pick rune to exhaust for energy"
+                                      : "pick rune to recycle for power") +
+                          " [" + std::to_string(adv.legal.size()) + " options]");
+        // Always query the agent — even when only one legal option exists:
+        // the agent's policy/training signal must not MISS the "forced
+        // last-rune" step. The agent still returns the only option for
+        // trivial cases; HumanAgent auto-passes without surfacing UI.
+        auto chosen = askAgent(player, adv.legal,
+            enginePrompt(player, for_energy ? PromptKind::RuneForEnergy : PromptKind::RuneForPower,
+                         card_obj));
+        if (on_decision) on_decision(state_, adv.legal, chosen);
+        adv = resolveCostPaymentDecision(chosen);
+    }
+}
+
+bool GameEngine::payLikeACardCost(PlayerId player, GameObjectId card_obj, int energy, int power,
+                                  const std::vector<Domain>& domains) {
+    if (!resource::canPayIn(state_, player, energy, power, resource::maskOf(domains),
+                            state_.objectExists(card_obj) ? spendForObject(state_.getObject(card_obj))
+                                                          : SpendFor::Other))
+        return false;
+    RIFT_TRACE(events_, "PAY_COST: " +
+                         (state_.objectExists(card_obj) ? state_.getObject(card_obj).name
+                                                        : std::string("?")) +
+                         " E=" + std::to_string(energy) + " P=" + std::to_string(power));
+    askRunesFor(player, card_obj, beginPaymentOf(player, card_obj, energy, power, domains));
     return true;
 }
 
@@ -9770,7 +10244,21 @@ Prompt GameEngine::enginePrompt(PlayerId decider, PromptKind kind, GameObjectId 
         : Prompt{};
     p.kind = kind;
     p.decider = decider;
-    if (source != kInvalidId) p.source = source;
+    if (source != kInvalidId && source != p.source) {
+        // About another object than the item resolving now (an effect playing
+        // a spell asks that spell's choices while its own ability resolves):
+        // the item's ability is not this question's (testing phase U16: a
+        // spell played by Fizz was "its triggered ability"). A spell asked
+        // about before it is on the chain is described as the spell.
+        p.source = source;
+        p.chain_item = kInvalidId;
+        p.ability_index = -1;
+        p.trigger = TriggerType::None;
+        p.keyword_ability = false;
+        p.is_triggered = false;
+        p.at_finalization = false;
+        p.is_spell = state_.objectExists(source) && state_.getObject(source).isSpell();
+    }
     p.where = where;
     return p;
 }
@@ -10029,4 +10517,26 @@ void GameEngine::detachAllGear(GameObjectId unit_id) {
     state_.getObject(unit_id).attachments.clear();
 }
 
+
+bool GameEngine::payCardCostQuietly(PlayerId player, GameObjectId card_obj,
+                                    const Card::PlayCostAdjust& adj, int extra_any,
+                                    int extra_energy, int extra_base_power) {
+    if (!state_.objectExists(card_obj)) return false;
+    const auto& card = state_.getObject(card_obj);
+    if (card.card_def_id == kInvalidId) return false;
+    const SpendFor f = spendForObject(card);
+    {
+        auto net = adj.ignore_cost ? std::pair<int, int>{0, 0} : netCardCost(player, card_obj, adj);
+        net.first += extra_energy;
+        net.second += extra_base_power;
+        const auto mask = resource::maskOf(card_db_.get(card.card_def_id).domains);
+        if ((net.first > 0 || net.second > 0) &&
+            !effect_executor_->payResources(player, net.first, net.second, mask, f))
+            return false;
+    }
+    const int extra = extra_any + extraAnyPowerCost(state_, player, card);
+    return extra <= 0 || effect_executor_->payAnyPower(player, extra, f);
+}
+
 } // namespace riftbound
+

@@ -26,6 +26,7 @@ GameResult GameRunner::run() {
     // Per-game resources (all stack/heap local — thread-safe)
     EventBus events;
     GameEngine engine(card_db_, events, card_registry_);
+    engine.setMatchFormat(config_.match_format);
     StateRenderer renderer(card_db_);
     renderer.show_hand = config_.show_hand;
 

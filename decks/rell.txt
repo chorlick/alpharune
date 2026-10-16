@@ -1,0 +1,31 @@
+# Coverage list (testing phase batch 8, C1): Rell, Magnetic ("When I attack, you
+# may play an Equipment with Energy cost no more than [2]") with cheap Equipment.
+Legend:
+1 Lucian, Purifier
+
+Champion:
+1 Lucian, Merciless
+
+MainDeck:
+3 Rell, Magnetic
+3 Serrated Dirk
+3 Warmog's Armor
+3 Doran's Blade
+3 Hexdrinker
+3 Recurve Bow
+3 Legion Rearguard
+3 Eager Drakehound
+3 Gem Jammer
+3 Laurent Bladekeeper
+3 Pit Rookie
+3 Veteran Poro
+3 Crackshot Corsair
+
+Battlefields:
+1 Seat of Power
+1 Sunken Temple
+1 Forbidding Waste
+
+Runes:
+6 Fury Rune
+6 Body Rune

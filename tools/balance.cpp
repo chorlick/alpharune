@@ -71,11 +71,12 @@ Spec parseSpec(const std::string& s) {
 }
 
 std::unique_ptr<AgentInterface> build(const Spec& s, const std::string& d1, const std::string& d2,
-                                      uint64_t engine_seed, uint64_t agent_seed) {
+                                      uint64_t engine_seed, uint64_t agent_seed,
+                                      MatchFormat format) {
     if (s.kind == "random") return std::make_unique<RandomAgent>(agent_seed);
     if (s.kind == "random-player") return std::make_unique<RandomPlayerAgent>(agent_seed);
     return std::make_unique<IsMctsAgent>(d1, d2, "", engine_seed, agent_seed, s.sims,
-                                         IsMctsAgent::WorldModel::Sampled);
+                                         IsMctsAgent::WorldModel::Sampled, format);
 }
 
 int seatNum(PlayerId p) {
@@ -89,6 +90,7 @@ int main(int argc, char** argv) {
     int games = 100, start = 0, threads = 3;
     bool draw_pairs = false;
     uint64_t seed = 1;
+    MatchFormat format = MatchFormat::BestOf1;
     for (int i = 1; i < argc; ++i) {
         const std::string k = argv[i];
         auto next = [&]() -> std::string {
@@ -105,6 +107,7 @@ int main(int argc, char** argv) {
         else if (k == "--out") out_path = next();
         else if (k == "--tmp-dir") tmp_dir = next();
         else if (k == "--draw-pairs") draw_pairs = true;
+        else if (k == "--game-mode") format = matchFormatFromString(next());
         else { std::cerr << "unknown flag " << k << "\n"; return 2; }
     }
     if (out_path.empty()) { std::cerr << "--out is required\n"; return 2; }
@@ -173,10 +176,11 @@ int main(int argc, char** argv) {
             GameResult r;
             int first = 0, turn = 0;
             try {
-                auto a1 = build(spec, p1, p2, engine_seed, mix(gs + 1));
-                auto a2 = build(spec, p1, p2, engine_seed, mix(gs + 2));
+                auto a1 = build(spec, p1, p2, engine_seed, mix(gs + 1), format);
+                auto a2 = build(spec, p1, p2, engine_seed, mix(gs + 2), format);
                 EventBus bus;
                 GameEngine engine(cards.db, bus, cards.registry);
+                engine.setMatchFormat(format);
                 r = engine.runGame(d1, d2, *a1, *a2, engine_seed);
                 if (r.termination_reason == "engine_error") error = "engine_error";
                 first = seatNum(engine.state().turn.starting_player);

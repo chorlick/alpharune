@@ -260,7 +260,10 @@ TEST_F(ChainTriggerFixTest, Repeat_RepeatedEffectGetsItsOwnChoiceAndHappens) {
     playFromHand(spell);
 
     EXPECT_EQ(p1_.value_asked, 1) << "asked once whether to pay Repeat";
-    EXPECT_EQ(p1_.object_asked, 2) << "one target per execution";
+    // One target per execution, and the two runes of the Repeat's [2]: since
+    // batch 8 (U11) the Repeat is paid in the spell's own cost payment, where
+    // the payer names every rune (forced picks included), as for a card's cost.
+    EXPECT_EQ(p1_.object_asked, 4) << "one target per execution, one prompt per rune";
     EXPECT_EQ(s().getObject(first).temp_might_bonus, -2);
     EXPECT_EQ(s().getObject(second).temp_might_bonus, -2) << "the repeated effect happened";
     EXPECT_FALSE(engine_->testHook_executor().hasPendingChoice()) << "no choice left behind";
@@ -280,7 +283,9 @@ TEST_F(ChainTriggerFixTest, Repeat_HandRolledChoiceCardFinishesItsRepeat) {
     playFromHand(spell);
 
     ASSERT_EQ(p1_.value_asked, 1) << "the Repeat cost was offered";
-    EXPECT_EQ(p1_.object_asked, 2) << "each execution asks which card to draw";
+    // Each execution asks which card to draw, and the Repeat's [P] rune is
+    // named in the spell's own cost payment (batch 8, U11).
+    EXPECT_EQ(p1_.object_asked, 3) << "each execution asks which card to draw; one rune";
     EXPECT_EQ(s().player(P1).hand.size(), 2u) << "drew one card per execution";
     EXPECT_EQ(s().player(P1).main_deck.size(), 2u);
     EXPECT_FALSE(engine_->testHook_executor().hasPendingChoice())

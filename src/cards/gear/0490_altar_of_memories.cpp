@@ -53,7 +53,9 @@ public:
         if (ps.hand.empty()) return;
         // Choose a hand card to put on top or bottom of the Main Deck.
         std::vector<GameObjectId> hand(ps.hand.begin(), ps.hand.end());
-        GameObjectId card = pickTarget(ctx, "Altar: put which hand card onto deck?", hand);
+        // A card picked from a hand is not a target (CR 355.10.a; testing
+        // phase R13's class, found again by batch 8).
+        GameObjectId card = pickUnseenCard(ctx, "Altar: put which hand card onto deck?", hand);
         if (card == kInvalidId) return;  // suspend or empty
         if (std::find(ps.hand.begin(), ps.hand.end(), card) == ps.hand.end()) return;
         int mode = pickMode(ctx, "Altar: top or bottom of deck?", 2, {"top", "bottom"});

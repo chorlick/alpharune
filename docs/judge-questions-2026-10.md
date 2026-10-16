@@ -350,3 +350,78 @@ Which rule wins when both apply?
 - Dauntless Vanguard / Deadbloom Predator (`Card::kPlayToOccupiedEnemyBattlefield`): a battlefield the opponent controls with their units there (B does not qualify; A is allowed anyway, as a battlefield I control): `Batch6Test.R14_DauntlessVanguard_AnEnemyBattlefieldIsOneTheOpponentControls`.
 
 Whatever the answer, the two should read the same; the engine will be made to follow it.
+
+## 18. Does a unit that enters the board with 5 or more Might "become Mighty"?
+
+**Cards**
+
+- Grand Duelist: "When one of your units becomes [Mighty], you may exhaust me to channel 1 rune exhausted."
+- Fiora, Worthy: "When one of your units becomes [Mighty], you may pay [Y] to ready it."
+- Harnessed Dragon (a unit played with 5 or more [M]).
+
+**Situation.** I play a unit whose printed Might is 6. It enters the board with 6 [M].
+
+**Question.** Has it "become Mighty", so that Grand Duelist triggers? And if it has, is that the same moment as its play (so that its own "When you play me" ability and Grand Duelist's are triggered simultaneously and I order them, 383.3.d), or a later one?
+
+**Rules found**
+
+- For "no": 711, "Units in Non-Board Zones are evaluated according to their printed Might" (its example: a unit in the trash "is Mighty" with printed Might 5 or more). The card in hand was already Mighty with 6, so 709's change "from being less than 5 to being 5 or greater" never happens.
+- For "yes": 710 evaluates units on the board by their current Might, and a new object enters the board (124.1); a unit that was not on the board had no current Might, so its first one, 6, is "becoming" Mighty on the board.
+- Simultaneity: 383.3.d orders abilities "Triggered simultaneously"; the play is announced once the permanent is on the board (383.4.a.2), the Might is checked by the next Cleanup (319).
+
+**What the engine does.** Yes: the Cleanup after the unit enters finds it newly Mighty and Grand Duelist triggers (`Batch8Test.Q18_Pin_AUnitEnteringWithFiveMightBecomesMighty`). Its play trigger and the "becomes Mighty" abilities are two trigger batches (the play announcement, then the Cleanup), so their order is not asked (round 2, U4's second case: Harnessed Dragon and Grand Duelist, g01).
+
+## 19. Prodigal Explorer: what counts as "chosen ... twice"?
+
+**Cards**
+
+- Prodigal Explorer: "[E]: [Reaction] — Draw 1. Use only if you've chosen enemy units and/or gear twice this turn with spells or unit abilities."
+- Bellows Breath with its [Repeat] (two executions), or any spell that chooses two enemy units.
+
+**Situation.** I play one spell this turn that chooses two enemy units (or one spell whose two [Repeat] executions each choose one).
+
+**Question.** Have I "chosen enemy units and/or gear twice"? Is it counted per object chosen, per spell or ability that chose, or per execution?
+
+**Rules found**
+
+- 355.5 ("choose") and 355.9 describe each object a spell chooses as a choice of its own, which supports counting objects.
+- The card's "and/or" suggests counting choosing events of either kind, which supports one per spell or ability.
+- 820.2 makes each [Repeat] execution's choices separate choices of the one spell.
+
+**What the engine does.** It counts each enemy unit or gear chosen by a spell or a unit's ability (`GameState::noteChosen`, `enemy_choices_this_turn`): one spell choosing two enemy units meets the condition (`Batch8Test.Q19_Pin_OneSpellChoosingTwoEnemyUnitsCountsTwice`; round 2 g02, decks stream question).
+
+## 20. Ordering copies of one triggered ability
+
+**Cards**
+
+- Vilemaw's Lair / any two copies of one card whose ability triggers on the same event: two Scrapheaps ("When this is played, discarded, or killed, draw 1.") killed together by Thermo Beam; two Spirit Wheels; three Sprite tokens' [Temporary].
+
+**Situation.** Two copies of one ability, with the same controller, trigger simultaneously.
+
+**Question.** Does the controller order them (383.3.d), as for different abilities? The order can matter: in round 2 g14 the Sprite carrying Brutalizer died first. If they are ordered, must the order be expressed by which object each copy belongs to (its place, status, attachments), since the abilities' text is the same?
+
+**Rules found**
+
+- 383.3.d: "If more than one Triggered Ability is Triggered simultaneously, then the player that controls the Abilities selects the order". It does not except copies.
+- Nothing says that identical abilities of different objects are one ability.
+
+**What the engine does.** It asks: each copy is an ability of its own object, and the order prompt lists them (`Batch8Test.Q20_Pin_CopiesOfOneAbilityAreOrderedLikeDifferentOnes`). The prompt describes each option by its source object as a player sees it (`openspiel::visibleObjectDescription`); two copies that look the same in every visible way (two untouched Scrapheaps in a base) are told apart only by their action ids (round 2 U17: g12 "Order — Vilemaw" twice; g13, g14, g16).
+
+## 21. Which Gold is the Gold token?
+
+**Cards**
+
+- Gold, Spiritforged (326): "Kill this, [E]: [Reaction] — [Add] [A]. ..."
+- Gold, Unleashed (564): "[Reaction][>] Kill this, [E]: [Add] [A]."
+- Unleashed cards that make Gold (Pyke, Bloodharbor Ripper and others): "play a Gold gear token".
+
+**Situation.** An Unleashed card makes a Gold token.
+
+**Question.** Is the token the Unleashed printing of Gold? Does it matter which printing a token is, when the two texts differ only in how the [Reaction] timing is printed?
+
+**Rules found**
+
+- 350.2 / 185.2.a: a token is played; nothing says which printing of a named token card is used.
+- The two texts give the same ability (a [Reaction] [Add] that kills and exhausts it).
+
+**What the engine does.** Every Gold token is card 326 (`createGoldToken`, `kGoldGearCardDefId`; `Batch8Test.Q21_Pin_EveryGoldTokenIsCard326`), so card 564 never enters play (round 2 U21; a 20,000-game fuzz run had 0 games of 564 in play). If the judges say the printing matters, the token will be made from the card that names it.

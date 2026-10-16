@@ -67,6 +67,14 @@ struct StepResult {
     Prompt prompt;
 };
 
+/// One [Repeat] cost (CR 820.1.c): see GameEngine::repeatTranchesFor.
+struct RepeatTranche {
+    int energy = 0;
+    int power = 0;
+    resource::DomainMask domains = resource::kAnyDomain;
+    int discard_cards = 0;
+};
+
 class GameEngine {
 public:
     GameEngine(const CardDB& card_db, EventBus& event_bus,
@@ -154,6 +162,13 @@ public:
     /// `beginGame` / `runGame` to play the same game under other ids
     /// (`HiddenOrderLeak.*`).
     void setIdLabelSalt(uint64_t salt) { id_label_salt_ = salt; }
+
+    /// The Mode of Play of the next `runGame` / `beginGame` (testing phase
+    /// V1-G4): Duel (default) draws each player's battlefield at random from
+    /// the engine's RNG with no decision (CR 487.5); Match asks each player
+    /// (CR 488.5, PromptKind::BattlefieldSetup). Set before the game starts.
+    void setMatchFormat(MatchFormat format) { match_format_ = format; }
+    MatchFormat matchFormat() const { return match_format_; }
 
     /// Inspect what the engine is currently waiting on without advancing.
     /// Throws the engine's exception if the game failed (see applyChoice).
@@ -381,6 +396,7 @@ private:
     GameState state_;
     std::mt19937_64 rng_;
     uint64_t id_label_salt_ = 0;   // see setIdLabelSalt
+    MatchFormat match_format_ = MatchFormat::BestOf1;   // see setMatchFormat
 
     // Connection for the CardRevealedEvent subscriber installed in
     // the constructor. Stored so the destructor can disconnect — if
@@ -637,6 +653,20 @@ private:
     /// covered by pool energy + zero power); else NeedDecision with
     /// the first rune-pick options. Side effects: writes
     /// state_.cost_cursor; consumes one-shot CostModifier entries.
+    /// The payment cursor for `energy` and `power` (of `domains`) owed for
+    /// `card_obj`: floating resources first, then a rune per decision.
+    CostPaymentAdvance beginPaymentOf(PlayerId player, GameObjectId card_obj, int energy,
+                                      int power, const std::vector<Domain>& domains);
+    /// Pays `energy` and `power` (of `domains`) for playing `card_obj` the way
+    /// its own cost is paid (payCardCost): every rune named by the payer,
+    /// forced picks included, the prompts about the card (testing phase U18:
+    /// a play from the trash for its Flow or a granted cost). Inside a probe
+    /// (EventBus::quiet) nobody is asked: the first rune each time.
+    bool payLikeACardCost(PlayerId player, GameObjectId card_obj, int energy, int power,
+                          const std::vector<Domain>& domains);
+    /// The rune decisions of a payment cursor, each asked of the payer (one
+    /// call site for every card-cost payment: PromptCensus).
+    void askRunesFor(PlayerId player, GameObjectId card_obj, CostPaymentAdvance adv);
     CostPaymentAdvance beginCostPayment(PlayerId player, GameObjectId card_obj,
                                         const Card::PlayCostAdjust& adj = {});
     /// Inspect the cursor and produce the next NeedDecision (or Done
@@ -679,12 +709,20 @@ private:
     bool effectPlayAffordable(PlayerId player, GameObjectId card_id) const;
     /// An effect play of a spell that pays (EffectExecutor::playPayingCost):
     /// the targets chosen before its cost, for its chain item.
+    using RepeatTranche = ::riftbound::RepeatTranche;
     struct EffectPlayedSpell {
         GameObjectId card = kInvalidId;
         std::vector<GameObjectId> targets;
         bool target_chosen_at_play = false;
+        int repeats = 0;                                        // [Repeat] paid (U10)
+        int repeat_energy = 0;
+        std::vector<ChainItem::ExecutionChoices> repeat_choices;
     };
     std::optional<EffectPlayedSpell> effect_played_spell_;
+    /// The play being made from the trash uses the card's alternative grant
+    /// (PlayerState::TrashReplayGrant::alternative): set from the intent's
+    /// use_alt_play_cost for that play (testing phase U13).
+    bool trash_grant_alternative_ = false;
     void executeStandardMove(const Intent& intent);
     void executeMulligan(const Intent& intent);
     void executeAssignCombatDamage(const Intent& intent);
@@ -1149,6 +1187,86 @@ private:
     std::optional<ChainItem> prefinalized_spell_;
     /// "You may make new choices for it" (CR 750-755).
     void makeNewChoicesFor(ChainItemId item_id);
+
+    // ── [Repeat] (CR 820) ── A Repeat cost is an Optional Additional Cost
+    // decided in the Make Relevant Choices step with the play's other choices
+    // (CR 355.1.a), and each extra execution's choices are made then too (CR
+    // 820.2) — before any cost is paid (testing phase U11), on a play from a
+    // hand, from the trash and by an effect that pays (U10).
+    /// The spell's Repeat costs now: its own (Card::repeatCosts) or, with
+    /// none printed, a granted one (The Academy / Temporal Portal, Syndra),
+    /// with Marai Spire's reduction.
+    std::vector<RepeatTranche> repeatTranchesFor(PlayerId player, GameObjectId card) const;
+    /// `fn` run on a copy of the game, quiet, thrown away (parkGame): a
+    /// payment tried before it is offered.
+    bool tryOnACopy(const std::function<bool()>& fn);
+    /// Pays `card`'s own cost with `adj`, `extra_any` [A] on top (a Deflect
+    /// owed with it) and `extra_energy` / `extra_base_power` of its Domains
+    /// (the [Repeat] tranches paid with it), the engine's way, asking nobody
+    /// (a copy of the game being tried); false if it cannot be paid.
+    bool payCardCostQuietly(PlayerId player, GameObjectId card, const Card::PlayCostAdjust& adj,
+                            int extra_any, int extra_energy = 0, int extra_base_power = 0);
+    /// What the accepted tranches add to the cost step, split by where
+    /// their Power may come from (relative to `base_mask`, the Domains of the
+    /// play's own Power): Energy and Power of exactly those Domains are paid
+    /// with the play's own cost in one payment (the cursor: every rune named
+    /// by the payer, Energy first, so no pick can leave the rest unpayable);
+    /// Power of any Domain is paid just before it, from what that cost cannot
+    /// use (resource::payAnyPowerAheadOfCost); Power of other Domains before
+    /// that, the engine's way.
+    struct TrancheCost {
+        int energy = 0;
+        int base_power = 0;
+        int any_power = 0;
+        std::vector<std::pair<resource::DomainMask, int>> other_power;
+        int discards = 0;
+    };
+    static TrancheCost trancheCost(const std::vector<RepeatTranche>& tranches,
+                                   const std::vector<std::pair<int, int>>& nets,
+                                   resource::DomainMask base_mask);
+    /// Pays a TrancheCost's Power of other Domains and of any Domain, ahead of
+    /// the play's own cost. With `rest_payable` the payer names the runes of
+    /// the any-Domain part, each offered only if the rest stays payable.
+    bool payTranchePartsAhead(PlayerId player, const TrancheCost& tc,
+                              resource::DomainMask base_mask,
+                              const std::function<bool()>* rest_payable);
+    /// The accepted [Repeat] costs of one play and their extra executions'
+    /// choices, all decided before anything is paid (CR 355.1.a, 820.2).
+    struct RepeatPlan {
+        std::vector<RepeatTranche> accepted;
+        std::vector<ChainItem::ExecutionChoices> choices;
+        TrancheCost cost;
+        int energy = 0;   // the Energy the tranches cost (for "spent" counts)
+    };
+    /// `pay_base_with(tc)` pays, on the state it is called on, the play's
+    /// own cost with `tc`'s Energy and base-Domain Power added, the engine's
+    /// way (a copy of the game being tried). `owed_base` is the play's own
+    /// net Energy and Power (Deflects of its targets included).
+    RepeatPlan planRepeats(PlayerId player, GameObjectId card, resource::DomainMask base_mask,
+                           const std::function<bool(const TrancheCost&)>& pay_base_with,
+                           std::pair<int, int> owed_base,
+                           const std::vector<GameObjectId>& play_targets,
+                           bool target_chosen_at_play);
+    /// The extra executions' choices, made before the costs on a stand-in for
+    /// the spell's chain item that holds the first execution's choices. A
+    /// choice is offered only if, with its Deflect paid, `cost_step()` can
+    /// still be paid (EffectExecutor::setChoiceFilter); a Deflect is paid from
+    /// what that cost cannot use (`owed`: EffectExecutor::setOwedCost).
+    std::vector<ChainItem::ExecutionChoices> chooseRepeatsBeforeCost(
+        PlayerId player, GameObjectId card, const std::vector<GameObjectId>& play_targets,
+        bool target_chosen_at_play, int repeats, const std::function<bool()>& cost_step,
+        EffectExecutor::OwedCost owed);
+    /// The TrancheCost the play's own payment adds (beginCostPayment and
+    /// payTrashReplayGrant read it), for one payment.
+    const TrancheCost* cost_step_tranches_ = nullptr;
+    /// The extra executions' choices of chain item `item_id` (CR 820.2), made
+    /// the way "make new choices" makes them; the first execution's are put
+    /// back afterwards.
+    void chooseRepeatExecutions(ChainItemId item_id);
+    /// Extra executions chosen before the cost, waiting for the spell's chain
+    /// item (adopted with prefinalized_spell_).
+    std::optional<std::vector<ChainItem::ExecutionChoices>> prechosen_repeats_;
+    int prechosen_repeat_count_ = 0;
     /// One agent decision among `options` for `player`, logged like any other.
     Intent decideNow(PlayerId player, const std::vector<Intent>& options, PromptKind kind,
                      GameObjectId source, const std::string& what,

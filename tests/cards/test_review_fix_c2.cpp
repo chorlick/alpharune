@@ -242,17 +242,28 @@ TEST_F(ReviewFixC2Test, Singularity_TwoEnemyUnitsOrOneWithNoFriendlyUnit) {
 
 TEST_F(ReviewFixC2Test, PiercingLight_FirstAtABattlefield_SecondAnywhere_OrNone) {
     // "Deal 2 to a unit at a battlefield, then deal 2 to up to one other unit."
+    // One play (batch 8, U8/U9): the first unit is asked from the units at a
+    // battlefield, then the other one from every other unit, or none.
     auto at_bf = addUnit(P2, kInvalidId, 5, 0);
     auto in_base = addUnit(P2, kInvalidId, 5);
     auto spell = addToHand(P1, kPiercingLight);
 
     auto plays = playsOf(spell);
-    ASSERT_EQ(plays.size(), 2u);
-    EXPECT_TRUE(hasTargets(plays, {at_bf})) << "the second unit is optional";
-    EXPECT_TRUE(hasTargets(plays, {at_bf, in_base})) << "the second unit may be in a base";
-    for (const auto& i : plays) EXPECT_EQ(i.targets.front(), at_bf) << "the first is at a battlefield";
+    ASSERT_EQ(plays.size(), 1u);
+    EXPECT_TRUE(plays.front().targets.empty()) << "the targets are prompts";
 
-    playWithTargets(spell, {at_bf, in_base});
+    std::vector<std::vector<Intent>> prompts;
+    EnginePathAgent agent([&](const std::vector<Intent>& legal) {
+        prompts.push_back(legal);
+        const GameObjectId want = prompts.size() == 1 ? at_bf : in_base;
+        for (const auto& i : legal)
+            if (!i.chosen_objects.empty() && i.chosen_objects.front() == want) return i;
+        return legal.front();
+    });
+    playThroughEngine(spell, &agent);
+    ASSERT_EQ(prompts.size(), 2u);
+    EXPECT_EQ(prompts[0].size(), 1u) << "the first is at a battlefield";
+    EXPECT_EQ(prompts[1].size(), 2u) << "the other: the unit in a base, or none";
     EXPECT_EQ(state.getObject(at_bf).damage_marked, 2);
     EXPECT_EQ(state.getObject(in_base).damage_marked, 2);
 }

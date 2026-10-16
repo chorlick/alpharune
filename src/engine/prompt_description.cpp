@@ -178,14 +178,41 @@ std::string actionWords(const GameState& state, const Intent& i, PlayerId observ
 
 }  // namespace
 
+namespace {
+/// The battlefield slot whose card `object` is, if it is one.
+const BattlefieldState* slotOfCard(const GameState& state, GameObjectId object) {
+    for (const auto& bf : state.battlefields)
+        if (bf.card_object_id == object) return &bf;
+    return nullptr;
+}
+/// Whose an object is, as a player is told: a battlefield is its
+/// controller's (CR 190.6; nobody's while uncontrolled), anything on the
+/// board its controller's, anything else its owner's (testing phase U16: a
+/// battlefield was named by the player who brought it).
+PlayerId holderOf(const GameState& state, GameObjectId object) {
+    const GameObject& o = state.getObject(object);
+    if (const auto* bf = slotOfCard(state, object))
+        return bf->controller.value_or(PlayerId::None);
+    return o.location.has_value() ? o.controller : o.owner;
+}
+}  // namespace
+
 std::string objectInWords(const GameState& state, GameObjectId object, PlayerId observer) {
     if (object == kInvalidId || !state.objectExists(object)) return "nothing";
     const GameObject& o = state.getObject(object);
-    const PlayerId holder = o.location.has_value() ? o.controller : o.owner;
-    std::string out = whose(holder, observer) + " ";
+    std::string out = whose(holderOf(state, object), observer) + " ";
     out += knowledge::identityVisible(state, object, observer) ? o.name.get()
                                                                 : std::string("card");
+    // What tells two objects of one name apart on the board (testing phase
+    // U17: a [Temporary] token copy and the card it copies were described
+    // alike): a token says so, and an exhausted permanent says so.
+    if (o.location.has_value()) {
+        if (o.isToken()) out += " token";
+        if (o.is_exhausted) out += " (exhausted)";
+    }
     if (o.location.has_value()) out += " at " + locationWords(*o.location, observer);
+    else if (const auto* bf = slotOfCard(state, object))
+        out += " (battlefield " + toString(bf->id) + ")";
     else out += std::string(" ") + zoneWords(o.zone.get());
     return out;
 }
@@ -202,7 +229,7 @@ PromptDescription describePrompt(const GameState& state, const Prompt& prompt,
     if (prompt.source != kInvalidId && state.objectExists(prompt.source)) {
         const GameObject& src = state.getObject(prompt.source);
         d.has_source = true;
-        d.asker = relative(src.location.has_value() ? src.controller : src.owner, observer);
+        d.asker = relative(holderOf(state, prompt.source), observer);
         if (knowledge::identityVisible(state, prompt.source, observer))
             d.source_card = src.card_def_id;
         d.source_zone = src.zone.get();
@@ -210,7 +237,8 @@ PromptDescription describePrompt(const GameState& state, const Prompt& prompt,
     if (prompt.is_spell) d.ability = PromptDescription::Ability::Spell;
     else if (prompt.keyword_ability) d.ability = PromptDescription::Ability::Keyword;
     else if (prompt.ability_index >= 0) d.ability = PromptDescription::Ability::Activated;
-    else if (prompt.trigger != TriggerType::None) d.ability = PromptDescription::Ability::Triggered;
+    else if (prompt.trigger != TriggerType::None || prompt.is_triggered)
+        d.ability = PromptDescription::Ability::Triggered;
     else if (prompt.chain_item != kInvalidId) d.ability = PromptDescription::Ability::Permanent;
     d.ability_index = prompt.ability_index;
     d.trigger = prompt.trigger;

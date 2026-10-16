@@ -1,0 +1,32 @@
+# Coverage list (testing phase batch 8, C1): Yasuo, Windrider (546) as the
+# Chosen Champion, with moves to reach "the third time I move in a turn".
+Legend:
+1 Yasuo, Unforgiven
+
+Champion:
+1 Yasuo, Windrider #546
+
+MainDeck:
+3 Ride the Wind
+3 Flash
+3 Charm
+3 Emperor's Divide
+3 Tideturner
+3 The Syren
+3 Forgotten Signpost
+3 Stellacorn Herder
+3 Traveling Merchant
+3 Treasure Hunter
+3 Lonely Poro
+3 Mystic Poro
+2 Akali, Silent
+1 Shadow Order Disciple
+
+Battlefields:
+1 Seat of Power
+1 Sunken Temple
+1 Forbidding Waste
+
+Runes:
+6 Calm Rune
+6 Chaos Rune

@@ -203,6 +203,13 @@ std::string objectInWords(const GameState& state, GameObjectId object, PlayerId 
     std::string out = whose(holderOf(state, object), observer) + " ";
     out += knowledge::identityVisible(state, object, observer) ? o.name.get()
                                                                 : std::string("card");
+    // What tells two objects of one name apart on the board (testing phase
+    // U17: a [Temporary] token copy and the card it copies were described
+    // alike): a token says so, and an exhausted permanent says so.
+    if (o.location.has_value()) {
+        if (o.isToken()) out += " token";
+        if (o.is_exhausted) out += " (exhausted)";
+    }
     if (o.location.has_value()) out += " at " + locationWords(*o.location, observer);
     else if (const auto* bf = slotOfCard(state, object))
         out += " (battlefield " + toString(bf->id) + ")";

@@ -8,8 +8,12 @@
 #include "card_test_fixture.h"
 #include "cards/card_helpers.h"
 #include "engine/prompt_description.h"
+#include "rules/deck_validator.h"
+#include "rules/random_deck.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <random>
 #include <functional>
 #include <optional>
@@ -1342,6 +1346,103 @@ TEST_F(Batch8Test, Q21_Pin_EveryGoldTokenIsCard326) {
     ASSERT_NE(gold, kInvalidId);
     EXPECT_EQ(o(gold).card_def_id, CardDefId{326});
     ASSERT_NE(card_registry.get(564), nullptr) << "the Unleashed Gold is a registered card";
+}
+
+
+// U17 (the description half): a token copy and the card it copies, one ready
+// and one exhausted, were "your Karthus, Eternal at battlefield 1" both.
+TEST_F(Batch8Test, U17_ATokenCopyAndTheCardAreDescribedApart) {
+    const auto card = addUnit(P1, kInvalidId, 3, 0);
+    o(card).name = "Karthus, Eternal";
+    o(card).is_exhausted = true;
+    const auto copy = addUnit(P1, kInvalidId, 3, 0);
+    o(copy).name = "Karthus, Eternal";
+    o(copy).is_token = true;
+    const std::string a = objectInWords(state, card, P1);
+    const std::string b = objectInWords(state, copy, P1);
+    EXPECT_NE(a, b);
+    EXPECT_NE(a.find("(exhausted)"), std::string::npos) << a;
+    EXPECT_NE(b.find("token"), std::string::npos) << b;
+}
+
+
+// U11 (found by the coverage run): with the [Repeat] decided before the cost,
+// the card's own rune picks must leave the tranche payable. Bellows Breath
+// ([1][B], [Repeat] [1][B]) with two Mind runes: both are exhausted for the
+// two [1] and both recycled for the two [B] — but recycling the READY rune
+// for the card's [B] left the Repeat's [1] unpayable (an engine error in 56
+// coverage games). Only picks that keep the Repeat payable are offered.
+TEST_F(Batch8Test, U11_TheCardsRunePicksKeepTheRepeatPayable) {
+    const CardDefId kBellowsBreath = 402;
+    addUnit(P2, kInvalidId, 4, 0);
+    addRune(P1, Domain::Mind);
+    addRune(P1, Domain::Mind);
+    const auto spell = addToHand(P1, kBellowsBreath);
+    class Last : public EnginePathAgent {
+    public:
+        int rune_prompts = 0, repeat_prompts = 0;
+        Intent decide(const GameState& st, const std::vector<Intent>& legal,
+                      const Prompt& prompt) override {
+            if (prompt.kind == PromptKind::Repeat) {
+                ++repeat_prompts;
+                for (const auto& i : legal) if (i.chosen_value.value_or(0) == 1) return i;
+            }
+            if (prompt.kind == PromptKind::RuneForEnergy || prompt.kind == PromptKind::RuneForPower) {
+                ++rune_prompts;
+                return legal.back();   // the pick that broke it
+            }
+            return selectAction(st, legal);
+        }
+    } p1;
+    EXPECT_NO_THROW(playThroughEngine(spell, &p1, std::nullopt, nullptr, /*fund=*/false));
+    EXPECT_EQ(p1.repeat_prompts, 1);
+    EXPECT_GE(p1.rune_prompts, 2);
+}
+
+
+// ═══ C1: coverage — a deck list names one printing of a shared name ═══════
+//
+// Yasuo, Windrider is cards 205 and 546. "<name> #<id>" picks the printing
+// (decks/yasuo_546.txt), and RandomDeckBuilder::toDeckList writes it so, so a
+// deck printed for a replay loads back as the same deck.
+TEST_F(Batch8Test, C1_ADeckListPicksAPrintingByIdAndPrintsItBack) {
+    const auto dir = std::filesystem::temp_directory_path();
+    const auto path = (dir / "batch8_printing_test.txt").string();
+    {
+        std::ofstream out(path);
+        out << "Legend:\n1 Yasuo, Unforgiven\n\nChampion:\n1 Yasuo, Windrider #546\n\n"
+               "MainDeck:\n3 Yasuo, Windrider\n\nBattlefields:\n1 Seat of Power\n\n"
+               "Runes:\n6 Calm Rune\n";
+    }
+    const DeckSubmission deck = DeckValidator::loadFromDeckList(path, card_db);
+    EXPECT_EQ(deck.chosen_champion, CardDefId{546});
+    ASSERT_FALSE(deck.main_deck.empty());
+    EXPECT_EQ(deck.main_deck.front(), CardDefId{205}) << "the plain name is the first printing";
+    const RandomDeckBuilder builder(card_db);
+    const std::string printed = builder.toDeckList(deck);
+    EXPECT_NE(printed.find("Yasuo, Windrider #546"), std::string::npos) << printed;
+    {
+        std::ofstream out(path);
+        out << "Legend:\n1 Yasuo, Unforgiven\n\nChampion:\n1 Yasuo, Windrider #13\n";
+    }
+    EXPECT_THROW(DeckValidator::loadFromDeckList(path, card_db), std::runtime_error)
+        << "an id that is not a printing of that name";
+    std::filesystem::remove(path);
+}
+
+// The two coverage lists are legal decks.
+TEST_F(Batch8Test, C1_TheCoverageListsAreLegal) {
+    const char* root = std::getenv("RIFTBOUND_ROOT");
+    ASSERT_NE(root, nullptr);
+    const DeckValidator validator(card_db);
+    for (const char* name : {"yasuo_546.txt", "rell.txt"}) {
+        const auto deck = DeckValidator::loadFromDeckList(
+            std::string(root) + "/decks/" + name, card_db);
+        const auto result = validator.validate(deck);
+        std::string errors;
+        for (const auto& e : result.errors) errors += "\n  " + e;
+        EXPECT_TRUE(result.is_legal) << name << errors;
+    }
 }
 
 }  // namespace riftbound::test::batch_8

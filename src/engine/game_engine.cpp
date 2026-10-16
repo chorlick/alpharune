@@ -153,36 +153,38 @@ void GameEngine::initSubsystems() {
             // choices, before the cost, each only while everything stays
             // payable; the extra executions' choices too (CR 820.2).
             maybePayOptionalAdditionalCost(p, card, 0, adj);
+            RepeatPlan plan;
+            const auto base_mask = resource::maskOf(
+                card_db_.get(state_.getObject(card).card_def_id).domains);
             if (effect_played_spell_.has_value() && effect_played_spell_->card == card) {
-                const std::function<bool()> pay_base = [this, p, card, adj]() {
-                    return payCardCostQuietly(p, card, adj, 0);
-                };
-                auto accepted = decideRepeats(p, card, pay_base);
-                std::vector<ChainItem::ExecutionChoices> chosen;
-                if (!accepted.empty()) {
-                    EffectExecutor::OwedCost owed;
-                    const auto net = netCardCost(p, card, adj);
-                    owed.energy = net.first;
-                    owed.power = net.second;
-                    for (const auto& rc : accepted) {
-                        owed.energy += rc.energy;
-                        owed.power += rc.power;
-                    }
-                    owed.mask = resource::maskOf(
-                        card_db_.get(state_.getObject(card).card_def_id).domains);
-                    owed.spend_for = SpendFor::Spell;
-                    chosen = chooseRepeatsBeforeCost(p, card, effect_played_spell_->targets,
-                        effect_played_spell_->target_chosen_at_play, accepted, pay_base, owed);
-                }
-                effect_played_spell_->repeats = static_cast<int>(accepted.size());
-                effect_played_spell_->repeat_choices = std::move(chosen);
-                effect_repeats_ = std::move(accepted);
+                const auto net = netCardCost(p, card, adj);
+                plan = planRepeats(p, card, base_mask,
+                    [this, p, card, adj](const TrancheCost& tc) {
+                        return payCardCostQuietly(p, card, adj, 0, tc.energy, tc.base_power);
+                    },
+                    {net.first, net.second}, effect_played_spell_->targets,
+                    effect_played_spell_->target_chosen_at_play);
+                effect_played_spell_->repeats = static_cast<int>(plan.accepted.size());
+                effect_played_spell_->repeat_energy = plan.energy;
+                effect_played_spell_->repeat_choices = std::move(plan.choices);
                 state_.player(p).grant_repeat_base_to_next_spell = false;
             }
-            const bool paid = payCardCost(p, card, adj);
-            if (paid && !effect_repeats_.empty()) {
-                payRepeats(p, card, effect_repeats_);
-                effect_repeats_.clear();
+            bool paid = true;
+            if (!plan.accepted.empty()) {
+                const auto net = netCardCost(p, card, adj);
+                const int e_total = net.first + plan.cost.energy;
+                const int p_total = net.second + plan.cost.base_power;
+                const std::function<bool()> rest = [this, p, e_total, p_total, base_mask]() {
+                    return resource::canPayIn(state_, p, e_total, p_total, base_mask,
+                                              SpendFor::Spell);
+                };
+                paid = payTranchePartsAhead(p, plan.cost, base_mask, &rest);
+                if (plan.cost.discards > 0) effect_executor_->discardCards(p, plan.cost.discards);
+            }
+            if (paid) {
+                cost_step_tranches_ = plan.accepted.empty() ? nullptr : &plan.cost;
+                paid = payCardCost(p, card, adj);
+                cost_step_tranches_ = nullptr;
             }
             if (!paid) {
                 effect_played_spell_.reset();
@@ -4160,28 +4162,38 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         const GameObjectId what = intent.card;
         const std::vector<GameObjectId> ct = cost_targets;
         // The grant's cost is the play's own cost (CR 829.1.c.1).
-        const std::function<bool()> pay_base = [this, who, what, ct]() {
-            return payTrashReplayGrant(who, what, ct);
-        };
-        accepted_repeats = decideRepeats(who, what, pay_base);
+        const auto* g0 = trashGrantFor(who, what);
+        const auto grant_cost = trashGrantCost(who, what, *g0, ct, false);
+        const auto base_mask = grant_cost.domains;
+        RepeatPlan plan = planRepeats(who, what, base_mask,
+            [this, who, what, ct](const TrancheCost& tc) {
+                cost_step_tranches_ = &tc;
+                const bool ok = payTrashReplayGrant(who, what, ct);
+                cost_step_tranches_ = nullptr;
+                return ok;
+            },
+            {grant_cost.energy, grant_cost.power + grant_cost.extra_any}, play_targets,
+            target_chosen_at_play);
+        accepted_repeats = plan.accepted;
+        repeat_choices = std::move(plan.choices);
+        bool ahead = true;
         if (!accepted_repeats.empty()) {
-            EffectExecutor::OwedCost owed;
-            if (const auto* g = trashGrantFor(who, what)) {
-                const auto cost = trashGrantCost(who, what, *g, ct, false);
-                owed.energy = cost.energy;
-                owed.power = cost.power + cost.extra_any;
-                owed.mask = cost.domains;
-            }
-            for (const auto& rc : accepted_repeats) {
-                owed.energy += rc.energy;
-                owed.power += rc.power;
-            }
-            owed.spend_for = SpendFor::Spell;
-            repeat_choices = chooseRepeatsBeforeCost(who, what, play_targets,
-                target_chosen_at_play, accepted_repeats, pay_base, owed);
+            const int e_total = grant_cost.energy + plan.cost.energy;
+            const int p_total = grant_cost.power + plan.cost.base_power;
+            const std::function<bool()> rest = [this, who, e_total, p_total, base_mask]() {
+                return resource::canPayIn(state_, who, e_total, p_total, base_mask,
+                                          SpendFor::Spell);
+            };
+            ahead = payTranchePartsAhead(who, plan.cost, base_mask, &rest);
+            if (plan.cost.discards > 0) effect_executor_->discardCards(who, plan.cost.discards);
         }
+        if (!ahead)
+            throw std::logic_error("GameEngine::finishPlaySpell: the [Repeat] costs of " +
+                                   card.name + " were offered as payable and could not be paid");
+        cost_step_tranches_ = accepted_repeats.empty() ? nullptr : &plan.cost;
         paid_via_grant = payTrashReplayGrant(intent.player, intent.card, cost_targets);
-        repeat_energy_spent = payRepeats(who, what, accepted_repeats);
+        cost_step_tranches_ = nullptr;
+        repeat_energy_spent = plan.energy;
     } else if (intent.play_source == Intent::PlaySource::Trash) {
         paid_via_grant = payTrashReplayGrant(intent.player, intent.card, cost_targets);
     }
@@ -4253,32 +4265,42 @@ void GameEngine::finishPlaySpell(const Intent& intent, std::vector<GameObjectId>
         // "You may pay X as an additional cost to play me" (spell variant):
         // chosen before anything is paid (CR 355.1.a), paid with the cost.
         maybePayOptionalAdditionalCost(intent.player, intent.card, deflect, total);
+        RepeatPlan plan;
+        const auto base_mask = resource::maskOf(card_db_.get(card.card_def_id).domains);
         if (!repeats_decided) {
             const PlayerId who = intent.player;
             const GameObjectId what = intent.card;
-            const std::function<bool()> pay_base = [this, who, what, deflect, total]() {
-                return payCardCostQuietly(who, what, total, deflect);
-            };
-            accepted_repeats = decideRepeats(who, what, pay_base);
-            if (!accepted_repeats.empty()) {
-                EffectExecutor::OwedCost owed;
-                const auto net = netCardCost(who, what, total);
-                owed.energy = net.first;
-                owed.power = net.second + deflect;
-                for (const auto& rc : accepted_repeats) {
-                    owed.energy += rc.energy;
-                    owed.power += rc.power;
-                }
-                owed.mask = resource::maskOf(card_db_.get(card.card_def_id).domains);
-                owed.spend_for = SpendFor::Spell;
-                repeat_choices = chooseRepeatsBeforeCost(who, what, play_targets,
-                    target_chosen_at_play, accepted_repeats, pay_base, owed);
-            }
+            const auto net = netCardCost(who, what, total);
+            plan = planRepeats(who, what, base_mask,
+                [this, who, what, deflect, total](const TrancheCost& tc) {
+                    return payCardCostQuietly(who, what, total, deflect, tc.energy, tc.base_power);
+                },
+                {net.first, net.second + deflect}, play_targets, target_chosen_at_play);
+            accepted_repeats = plan.accepted;
+            repeat_choices = std::move(plan.choices);
         }
+        if (!accepted_repeats.empty()) {
+            const PlayerId who = intent.player;
+            const auto net = netCardCost(who, intent.card, total);
+            const int e_total = net.first + plan.cost.energy;
+            const int p_total = net.second + plan.cost.base_power;
+            const std::function<bool()> rest = [this, who, e_total, p_total, deflect, base_mask]() {
+                return resource::canPayIn(state_, who, e_total, p_total, base_mask,
+                                          SpendFor::Spell) &&
+                       resource::payablePowerIn(state_, who, resource::kAnyDomain,
+                                                SpendFor::Spell) >= p_total + deflect;
+            };
+            if (!payTranchePartsAhead(who, plan.cost, base_mask, &rest))
+                throw std::logic_error("GameEngine::finishPlaySpell: the [Repeat] costs of " +
+                                       card.name + " were offered as payable and could not be paid");
+            if (plan.cost.discards > 0) effect_executor_->discardCards(who, plan.cost.discards);
+        }
+        // The card's own cost, with the tranches' Energy and Power of its
+        // Domains in the same payment (beginCostPayment reads them).
+        cost_step_tranches_ = accepted_repeats.empty() ? nullptr : &plan.cost;
         payCardCost(intent.player, intent.card, total);
-        // The [Repeat] tranches, paid in the same cost step after the card's
-        // own cost (as decideRepeats tried them).
-        repeat_energy_spent = payRepeats(intent.player, intent.card, accepted_repeats);
+        cost_step_tranches_ = nullptr;
+        repeat_energy_spent = plan.energy;
         ps.current_play_source = Intent::PlaySource::Hand;
     }
     payDeferredSpellCost(intent.card);   // CR 357.2 (testing phase F6)
@@ -4390,23 +4412,88 @@ std::vector<GameEngine::RepeatTranche> GameEngine::repeatTranchesFor(PlayerId pl
     return out;
 }
 
-std::vector<GameEngine::RepeatTranche> GameEngine::decideRepeats(
-        PlayerId player, GameObjectId card_id, const std::function<bool()>& pay_base) {
-    std::vector<RepeatTranche> accepted;
+GameEngine::TrancheCost GameEngine::trancheCost(const std::vector<RepeatTranche>& tranches,
+                                                const std::vector<std::pair<int, int>>& nets,
+                                                resource::DomainMask base_mask) {
+    TrancheCost tc;
+    for (size_t k = 0; k < tranches.size(); ++k) {
+        tc.energy += nets[k].first;
+        tc.discards += tranches[k].discard_cards;
+        const int pw = nets[k].second;
+        if (pw <= 0) continue;
+        const auto m = tranches[k].domains;
+        if (m == base_mask) tc.base_power += pw;
+        else if (m == resource::kAnyDomain) tc.any_power += pw;
+        else {
+            auto it = std::find_if(tc.other_power.begin(), tc.other_power.end(),
+                                   [m](const auto& p) { return p.first == m; });
+            if (it == tc.other_power.end()) tc.other_power.push_back({m, pw});
+            else it->second += pw;
+        }
+    }
+    return tc;
+}
+
+bool GameEngine::payTranchePartsAhead(PlayerId player, const TrancheCost& tc,
+                                      resource::DomainMask base_mask,
+                                      const std::function<bool()>* rest_payable) {
+    for (const auto& [mask, pw] : tc.other_power)
+        if (!resource::payIn(state_, events_, player, 0, pw, mask, SpendFor::Spell)) return false;
+    if (tc.any_power <= 0) return true;
+    const auto chooser = effect_executor_->runeChooser();
+    return resource::payAnyPowerAheadOfCost(state_, events_, player, tc.any_power, base_mask,
+                                            SpendFor::Spell, rest_payable ? &chooser : nullptr,
+                                            rest_payable);
+}
+
+GameEngine::RepeatPlan GameEngine::planRepeats(
+        PlayerId player, GameObjectId card_id, resource::DomainMask base_mask,
+        const std::function<bool(const TrancheCost&)>& pay_base_with,
+        std::pair<int, int> owed_base, const std::vector<GameObjectId>& play_targets,
+        bool target_chosen_at_play) {
+    RepeatPlan plan;
     const auto tranches = repeatTranchesFor(player, card_id);
-    if (tranches.empty()) return accepted;
+    if (tranches.empty()) return plan;
     const std::string name = state_.getObject(card_id).name;
-    for (const auto& rc : tranches) {
-        // Each cost can be paid a single time (CR 820.1.c.3); it is offered
-        // only if it, the ones accepted before it and the play's own cost can
-        // all be paid — tried on a copy of the game, thrown away.
-        if (static_cast<int>(state_.player(player).hand.size()) < rc.discard_cards) continue;
-        auto with = accepted;
-        with.push_back(rc);
-        const bool payable = tryOnACopy([&]() {
-            return pay_base() && payTranchesQuietly(player, with, nullptr);
+    const int disc = optionalCostDiscount(player);
+    auto halves = [disc](const RepeatTranche& rc, bool power_first) {
+        return afterEitherDiscount(std::max(0, rc.energy), std::max(0, rc.power), disc,
+                                   power_first);
+    };
+    // The whole cost step with these tranches at these nets, tried on a copy.
+    auto works = [&](const std::vector<RepeatTranche>& with,
+                     const std::vector<std::pair<int, int>>& nets) {
+        int discards = 0;
+        for (const auto& rc : with) discards += rc.discard_cards;
+        if (static_cast<int>(state_.player(player).hand.size()) < discards) return false;
+        const TrancheCost tc = trancheCost(with, nets, base_mask);
+        return tryOnACopy([&]() {
+            return payTranchePartsAhead(player, tc, base_mask, nullptr) && pay_base_with(tc);
         });
-        if (!payable) continue;
+    };
+    // Nets: the Energy half of a "[1] or [A] less" discount unless only the
+    // Power half leaves everything payable.
+    auto netsFor = [&](const std::vector<RepeatTranche>& with,
+                       std::optional<std::vector<std::pair<int, int>>>& out) {
+        std::vector<std::pair<int, int>> nets;
+        for (const auto& rc : with) nets.push_back(halves(rc, false));
+        if (works(with, nets)) { out = nets; return; }
+        for (size_t k = 0; k < with.size(); ++k) {
+            auto alt = nets;
+            alt[k] = halves(with[k], true);
+            if (alt[k] != nets[k] && works(with, alt)) { out = alt; return; }
+        }
+        out.reset();
+    };
+    for (const auto& rc : tranches) {
+        // Each cost can be paid a single time (CR 820.1.c.3); offered only if
+        // it, the ones accepted before it and the play's own cost can all be
+        // paid together.
+        auto with = plan.accepted;
+        with.push_back(rc);
+        std::optional<std::vector<std::pair<int, int>>> nets;
+        netsFor(with, nets);
+        if (!nets.has_value()) continue;
         Intent decline;
         decline.type = IntentType::MakeChoice;
         decline.player = player;
@@ -4418,144 +4505,58 @@ std::vector<GameEngine::RepeatTranche> GameEngine::decideRepeats(
         state_.decision_index++;
         RIFT_TRACE_DECISION(events_, "DECISION #" + std::to_string(state_.decision_index) +
                          " (" + toString(player) + "): "
-                         "pay Repeat tranche " + std::to_string(accepted.size() + 1) +
+                         "pay Repeat tranche " + std::to_string(plan.accepted.size() + 1) +
                          " for " + name + "? [decline|pay] [2 options]");
         auto chosen = askAgent(player, opts, enginePrompt(player, PromptKind::Repeat, card_id));
         if (on_decision) on_decision(state_, opts, chosen);
-        if (chosen.chosen_value.value_or(0) == 1) accepted.push_back(rc);
+        if (chosen.chosen_value.value_or(0) == 1) plan.accepted.push_back(rc);
     }
-    return accepted;
-}
-
-namespace {
-/// The tranches' nets, grouped by the Domains their Power may come from: one
-/// payment per group, so a rune exhausted for one tranche's Energy can be
-/// recycled for another's Power (the payment exhausts for all the Energy
-/// first) and no rune the payer names for one tranche can leave a later one
-/// unpayable.
-struct TrancheGroup {
-    resource::DomainMask domains;
-    int energy = 0;
-    int power = 0;
-};
-std::vector<TrancheGroup> groupTranches(
-        const std::vector<RepeatTranche>& tranches,
-        const std::vector<std::pair<int, int>>& nets) {
-    std::vector<TrancheGroup> out;
-    for (size_t k = 0; k < tranches.size(); ++k) {
-        auto it = std::find_if(out.begin(), out.end(), [&](const TrancheGroup& g) {
-            return g.domains == tranches[k].domains;
-        });
-        if (it == out.end()) {
-            out.push_back({tranches[k].domains, 0, 0});
-            it = out.end() - 1;
-        }
-        it->energy += nets[k].first;
-        it->power += nets[k].second;
-    }
-    return out;
-}
-}  // namespace
-
-bool GameEngine::payTranchesQuietly(PlayerId player, const std::vector<RepeatTranche>& tranches,
-                                    std::vector<std::pair<int, int>>* nets_out) {
-    int discards = 0;
-    for (const auto& rc : tranches) discards += rc.discard_cards;
-    if (static_cast<int>(state_.player(player).hand.size()) < discards) return false;
-    // "Optional additional costs you pay cost [1] or [A] less" (Ezreal,
-    // Prodigy): each tranche the Energy half if that leaves everything
-    // payable, else the Power half.
-    const int disc = optionalCostDiscount(player);
-    std::vector<std::pair<int, int>> nets;
-    for (const auto& rc : tranches)
-        nets.push_back(afterEitherDiscount(std::max(0, rc.energy), std::max(0, rc.power), disc, false));
-    auto payable = [&](const std::vector<std::pair<int, int>>& n) {
-        for (const auto& g : groupTranches(tranches, n))
-            if (!resource::canPayIn(state_, player, g.energy, g.power, g.domains, SpendFor::Spell))
-                return false;
-        // Groups paid one after another: judged by paying them (on the copy
-        // this runs on).
-        return true;
-    };
-    if (!payable(nets))
-        for (size_t k = 0; k < tranches.size(); ++k) {
-            auto alt = nets;
-            alt[k] = afterEitherDiscount(std::max(0, tranches[k].energy),
-                                         std::max(0, tranches[k].power), disc, true);
-            if (payable(alt)) { nets = alt; break; }
-        }
-    if (nets_out) *nets_out = nets;
-    for (const auto& g : groupTranches(tranches, nets))
-        if ((g.energy > 0 || g.power > 0) &&
-            !effect_executor_->payResources(player, g.energy, g.power, g.domains, SpendFor::Spell))
-            return false;
-    return true;
-}
-
-int GameEngine::payRepeats(PlayerId player, GameObjectId card_id,
-                           const std::vector<RepeatTranche>& accepted) {
-    if (accepted.empty()) return 0;
-    // Offered only when the whole cost step could be paid (decideRepeats);
-    // the play's own cost was paid first, the payer naming its runes. The
-    // tranches are paid together, one payment per Domain group, the payer
-    // naming the runes (and, with a "[1] or [A] less" discount that leaves
-    // both halves payable, the half).
-    const int disc = optionalCostDiscount(player);
-    std::vector<std::pair<int, int>> nets;
-    bool found = false;
+    if (plan.accepted.empty()) return plan;
+    std::optional<std::vector<std::pair<int, int>>> nets_opt;
+    netsFor(plan.accepted, nets_opt);
+    if (!nets_opt.has_value())
+        throw std::logic_error("GameEngine::planRepeats: the accepted [Repeat] costs of " + name +
+                               " cannot be paid with its cost");
+    auto nets = *nets_opt;
+    // The extra executions' choices (CR 820.2), with the cost step owed.
     {
-        std::vector<std::pair<int, int>> tried;
-        found = tryOnACopy([&]() { return payTranchesQuietly(player, accepted, &tried); });
-        nets = tried;
+        const TrancheCost tc = trancheCost(plan.accepted, nets, base_mask);
+        EffectExecutor::OwedCost owed;
+        owed.energy = owed_base.first + tc.energy;
+        owed.power = owed_base.second + tc.base_power + tc.any_power;
+        owed.mask = base_mask;
+        owed.spend_for = SpendFor::Spell;
+        const std::function<bool()> cost_step = [&]() {
+            return payTranchePartsAhead(player, tc, base_mask, nullptr) && pay_base_with(tc);
+        };
+        plan.choices = chooseRepeatsBeforeCost(player, card_id, play_targets,
+            target_chosen_at_play, static_cast<int>(plan.accepted.size()), cost_step, owed);
     }
-    if (!found)
-        throw std::logic_error("GameEngine::payRepeats: the [Repeat] costs of " +
-                               state_.getObject(card_id).name +
-                               " were offered as payable and cannot be paid");
+    // "[1] or [A] less" on a tranche: the payer picks the half when both
+    // leave everything payable (judged now that the choices are made).
     if (disc > 0)
-        for (size_t k = 0; k < accepted.size(); ++k) {
-            const auto e_half = afterEitherDiscount(std::max(0, accepted[k].energy),
-                                                    std::max(0, accepted[k].power), disc, false);
-            const auto p_half = afterEitherDiscount(std::max(0, accepted[k].energy),
-                                                    std::max(0, accepted[k].power), disc, true);
+        for (size_t k = 0; k < plan.accepted.size(); ++k) {
+            const auto e_half = halves(plan.accepted[k], false);
+            const auto p_half = halves(plan.accepted[k], true);
             if (e_half == p_half) continue;
-            auto with = [&](std::pair<int, int> half) {
-                auto n = nets;
-                n[k] = half;
-                return tryOnACopy([&]() {
-                    for (const auto& g : groupTranches(accepted, n))
-                        if ((g.energy > 0 || g.power > 0) &&
-                            !effect_executor_->payResources(player, g.energy, g.power, g.domains,
-                                                            SpendFor::Spell))
-                            return false;
-                    return true;
-                });
-            };
-            if (!with(e_half) || !with(p_half)) continue;
-            Intent e; e.type = IntentType::MakeChoice; e.player = player;
-            e.chosen_value = 0; e.choice_label = "cost [1] less";
-            Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
-            nets[k] = decideNow(player, {e, pw}, PromptKind::CostSplit, card_id,
-                                "[Repeat]: [1] or [A] less").chosen_value.value_or(0) == 1
-                          ? p_half : e_half;
+            auto with_e = nets, with_p = nets;
+            with_e[k] = e_half;
+            with_p[k] = p_half;
+            const bool e_ok = works(plan.accepted, with_e), p_ok = works(plan.accepted, with_p);
+            if (e_ok && p_ok) {
+                Intent e; e.type = IntentType::MakeChoice; e.player = player;
+                e.chosen_value = 0; e.choice_label = "cost [1] less";
+                Intent pw = e; pw.chosen_value = 1; pw.choice_label = "cost [A] less";
+                nets[k] = decideNow(player, {e, pw}, PromptKind::CostSplit, card_id,
+                                    "[Repeat]: [1] or [A] less").chosen_value.value_or(0) == 1
+                              ? p_half : e_half;
+            } else if (p_ok && !e_ok) {
+                nets[k] = p_half;
+            }
         }
-    int energy = 0;
-    for (const auto& g : groupTranches(accepted, nets)) {
-        if (g.energy <= 0 && g.power <= 0) continue;
-        if (!effect_executor_->payResources(player, g.energy, g.power, g.domains, SpendFor::Spell))
-            throw std::logic_error("GameEngine::payRepeats: the [Repeat] costs of " +
-                                   state_.getObject(card_id).name +
-                                   " were offered as payable and could not be paid");
-        RIFT_TRACE(events_, "[Repeat]: " + state_.getObject(card_id).name + " pays [" +
-                            std::to_string(g.energy) + "] + " + std::to_string(g.power) +
-                            " power");
-    }
-    for (size_t k = 0; k < accepted.size(); ++k) {
-        energy += nets[k].first;
-        if (accepted[k].discard_cards > 0)
-            effect_executor_->discardCards(player, accepted[k].discard_cards);
-    }
-    return energy;
+    plan.cost = trancheCost(plan.accepted, nets, base_mask);
+    plan.energy = plan.cost.energy;
+    return plan;
 }
 
 bool GameEngine::tryOnACopy(const std::function<bool()>& fn) {
@@ -4582,9 +4583,9 @@ bool GameEngine::tryOnACopy(const std::function<bool()>& fn) {
 
 std::vector<ChainItem::ExecutionChoices> GameEngine::chooseRepeatsBeforeCost(
         PlayerId player, GameObjectId card_id, const std::vector<GameObjectId>& play_targets,
-        bool target_chosen_at_play, const std::vector<RepeatTranche>& accepted,
-        const std::function<bool()>& pay_base, EffectExecutor::OwedCost owed) {
-    if (accepted.empty() || !state_.objectExists(card_id)) return {};
+        bool target_chosen_at_play, int repeats, const std::function<bool()>& cost_step,
+        EffectExecutor::OwedCost owed) {
+    if (repeats <= 0 || !state_.objectExists(card_id)) return {};
     // A stand-in for the spell's chain item, with the first execution's
     // choices: the extra executions are chosen on it the way they are on the
     // real item ("make new choices", chooseRepeatExecutions), then it is
@@ -4602,7 +4603,7 @@ std::vector<ChainItem::ExecutionChoices> GameEngine::chooseRepeatsBeforeCost(
     temp.controller = player;
     temp.is_spell = true;
     temp.pre_play_choices = false;
-    temp.repeats_paid = static_cast<int>(accepted.size());
+    temp.repeats_paid = repeats;
     temp.repeat_choices.clear();
     if (!first.has_value()) {
         temp.targets = play_targets;
@@ -4615,11 +4616,9 @@ std::vector<ChainItem::ExecutionChoices> GameEngine::chooseRepeatsBeforeCost(
     const ChainItemId temp_id = temp.id;
     state_.chain.items.push_back(std::move(temp));
 
-    // The cost step, as it will be paid: the play's own cost, then the
-    // tranches.
-    auto costStep = [this, player, &accepted, pay_base]() {
-        return pay_base() && payTranchesQuietly(player, accepted, nullptr);
-    };
+    // The cost step, as it will be paid (cost_step: the tranches' parts
+    // ahead, then the play's own cost with the rest of them).
+    const auto& costStep = cost_step;
     owed.player = player;
     effect_executor_->setOwedCost(owed);
     effect_executor_->setChoiceFilter([this, player, costStep](GameObjectId t) {
@@ -9679,6 +9678,13 @@ GameEngine::CostPaymentAdvance GameEngine::beginCostPayment(
         }
     }
 
+    // The [Repeat] tranches decided for this play: their Energy and the
+    // Power of the card's own Domains are paid in this one payment
+    // (GameEngine::TrancheCost).
+    if (cost_step_tranches_) {
+        energy_needed += cost_step_tranches_->energy;
+        power_needed += cost_step_tranches_->base_power;
+    }
     RIFT_TRACE(events_, "PAY_COST: " + card.name + " E=" + std::to_string(energy_needed) +
                      " P=" + std::to_string(power_needed));
     return beginPaymentOf(player, card_obj, energy_needed, power_needed, def.domains);
@@ -9918,8 +9924,14 @@ bool GameEngine::payTrashReplayGrant(PlayerId player, GameObjectId card_id,
         // half is taken when that leaves the cost payable, else the Power half.
         const SpendFor f = spendForObject(state_.getObject(card_id));
         auto cost = trashGrantCost(player, card_id, grant, targets, false);
-        if (!resource::canPayIn(state_, player, cost.energy, cost.power, cost.domains, f))
+        const int t_e = cost_step_tranches_ ? cost_step_tranches_->energy : 0;
+        const int t_p = cost_step_tranches_ ? cost_step_tranches_->base_power : 0;
+        if (!resource::canPayIn(state_, player, cost.energy + t_e, cost.power + t_p,
+                                cost.domains, f))
             cost = trashGrantCost(player, card_id, grant, targets, true);
+        // [Repeat] tranches decided for this play are paid with it.
+        cost.energy += t_e;
+        cost.power += t_p;
         // The grant's cost IS the play's cost (CR 829.1.c.1: Flow; a "play me
         // from your trash for ..." permission): paid as a card's cost is, the
         // payer naming every rune, about this card (testing phase U18).
@@ -10507,13 +10519,16 @@ void GameEngine::detachAllGear(GameObjectId unit_id) {
 
 
 bool GameEngine::payCardCostQuietly(PlayerId player, GameObjectId card_obj,
-                                    const Card::PlayCostAdjust& adj, int extra_any) {
+                                    const Card::PlayCostAdjust& adj, int extra_any,
+                                    int extra_energy, int extra_base_power) {
     if (!state_.objectExists(card_obj)) return false;
     const auto& card = state_.getObject(card_obj);
     if (card.card_def_id == kInvalidId) return false;
     const SpendFor f = spendForObject(card);
-    if (!adj.ignore_cost) {
-        const auto net = netCardCost(player, card_obj, adj);
+    {
+        auto net = adj.ignore_cost ? std::pair<int, int>{0, 0} : netCardCost(player, card_obj, adj);
+        net.first += extra_energy;
+        net.second += extra_base_power;
         const auto mask = resource::maskOf(card_db_.get(card.card_def_id).domains);
         if ((net.first > 0 || net.second > 0) &&
             !effect_executor_->payResources(player, net.first, net.second, mask, f))

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <optional>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -296,7 +297,24 @@ DeckSubmission DeckValidator::loadFromDeckList(const std::string& path,
         throw std::runtime_error("Deck list " + path + " line " +
                                  std::to_string(lineno) + ": " + msg);
     };
-    auto resolve = [&](const std::string& name) -> CardDefId {
+    // "<name>" is the first printing of that name; "<name> #<card id>" picks
+    // one printing of a name several cards share (Yasuo, Windrider is 205
+    // and 546): the id must be a card of that name.
+    auto resolve = [&](const std::string& entry) -> CardDefId {
+        std::string name = entry;
+        std::optional<uint32_t> printing;
+        if (const auto hash = entry.rfind(" #"); hash != std::string::npos &&
+            hash + 2 < entry.size() &&
+            std::all_of(entry.begin() + static_cast<std::ptrdiff_t>(hash) + 2, entry.end(),
+                        [](unsigned char ch) { return std::isdigit(ch) != 0; })) {
+            printing = static_cast<uint32_t>(std::stoul(entry.substr(hash + 2)));
+            name = trim(entry.substr(0, hash));
+        }
+        if (printing.has_value()) {
+            for (const CardDef* c : db.findAllByName(name))
+                if (c->id.raw() == *printing) return c->id;
+            fail("no card '" + name + "' with id " + std::to_string(*printing));
+        }
         const CardDef* c = db.findByName(name);
         if (!c) fail("unknown card '" + name + "'");
         return c->id;

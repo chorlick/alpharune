@@ -188,6 +188,8 @@ struct Options {
     MatchFormat match_format = MatchFormat::BestOf1;  // --game-mode duel | match
     std::string guide_path;       // a previous result: build decks toward what it covered least
     double guide_boost = 8;
+    std::vector<uint32_t> focus;  // --focus: card ids put in many more decks
+    double focus_boost = 40;
     std::string known_path;       // known failure signatures: "ID|text" per line
     bool quiet = false;
     // --replay
@@ -266,6 +268,10 @@ int usage() {
         "         --agent1 / --agent2 / --agents random | random-player[:pass=P]\n"
         "         --game-mode duel | match (duel: setup battlefields drawn at random, CR 487.5;\n"
         "             match: each seat chooses, CR 488.5)\n"
+        "         --focus ID,ID,... [--focus-boost B (40)]: put these cards in B times as many\n"
+        "             decks (where their legend's pool allows them): coverage of cards whose\n"
+        "             printed conditions random decks rarely meet (a seed then means a deck only\n"
+        "             with the same focus: the replay command names it)\n"
         "         --guide prev.json [--guide-boost B (8)]: weight deck building toward the cards\n"
         "             the previous result exercised least (a seed then means a deck only with\n"
         "             the same guide file: the replay command names it)\n"
@@ -411,6 +417,12 @@ int main(int argc, char* argv[]) {
         }
         else if (flag == "--guide") o.guide_path = value();
         else if (flag == "--guide-boost") o.guide_boost = std::stod(value());
+        else if (flag == "--focus") {
+            std::stringstream ids(value());
+            for (std::string id; std::getline(ids, id, ',');)
+                if (!id.empty()) o.focus.push_back(static_cast<uint32_t>(std::stoul(id)));
+        }
+        else if (flag == "--focus-boost") o.focus_boost = std::stod(value());
         else if (flag == "--known") o.known_path = value();
         else if (flag == "--quiet") o.quiet = true;
         else if (flag == "--trace") o.trace = true;
@@ -440,10 +452,24 @@ int main(int argc, char* argv[]) {
     db.buildFromClasses(registry);
     RandomDeckBuilder builder(db);
     const DeckValidator validator(db);
-    if (!o.guide_path.empty()) {
-        builder.setWeights(guideWeights(o.guide_path, o.guide_boost));
-        g_replay_extra += " --guide " + o.guide_path;
-        if (o.guide_boost != 8) g_replay_extra += " --guide-boost " + std::to_string(o.guide_boost);
+    if (!o.guide_path.empty() || !o.focus.empty()) {
+        std::vector<double> weights = o.guide_path.empty()
+            ? std::vector<double>(fuzz::kCardSlots, 1.0)
+            : guideWeights(o.guide_path, o.guide_boost);
+        if (!o.guide_path.empty()) {
+            g_replay_extra += " --guide " + o.guide_path;
+            if (o.guide_boost != 8) g_replay_extra += " --guide-boost " + std::to_string(o.guide_boost);
+        }
+        if (!o.focus.empty()) {
+            std::string ids;
+            for (auto id : o.focus) {
+                if (id < weights.size()) weights[id] *= o.focus_boost;
+                ids += (ids.empty() ? "" : ",") + std::to_string(id);
+            }
+            g_replay_extra += " --focus " + ids;
+            if (o.focus_boost != 40) g_replay_extra += " --focus-boost " + std::to_string(o.focus_boost);
+        }
+        builder.setWeights(weights);
     }
     for (int seat = 0; seat < 2; ++seat) {
         // Refuse a bad spec now, not in the first game.

@@ -1542,9 +1542,20 @@ TEST(RiftboundStateTest, AnEditThatChangesTheDecidersOptionsIsRefused) {
     auto game = loadGame(6);
     RiftboundState live(game, 6);
     std::mt19937_64 rng(4);
+    // A main-phase decision at which the decider may play a card from its
+    // hand (the game the walk reaches follows the Mode of Play: a Duel since
+    // batch 8, so the walk looks for an offered hand play, not just a hand).
+    auto handPlayOffered = [&]() {
+        const auto& st = live.engineState();
+        for (const auto& i : live.legalIntents())
+            if (i.type == ::riftbound::IntentType::PlayCard && st.objectExists(i.card) &&
+                st.getObject(i.card).zone == ::riftbound::ZoneType::Hand)
+                return true;
+        return false;
+    };
     while (!live.IsTerminal() &&
            !(GameEngine::isResumableDecision(live.engineState(), live.legalIntents()) &&
-             live.engineState().player(live.legalIntents().front().player).hand.size() > 0)) {
+             handPlayOffered())) {
         live.ApplyAction(pickAction(rng, live.LegalActions()));
     }
     ASSERT_FALSE(live.IsTerminal());

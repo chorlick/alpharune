@@ -429,3 +429,17 @@ card and the action id. Equal descriptions in positions a player cannot tell apa
 Trainer notes: key a prompt by `PromptKind` + the asking card + `promptKey`, never by
 the index in `StepResult::legal`; a `ChainItem` option is named by its place on the
 chain (`chain_position`), not its id.
+
+## 10. Batch 7 (Q1, 2026-10-15): the last id-order ties
+
+No layout change. What a value means changed in three places:
+
+| What | Before | After |
+|---|---|---|
+| Observation, a unit's gear slot (`UnitOrderKey`, the unit blocks) | the card of the first gear attached to it | the lowest card among its gear (attachments are a set; the attach order followed which of two identical gear an earlier choice took) |
+| `openspiel::visibleObjectDescription` / twin order | a gear: its bearer's card | + its bearer as it stands (place, Might, damage, statuses, buffs, designation, keywords, the bearer's gear) and the Might the gear itself gives it; any object: + the cards "banished with" it (`tracked_objects`) the viewer may know |
+| `KnowledgeView::knownDeckTop` / `knownDeckBottom` | a slot where facts of different spans start was judged by whichever fact came first (object ids) | judged from the spans: the widest fill that exactly that many facts fit in; a wider fact is then known to start after them (its rank and span in the list say so) |
+
+Engine games: other games than before for the same seed where an Awaken Phase readies
+two or more objects with "When I become ready" abilities (one trigger batch now), and
+where Downwell, Angler Beast or Reckoner's Arena act on several objects.

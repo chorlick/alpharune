@@ -808,17 +808,43 @@ std::vector<CardKnowledge> GameKnowledgeView::knownDeckEnd(PlayerId owner,
         }
         by_rank[k.deck_rank].push_back(k);
     }
+    // From the end inward: at the next slot, the widest `fill` such that
+    // exactly `fill` of the facts starting there have a span of `fill` or
+    // less — those cards fill the slots [next, next + fill), each lying within
+    // its own span. A fact with a wider span is then known to start after
+    // them. (Judged from the spans, not from whichever fact the table lists
+    // first, which followed object ids: batch 7 Q1.)
     std::vector<CardKnowledge> out;
     int next = 0;
-    for (auto& [rank, cards] : by_rank) {
-        if (rank != next) break;
-        const int span = cards.front().deck_rank_span;
-        if (static_cast<int>(cards.size()) != span) break;
-        std::sort(cards.begin(), cards.end(), [](const CardKnowledge& a, const CardKnowledge& b) {
-            return std::tie(a.card_def_id, a.object) < std::tie(b.card_def_id, b.object);
+    while (true) {
+        auto it = by_rank.find(next);
+        if (it == by_rank.end() || it->second.empty()) break;
+        std::vector<CardKnowledge> cards = std::move(it->second);
+        by_rank.erase(it);
+        int fill = 0;
+        for (const auto& c : cards) {
+            const int s = c.deck_rank_span;
+            const auto within = std::count_if(cards.begin(), cards.end(),
+                [s](const CardKnowledge& o) { return o.deck_rank_span <= s; });
+            if (within == s && s > fill) fill = s;
+        }
+        if (fill == 0) break;
+        std::vector<CardKnowledge> placed;
+        for (auto& c : cards) {
+            if (c.deck_rank_span <= fill) {
+                placed.push_back(c);
+            } else {
+                c.deck_rank = next + fill;
+                c.deck_rank_span -= fill;
+                by_rank[next + fill].push_back(c);
+            }
+        }
+        std::sort(placed.begin(), placed.end(), [](const CardKnowledge& a, const CardKnowledge& b) {
+            return std::tie(a.card_def_id, a.deck_rank, a.deck_rank_span, a.object) <
+                   std::tie(b.card_def_id, b.deck_rank, b.deck_rank_span, b.object);
         });
-        out.insert(out.end(), cards.begin(), cards.end());
-        next += span;
+        out.insert(out.end(), placed.begin(), placed.end());
+        next += fill;
     }
     return out;
 }

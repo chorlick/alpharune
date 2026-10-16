@@ -3,6 +3,7 @@
 #include "core/game_state.h"
 #include "core/events.h"
 #include "engine/effect_executor.h"
+#include "cards/card_helpers.h"
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -23,6 +24,8 @@ public:
             if (obj.current_might > 2) continue;  // "2 [M] or less"
             to_bounce.push_back(id);
         }
+        // Returned together: in an order of what the players see (Q1).
+        inSeenOrder(ctx.state, to_bounce);
         for (auto id : to_bounce) {
             if (ctx.state.objectExists(id)) ctx.executor.bounceToHand(id);
         }

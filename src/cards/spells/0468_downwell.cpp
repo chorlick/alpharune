@@ -21,6 +21,9 @@ public:
             if (!obj.location.has_value()) continue;   // only on-board cards
             if (obj.isUnit() || obj.isGear()) to_bounce.push_back(id);
         }
+        // Returned together: in an order of what the players see, not the
+        // object table's (the hands they enter, the "returned" triggers; Q1).
+        inSeenOrder(ctx.state, to_bounce);
         for (auto id : to_bounce) {
             if (ctx.state.objectExists(id)) ctx.executor.bounceToHand(id);
         }

@@ -196,7 +196,7 @@ public:
     /// phase T1): the prompt of `currentStep()` in step mode, and of the
     /// `AgentInterface::decide` call under way in runGame. Kind Unspecified
     /// when no decision is pending.
-    const Prompt& pendingPrompt() const { return parked_prompt_; }
+    const Prompt& pendingPrompt() const { return *parked_prompt_; }
 
     /// Mutable access, for tests that build a position by hand and for the
     /// play server's god mode. Not for the OpenSpiel wrapper, BatchRunner or
@@ -431,9 +431,17 @@ private:
     /// state-derived decision this is, if any (recomputePendingLegalActions).
     Intent askAgent(PlayerId player, const std::vector<Intent>& legal, Prompt prompt,
                     PendingQuery kind = PendingQuery::None);
-    /// What the decision being asked right now asks (askAgent); kind
-    /// Unspecified while no agent is being asked.
-    Prompt parked_prompt_;
+    /// The same with a prompt that lives for the whole call (the executor's
+    /// prompt being asked): it is pointed at, not copied (batch 7 Q2).
+    Intent askAgentAbout(PlayerId player, const std::vector<Intent>& legal, const Prompt& prompt,
+                         PendingQuery kind = PendingQuery::None);
+    /// What the decision being asked right now asks (askAgent): the caller's
+    /// prompt while an agent is being asked, kNoPrompt (kind Unspecified)
+    /// otherwise. parked_prompt_copy_ holds it when the prompt names another
+    /// decider than the one asked.
+    static const Prompt kNoPrompt;
+    const Prompt* parked_prompt_ = &kNoPrompt;
+    Prompt parked_prompt_copy_;
 
     // Step machine state (Phase 11 C-1, fiber refactor 6w).
     // No more std::thread — the engine runs in a userspace fiber
@@ -821,6 +829,9 @@ private:
     /// The Energy / Power half of canAfford, with `adj` taken off the cost.
     bool canAffordWith(PlayerId player, GameObjectId card_obj, int extra_any_power,
                        const Card::PlayCostAdjust& adj) const;
+    /// Options a main-phase or showdown list is reserved for (the list grew
+    /// by doubling: five buffers and fifteen moves of an Intent for sixteen).
+    static constexpr size_t kOptionsReserved = 16;
 
     /// Auto-pay a card's cost by exhausting/recycling runes.
     /// Returns false if payment failed (shouldn't happen if canAfford was checked).
@@ -1040,6 +1051,20 @@ private:
     /// there a complete sequence of its choices that leaves it payable?
     bool prePlayProbe(PlayerId player, GameObjectId card_id,
                       const PlayerState::TrashReplayGrant* grant);
+    /// A probe (prePlayProbe, probeAdds, maybePayOptionalAdditionalCost) sets
+    /// the game aside whole and plays on a copy of it. parkGame swaps state_
+    /// with a slot of its own nesting depth and returns the slot, which then
+    /// holds the game (its objects where every reference up the call stack
+    /// points); state_ holds what the slot held, the copy the last probe of
+    /// that depth played on, and the caller copies the game over it — reusing
+    /// its map nodes and containers instead of allocating a whole state
+    /// (batch 7 P1). unparkGame swaps back and keeps the copy for the next
+    /// probe. A copy assigned this way is the copy a constructor makes: the
+    /// same objects in the same table order, the same bucket count.
+    GameState& parkGame();
+    void unparkGame(GameState& slot);
+    std::vector<std::unique_ptr<GameState>> park_slots_;
+    size_t park_depth_ = 0;
     /// Set once the turn loop of a game is running (runGame, the step machine,
     /// a resumed snapshot): the state is then the engine's own work and not a
     /// position a test built by hand. Read by the checked build's assertions.

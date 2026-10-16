@@ -9,6 +9,8 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <tuple>
+#include <vector>
 
 namespace riftbound {
 namespace {
@@ -508,6 +510,42 @@ TEST(KnowledgeTracker, CheckReportsADeckEditThatBypassedTheHooks) {
     EXPECT_TRUE(knowledge::check(t.s).empty());
     t.s.player(P1).main_deck.pop_back();   // a draw with no hook
     EXPECT_FALSE(knowledge::check(t.s).empty());
+}
+
+// Two facts start at one slot with different spans: a card known exactly at
+// the bottom and the two-card group it came from. Whichever fact the table
+// lists first (that followed object ids) used to decide whether the end was
+// known at all (batch 7 Q1): now both cards fill the bottom two slots, in
+// either id order.
+TEST(KnowledgeTracker, ADeckEndIsJudgedFromTheSpansNotFromTheFactsOrder) {
+    std::vector<std::vector<std::tuple<int, int, int>>> seen;   // (card, rank, span)
+    for (bool a_first : {true, false}) {
+        Table t;
+        t.deck(P1, 5);
+        // a and b made in either order: their ids, and the facts' order, swap.
+        const auto first = t.make(P1, CardDefId::fromRaw(a_first ? 31 : 30), ZoneType::Hand);
+        const auto second = t.make(P1, CardDefId::fromRaw(a_first ? 30 : 31), ZoneType::Hand);
+        const auto a = a_first ? first : second;   // card 31
+        const auto b = a_first ? second : first;   // card 30
+        auto& ps = t.s.player(P1);
+        ps.hand.clear();
+        ps.main_deck.insert(ps.main_deck.begin(), b);
+        ps.main_deck.insert(ps.main_deck.begin(), a);   // a at the very bottom
+        knowledge::movedTogether(t.s,
+            {{a, Place::Hand, nobody()}, {b, Place::Hand, nobody()}}, DeckEnd::Bottom);
+        knowledge::seenInDeck(t.s, a, only(P1), DeckEnd::Bottom, 0);
+
+        GameKnowledgeView v(t.s, P1);
+        ASSERT_EQ(v.about(a).deck_rank_span, 1);
+        ASSERT_EQ(v.about(b).deck_rank_span, 2);
+        std::vector<std::tuple<int, int, int>> got;
+        for (const auto& k : v.knownDeckBottom(P1))
+            got.emplace_back(static_cast<int>(k.card_def_id.raw()), k.deck_rank, k.deck_rank_span);
+        EXPECT_EQ(got.size(), 2u) << "both cards of the bottom two slots are known";
+        seen.push_back(got);
+        t.expectConsistent();
+    }
+    EXPECT_EQ(seen[0], seen[1]) << "the same knowledge under other ids";
 }
 
 } // namespace

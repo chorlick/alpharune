@@ -267,6 +267,14 @@ protected:
                std::filesystem::path(lists_[b]).stem().string();
     }
 
+    /// What a run of relabelled game pairs found (section 2).
+    struct Relabelled {
+        long decisions = 0, renamed = 0, log_lines = 0, diverged = 0, finished = 0;
+    };
+    /// Plays each game of `games` twice, under two id labellings, comparing
+    /// what both players are shown at every decision (section 2).
+    static Relabelled relabelled(const std::vector<int>& games);
+
     static CardRegistry* registry_;
     static CardDB* db_;
     static RandomDeckBuilder* builder_;
@@ -559,12 +567,16 @@ std::string withoutNumbers(const std::string& line) {
     return std::regex_replace(l, digits, "#");
 }
 
-TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers) {
-    const int games = gamesOr(60);
-    long decisions = 0, renamed = 0, log_lines = 0, diverged = 0, finished = 0;
+HiddenOrderLeak::Relabelled HiddenOrderLeak::relabelled(const std::vector<int>& games) {
+    Relabelled r;
+    long& decisions = r.decisions;
+    long& renamed = r.renamed;
+    long& log_lines = r.log_lines;
+    long& diverged = r.diverged;
+    long& finished = r.finished;
     std::vector<std::string> problems;
     auto problem = [&](const std::string& s) { if (problems.size() < 20) problems.push_back(s); };
-    for (int g = firstGame(); g < firstGame() + games; ++g) {
+    for (const int g : games) {
         const auto [d1, d2] = decks(g);
         const uint64_t seed = 777000 + static_cast<uint64_t>(g);
         EventBus bus_a, bus_b;
@@ -633,6 +645,15 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                     ok = false;
                 }
             }
+            // RIFTBOUND_LEAK_GREP=<text>: the log lines (Player1's) of both
+            // games that contain <text>, by decision — to see where a pair
+            // parted before the state shows it.
+            if (const char* gr = std::getenv("RIFTBOUND_LEAK_GREP")) {
+                for (const auto& l : tap_a.lines[0])
+                    if (l.find(gr) != std::string::npos) std::cout << "  A" << n << "| " << l << "\n";
+                for (const auto& l : tap_b.lines[0])
+                    if (l.find(gr) != std::string::npos) std::cout << "  B" << n << "| " << l << "\n";
+            }
             tap_a.clear();
             tap_b.clear();
             if (!ok) break;
@@ -645,6 +666,49 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
             }
             const StepResult sa = a.currentStep(), sb = b.currentStep();
             ++decisions;
+            // RIFTBOUND_LEAK_DUMP_AT=<n>: both games' units, chain and options
+            // (with each object's visible description) at decision n.
+            if (const char* d = std::getenv("RIFTBOUND_LEAK_DUMP_AT"); d && std::atoi(d) == n) {
+                for (const GameEngine* e : {&a, &b}) {
+                    const auto& st = e->state();
+                    const auto& lg = e->currentStep().legal;
+                    const auto ids = openspiel::actionIds(lg, st);
+                    std::cout << "  DUMP " << (e == &a ? "A" : "B") << " '" << e->currentStep().prompt.question << "'\n";
+                    for (const auto& [oid, o] : st.objects.onBoard()) {
+                        if (!o.isUnit()) continue;
+                        std::cout << "   unit#" << oid.raw() << " " << o.name.get() << " m" << o.current_might << " @" << (o.location ? (int)std::holds_alternative<BaseLocation>(*o.location) : -1) << " gear:";
+                        for (auto g : o.attachments) std::cout << " #" << g.raw() << st.getObject(g).name.get();
+                        std::cout << "\n";
+                    }
+                    for (const auto& ci : st.chain.items) std::cout << "   chain src#" << ci.source.raw() << " " << ci.trigger_batch << "\n";
+                    for (PlayerId obs : {PlayerId::Player1, PlayerId::Player2}) {
+                        const knowledge::GameKnowledgeView kv(st, obs);
+                        for (PlayerId own : {PlayerId::Player1, PlayerId::Player2}) {
+                            auto show = [&](const char* what, const std::vector<CardKnowledge>& ks) {
+                                std::cout << "   " << toString(obs) << " knows of " << toString(own) << " " << what << ":";
+                                for (const auto& k : ks)
+                                    std::cout << " [" << k.card_def_id.raw() << " z" << static_cast<int>(k.last_known_zone)
+                                              << " p" << static_cast<int>(k.deck_position) << " r" << k.deck_rank
+                                              << "/" << k.deck_rank_span << "]";
+                                std::cout << "\n";
+                            };
+                            show("hidden", kv.knownHiddenCards(own));
+                            show("top", kv.knownDeckTop(own));
+                            show("bottom", kv.knownDeckBottom(own));
+                        }
+                    }
+                    for (size_t i : byActionId(st, lg)) {
+                        std::cout << "   " << ids[i] << " " << lg[i].describe();
+                        for (auto o : lg[i].chosen_objects) {
+                            std::cout << " obj#" << o.raw() << ":";
+                            for (auto v : openspiel::visibleObjectDescription(st, o, lg[i].player)) std::cout << v << ",";
+                            if (st.objectExists(o) && st.getObject(o).attached_to)
+                                std::cout << " on#" << st.getObject(o).attached_to->raw();
+                        }
+                        std::cout << "\n";
+                    }
+                }
+            }
             if (sa.perspective != sb.perspective) {
                 problem(where + ": another player decides at decision " + std::to_string(n));
                 break;
@@ -679,6 +743,13 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
                                           << lg[i].choice_label << "'";
                                 for (auto o : lg[i].chosen_objects)
                                     if (st.objectExists(o)) std::cout << " obj:" << st.getObject(o).name.get();
+                                for (auto o : {lg[i].card, lg[i].ability_source})
+                                    if (o != kInvalidId && st.objectExists(o))
+                                        std::cout << " src:" << st.getObject(o).name.get();
+                                for (auto o : lg[i].targets)
+                                    if (st.objectExists(o)) std::cout << " tgt:" << st.getObject(o).name.get();
+                                if (lg[i].type == IntentType::ActivateAbility)
+                                    std::cout << " ability " << lg[i].ability_index;
                                 std::cout << "\n";
                             }
                         }
@@ -728,17 +799,44 @@ TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers)
         }
     }
     for (const auto& p : problems) ADD_FAILURE() << p;
-    EXPECT_EQ(renamed, games) << "the salt did not change the ids";
-    EXPECT_GT(decisions, 50L * games) << "too few decisions compared";
+    return r;
+}
+
+TEST_F(HiddenOrderLeak, TheSameGameUnderOtherObjectIdsLooksTheSameToBothPlayers) {
+    const int games = gamesOr(60);
+    std::vector<int> which;
+    for (int g = firstGame(); g < firstGame() + games; ++g) which.push_back(g);
+    const Relabelled r = relabelled(which);
+    EXPECT_EQ(r.renamed, games) << "the salt did not change the ids";
+    EXPECT_GT(r.decisions, 50L * games) << "too few decisions compared";
     // Nothing done at once follows the object table's order any more (batch
-    // 5d N1): (nearly) every pair is the same game to its end.
-    EXPECT_LE(diverged * 50, static_cast<long>(games))
-        << diverged << " of " << games << " pairs became other games under other ids";
-    std::cout << "[ hidden order, relabelled: " << games << " game pairs (" << finished
-              << " compared to the end, " << diverged
-              << " became other games by the table's order), " << decisions
-              << " decisions compared for both players, " << log_lines
+    // 5d N1, batch 7 Q1): every pair is the same game to its end.
+    EXPECT_EQ(r.diverged, 0)
+        << r.diverged << " of " << games << " pairs became other games under other ids";
+    EXPECT_EQ(r.finished, games) << "pairs not compared to the end";
+    std::cout << "[ hidden order, relabelled: " << games << " game pairs (" << r.finished
+              << " compared to the end, " << r.diverged
+              << " became other games by the table's order), " << r.decisions
+              << " decisions compared for both players, " << r.log_lines
               << " log lines compared ]\n";
+}
+
+// The pairs batch 5d left, and those a run of games 600-1199 found (batch 7
+// Q1), each something that followed object ids: 219 Reckoner's Arena's
+// conquer abilities (queued in id order); 311, 323 Downwell's returns (the
+// hands' order); 370 three Brutalizers on one Sand Soldier, told apart only
+// by the one attached this turn; 459 two Zero Drives, told apart only by what
+// each had banished; 705, 1032 a known deck end judged from whichever fact
+// the table listed first; 846 the observation's gear slot (the first gear
+// attached); 1127 three Jayces readied one by one in table order, each its
+// own trigger batch. (Game numbers of the long runs: a change to the deck
+// lists or the card pool changes which game a number plays.)
+TEST_F(HiddenOrderLeak, ThePairsBatch5dLeftAreTheSameGameUnderOtherObjectIds) {
+    const std::vector<int> which = {219, 311, 323, 370, 459, 705, 846, 1032, 1127};
+    const Relabelled r = relabelled(which);
+    EXPECT_EQ(r.renamed, static_cast<long>(which.size()));
+    EXPECT_EQ(r.diverged, 0) << r.diverged << " pairs became other games under other ids";
+    EXPECT_EQ(r.finished, static_cast<long>(which.size())) << "pairs not compared to the end";
 }
 
 // ─── 3. An opponent who never acts ──────────────────────────────────────────
